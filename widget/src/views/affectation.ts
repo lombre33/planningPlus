@@ -82,6 +82,11 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
   }
 
   function viderPlace(place: Place): void {
+    if (place.Verrouillee) {
+      dernierMessage = {texte: 'Place verrouillée : déverrouillez-la avant de la modifier.', ton: 'danger'};
+      rafraichir();
+      return;
+    }
     const diff = apercuAffectation(m, place.id, null);
     m.assignerPlace(place.id, null);
     dernierMessage = messageDepuisDiff('Place vidée.', diff);
