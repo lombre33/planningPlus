@@ -1707,6 +1707,24 @@ table.dispos-table td {
 .dispos-cellule--indisponible { background: var(--surface-muted); }
 .dispos-cellule--artiste { background: var(--accent-2-tint); }
 
+.contrainte-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: 5px;
+  border-radius: 50%;
+  font-size: 9px;
+  font-weight: 700;
+  cursor: help;
+  flex: 0 0 auto;
+}
+
+.contrainte-badge--danger { background: var(--danger-tint); color: var(--danger); }
+.contrainte-badge--warn { background: var(--warn-tint); color: var(--warn); }
+.contrainte-badge--neutral { background: var(--night-tint); color: var(--night); }
+
 /* ---------- Terrain (où est chaque bénévole à l'instant t) ---------- */
 
 .terrain-barre {

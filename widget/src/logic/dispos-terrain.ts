@@ -99,6 +99,56 @@ export function statutCellule(
   return {statut: d.Statut === 'Disponible' ? 'Disponible' : 'Indisponible', artisteId: null};
 }
 
+export interface ContraintesBenevole {
+  missionsRefusees: string[];
+  missionsReticentes: string[];
+  affinitesEviter: string[];
+  affinitesEnsemble: string[];
+}
+
+/**
+ * Contraintes déclarées d'un bénévole autres que ses disponibilités : refus
+ * ou réticence sur une mission, affinités à respecter ou à éviter (§6, motivé
+ * par l'étape « voir les dispos et contraintes » qui précède le lancement de
+ * l'algorithme — tout ce qui va peser sur la répartition doit être visible
+ * ici, pas seulement la grille dispo/indispo/artiste).
+ */
+export function contraintesBenevole(m: Magasin, ix: Index, benevoleId: Id): ContraintesBenevole {
+  const nomsMissions = (preference: string) => m.souhaitsMissions
+    .filter((s) => s.Benevole === benevoleId && s.Preference === preference)
+    .map((s) => ix.mission.get(s.Mission)?.Nom ?? '?');
+  const autreBenevole = (a: {Benevole_A: Id; Benevole_B: Id}) => (a.Benevole_A === benevoleId ? a.Benevole_B : a.Benevole_A);
+  const nomsAffinites = (type: string) => m.affinites
+    .filter((a) => a.Type === type && (a.Benevole_A === benevoleId || a.Benevole_B === benevoleId))
+    .map((a) => ix.benevole.get(autreBenevole(a))?.Nom ?? '?');
+  return {
+    missionsRefusees: nomsMissions('Refuse'),
+    missionsReticentes: nomsMissions('Réticent'),
+    affinitesEviter: nomsAffinites('Éviter'),
+    affinitesEnsemble: nomsAffinites('Ensemble'),
+  };
+}
+
+/** Gravité à afficher (le refus bloque l'algorithme, le reste ne fait que
+ *  pondérer le score : voir `moteur/eligibilite.ts`). `null` si aucune
+ *  contrainte déclarée. */
+export function graviteContraintes(c: ContraintesBenevole): 'danger' | 'warn' | 'neutral' | null {
+  if (c.missionsRefusees.length > 0) { return 'danger'; }
+  if (c.missionsReticentes.length > 0 || c.affinitesEviter.length > 0) { return 'warn'; }
+  if (c.affinitesEnsemble.length > 0) { return 'neutral'; }
+  return null;
+}
+
+/** Résumé textuel des contraintes, pour l'infobulle. `null` si aucune. */
+export function libelleContraintes(c: ContraintesBenevole): string | null {
+  const parties: string[] = [];
+  if (c.missionsRefusees.length > 0) { parties.push(`Refuse : ${c.missionsRefusees.join(', ')}`); }
+  if (c.missionsReticentes.length > 0) { parties.push(`Réticent·e pour : ${c.missionsReticentes.join(', ')}`); }
+  if (c.affinitesEviter.length > 0) { parties.push(`À éviter avec : ${c.affinitesEviter.join(', ')}`); }
+  if (c.affinitesEnsemble.length > 0) { parties.push(`À rapprocher de : ${c.affinitesEnsemble.join(', ')}`); }
+  return parties.length > 0 ? parties.join(' · ') : null;
+}
+
 // --- Vue Terrain -------------------------------------------------------------
 
 function quartDeInstant(instant: Epoch): Epoch {

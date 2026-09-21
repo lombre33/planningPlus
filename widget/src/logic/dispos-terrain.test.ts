@@ -3,9 +3,9 @@ import type {Modele} from '../domain/types';
 import {cleJourFestival} from '../temps';
 import {indexer, regrouperParJour} from './derive';
 import {
-  affectationsAInstant, besoinsActifs, blocsDuJour, couvertureAInstant, estHeurePleine,
-  indexerDisponibilitesDuQuart, indexerDisponibilitesParBenevole, sousCreneauxActifs,
-  statutBenevoleAInstant, statutCellule,
+  affectationsAInstant, besoinsActifs, blocsDuJour, contraintesBenevole, couvertureAInstant, estHeurePleine,
+  graviteContraintes, indexerDisponibilitesDuQuart, indexerDisponibilitesParBenevole, libelleContraintes,
+  sousCreneauxActifs, statutBenevoleAInstant, statutCellule,
 } from './dispos-terrain';
 import {Magasin} from '../store';
 
@@ -48,8 +48,14 @@ function creerModeleDeTest(): Modele {
       // Bob n'a aucune ligne au quart 0 : vaut indisponible (§6.4).
       {Benevole: 2, Quart_heure: 900, Statut: 'Disponible', Artiste: null},
     ],
-    souhaitsMissions: [],
-    affinites: [],
+    // Contraintes (§6) pour les tests de `contraintesBenevole` : Bob refuse
+    // la seule mission du fixture, Alice et Bob s'évitent, Bob et Chloé
+    // doivent être rapprochés.
+    souhaitsMissions: [{id: 1, Benevole: 2, Mission: 1, Preference: 'Refuse'}],
+    affinites: [
+      {id: 1, Benevole_A: 1, Benevole_B: 2, Type: 'Éviter'},
+      {id: 2, Benevole_A: 2, Benevole_B: 3, Type: 'Ensemble'},
+    ],
   };
 }
 
@@ -192,5 +198,49 @@ describe('statutBenevoleAInstant', () => {
     const affectations = affectationsAInstant(m, ix, 450);
     const dispoDuQuart = indexerDisponibilitesDuQuart(m, 450);
     expect(statutBenevoleAInstant(ix, dispoDuQuart, affectations, 3, 'Absent')).toEqual({etat: 'absent'});
+  });
+});
+
+describe('contraintesBenevole', () => {
+  it('rapporte le refus de mission (gravité la plus forte, bloquante pour le moteur)', () => {
+    const modele = creerModeleDeTest();
+    const m = new Magasin(modele);
+    const ix = indexer(m);
+    const c = contraintesBenevole(m, ix, 2); // Bob
+    expect(c.missionsRefusees).toEqual(['Bar central']);
+    expect(c.affinitesEviter).toEqual(['Alice']);
+    expect(c.affinitesEnsemble).toEqual(['Chloé']);
+    expect(graviteContraintes(c)).toBe('danger');
+    expect(libelleContraintes(c)).toBe('Refuse : Bar central · À éviter avec : Alice · À rapprocher de : Chloé');
+  });
+
+  it('une affinité à éviter, sans refus, vaut une gravité intermédiaire', () => {
+    const modele = creerModeleDeTest();
+    const m = new Magasin(modele);
+    const ix = indexer(m);
+    const c = contraintesBenevole(m, ix, 1); // Alice
+    expect(c.missionsRefusees).toEqual([]);
+    expect(c.affinitesEviter).toEqual(['Bob']);
+    expect(graviteContraintes(c)).toBe('warn');
+  });
+
+  it('une affinité à rapprocher seule vaut une gravité informative', () => {
+    const modele = creerModeleDeTest();
+    const m = new Magasin(modele);
+    const ix = indexer(m);
+    const c = contraintesBenevole(m, ix, 3); // Chloé
+    expect(c.affinitesEnsemble).toEqual(['Bob']);
+    expect(graviteContraintes(c)).toBe('neutral');
+  });
+
+  it('aucune contrainte déclarée : pas de gravité, pas de libellé', () => {
+    const modele = creerModeleDeTest();
+    modele.souhaitsMissions = [];
+    modele.affinites = [];
+    const m = new Magasin(modele);
+    const ix = indexer(m);
+    const c = contraintesBenevole(m, ix, 1);
+    expect(graviteContraintes(c)).toBeNull();
+    expect(libelleContraintes(c)).toBeNull();
   });
 });
