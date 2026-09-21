@@ -80,11 +80,10 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
           continue;
         }
         const c = couvertureBesoin(m, ix, besoin.id);
-        const fourchette = besoin.Effectif_max > besoin.Effectif_min
-          ? `${c.pourvues}/${besoin.Effectif_min}–${besoin.Effectif_max}` : `${c.pourvues}/${besoin.Effectif_min}`;
+        const etatCase = c.statut === 'sous' ? 'sous' : 'ok';
         tr.append(h('td', {class: 'besoin-cell'},
-          h('button', {class: `besoin besoin--${c.statut}`, type: 'button', onclick: () => ouvrirDetailBesoin(besoin.id)},
-            h('span', {class: 'besoin__effectif mono'}, fourchette),
+          h('button', {class: `besoin besoin--${etatCase}`, type: 'button', onclick: () => ouvrirDetailBesoin(besoin.id)},
+            h('span', {class: 'besoin__effectif mono'}, `${c.pourvues}/${besoin.Effectif_min}`),
             h('div', {class: 'besoin__groupes'}, ...c.groupesPositionnes.map((g) => h(
               'span', {class: 'chip-groupe', style: {background: ix.equipe.get(g.groupe.Equipe)?.Couleur ?? '#888'}},
               g.groupe.Code,
@@ -114,9 +113,8 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
         ),
         h('button', {class: 'btn btn--ghost btn--sm', type: 'button', onclick: () => fermerPanneau()}, 'Fermer'),
       ),
-      h('span', {class: `pill pill--${c.statut === 'ok' ? 'ok' : c.statut === 'partiel' ? 'warn' : 'danger'}`},
-        `${c.pourvues} affecté${c.pourvues > 1 ? 's' : ''} sur un minimum de ${besoin.Effectif_min}`
-        + (besoin.Effectif_max > besoin.Effectif_min ? ` (max ${besoin.Effectif_max})` : ''),
+      h('span', {class: `pill pill--${c.statut === 'sous' ? 'danger' : 'ok'}`},
+        `${c.pourvues} affecté${c.pourvues > 1 ? 's' : ''} sur un minimum de ${besoin.Effectif_min}`,
       ),
       c.groupesPositionnes.length === 0
         ? h('p', {class: 'empty'}, "Aucun indicatif n'est encore positionné sur ce besoin.")

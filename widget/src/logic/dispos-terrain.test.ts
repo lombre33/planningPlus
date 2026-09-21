@@ -1,9 +1,10 @@
 import {describe, expect, it} from 'vitest';
 import type {Modele} from '../domain/types';
-import {indexer} from './derive';
+import {cleJourFestival} from '../temps';
+import {indexer, regrouperParJour} from './derive';
 import {
-  affectationsAInstant, besoinsActifs, blocsDuJour, cleJourFestival, couvertureAInstant, estHeurePleine,
-  indexerDisponibilitesDuQuart, indexerDisponibilitesParBenevole, regrouperParJourFestival, sousCreneauxActifs,
+  affectationsAInstant, besoinsActifs, blocsDuJour, couvertureAInstant, estHeurePleine,
+  indexerDisponibilitesDuQuart, indexerDisponibilitesParBenevole, sousCreneauxActifs,
   statutBenevoleAInstant, statutCellule,
 } from './dispos-terrain';
 import {Magasin} from '../store';
@@ -73,14 +74,14 @@ describe('cleJourFestival', () => {
   });
 });
 
-describe('regrouperParJourFestival', () => {
-  it('garde entier un macro-créneau qui franchit minuit', () => {
-    const macros = [
-      {id: 1, Nom: 'Soirée', Debut: Date.UTC(2026, 6, 17, 22, 0, 0) / 1000, Fin: Date.UTC(2026, 6, 18, 2, 0, 0) / 1000},
-    ];
-    const jours = regrouperParJourFestival(macros, 6);
+describe('regrouperParJour (jour de festival, logic/derive.ts)', () => {
+  it('regroupe sous le même jour de festival une soirée et la matinée qui la suit avant la coupure', () => {
+    const soiree = {id: 1, Nom: 'Soirée', Debut: Date.UTC(2026, 6, 17, 20, 0, 0) / 1000, Fin: Date.UTC(2026, 6, 18, 0, 0, 0) / 1000};
+    // 04:00 locale (Europe/Paris, UTC+2 en juillet) le lendemain matin : avant la coupure de 6h, donc même jour de festival.
+    const apresMinuit = {id: 2, Nom: 'Fin de nuit', Debut: Date.UTC(2026, 6, 18, 2, 0, 0) / 1000, Fin: Date.UTC(2026, 6, 18, 3, 0, 0) / 1000};
+    const jours = regrouperParJour([soiree, apresMinuit]);
     expect(jours).toHaveLength(1);
-    expect(jours[0]!.macros).toEqual(macros);
+    expect(jours[0]!.macros.map((m) => m.id)).toEqual([1, 2]);
   });
 });
 

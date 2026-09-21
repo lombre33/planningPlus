@@ -8,8 +8,9 @@
 import type {MacroCreneau, SousCreneau} from '../domain/types';
 import {regrouperParJour} from '../logic/derive';
 import type {Magasin} from '../store';
-import {epochDepuisDateEtHeure, epochMinuitLocal, libelleHeure, libelleHeurePlage} from '../temps';
-import {h, ouvrirModal, vider} from '../ui/dom';
+import {epochMinuitLocal} from '../temps';
+import {h, vider} from '../ui/dom';
+import {ouvrirModalCreationCreneau, ouvrirModalEditionCreneau} from '../ui/modalCreneau';
 
 const PX_PAR_MINUTE = 52 / 60;
 
@@ -55,7 +56,7 @@ export function montrerAgenda(container: HTMLElement, m: Magasin): () => void {
           h('span', {class: 'date'}, jour.libelle),
           h('button', {
             class: 'btn btn--ghost btn--sm', type: 'button', style: {alignSelf: 'flex-start', padding: '0'},
-            onclick: () => ouvrirModalCreation(jour.cle),
+            onclick: () => ouvrirModalCreationCreneau(m, jour.cle),
           }, '+ créneau'),
         ),
         track,
@@ -66,7 +67,7 @@ export function montrerAgenda(container: HTMLElement, m: Magasin): () => void {
     container.append(
       h('div', {class: 'agenda'},
         h('div', {class: 'agenda__toolbar'},
-          h('button', {class: 'btn btn--primary btn--sm', type: 'button', onclick: () => ouvrirModalCreation(null)}, '+ Nouveau jour'),
+          h('button', {class: 'btn btn--primary btn--sm', type: 'button', onclick: () => ouvrirModalCreationCreneau(m, null)}, '+ Nouveau jour'),
           h('span', {class: 'view__intro', style: {margin: '0'}}, "Glissez l'en-tête d'un macro-créneau pour le déplacer, ses bords haut/bas pour le redimensionner ; l'icône ✎ ouvre le détail."),
         ),
         grille,
@@ -91,7 +92,7 @@ export function montrerAgenda(container: HTMLElement, m: Magasin): () => void {
       h('span', null, macro.Nom),
       h('button', {
         class: 'btn btn--ghost btn--sm', type: 'button', style: {padding: '0 2px'}, title: 'Modifier',
-        onclick: (e: Event) => { e.stopPropagation(); ouvrirModalEdition(macro); },
+        onclick: (e: Event) => { e.stopPropagation(); ouvrirModalEditionCreneau(m, macro); },
       }, '✎'),
     );
     const poigneeHaut = h('div', {class: 'macro-bloc__resize macro-bloc__resize--haut', title: 'Glisser pour changer le début'});
@@ -202,86 +203,6 @@ export function montrerAgenda(container: HTMLElement, m: Magasin): () => void {
 
     poigneeHaut.addEventListener('mousedown', demarrer(true));
     poigneeBas.addEventListener('mousedown', demarrer(false));
-  }
-
-  function ouvrirModalEdition(macro: MacroCreneau): void {
-    const dateISO = new Date(epochMinuitLocal(macro.Debut) * 1000).toISOString().slice(0, 10);
-    const champNom = h('input', {class: 'input', type: 'text', value: macro.Nom}) as HTMLInputElement;
-    const champDebut = h('input', {class: 'input', type: 'text', value: libelleHeure(macro.Debut)}) as HTMLInputElement;
-    const champFin = h('input', {class: 'input', type: 'text', value: libelleHeureApresMinuitPossible(macro)}) as HTMLInputElement;
-
-    ouvrirModal('Modifier le macro-créneau', (fermer) => h('div', {style: {display: 'flex', flexDirection: 'column', gap: '10px'}},
-      h('div', {class: 'field'}, h('label', null, 'Nom'), champNom),
-      h('div', {class: 'modal__row'},
-        h('div', {class: 'field'}, h('label', null, 'Début (HH:MM)'), champDebut),
-        h('div', {class: 'field'}, h('label', null, 'Fin (HH:MM, > 24:00 si après minuit)'), champFin),
-      ),
-      h('div', {class: 'modal__actions'},
-        h('button', {class: 'btn btn--ghost', type: 'button', onclick: fermer}, 'Annuler'),
-        h('button', {
-          class: 'btn btn--primary', type: 'button',
-          onclick: () => {
-            const debut = epochDepuisDateEtHeure(dateISO, champDebut.value);
-            const finBrute = epochDepuisDateEtHeure(dateISO, champFin.value);
-            if (debut == null || finBrute == null || finBrute <= debut) { return; }
-            m.enregistrerMacroCreneau({id: macro.id, Nom: champNom.value.trim() || macro.Nom, Debut: debut, Fin: finBrute});
-            fermer();
-          },
-        }, 'Enregistrer'),
-      ),
-    ));
-  }
-
-  function libelleHeureApresMinuitPossible(macro: MacroCreneau): string {
-    const minuit = epochMinuitLocal(macro.Debut);
-    const minutes = Math.round((macro.Fin - minuit) / 60);
-    const h24 = Math.floor(minutes / 60);
-    const min = minutes % 60;
-    return `${String(h24).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
-  }
-
-  function ouvrirModalCreation(jourCle: string | null): void {
-    const aujourdhui = jourCle ?? new Date().toISOString().slice(0, 10);
-    const champDate = h('input', {class: 'input', type: 'date', value: aujourdhui}) as HTMLInputElement;
-    const champNom = h('input', {class: 'input', type: 'text', placeholder: 'Journée vendredi'}) as HTMLInputElement;
-    const champDebut = h('input', {class: 'input', type: 'text', value: '10:00'}) as HTMLInputElement;
-    const champFin = h('input', {class: 'input', type: 'text', value: '18:00'}) as HTMLInputElement;
-    const champDuree = h('select', {class: 'select'},
-      h('option', {value: '60'}, '1 h par sous-créneau'),
-      h('option', {value: '90', selected: true}, '1 h 30 par sous-créneau'),
-      h('option', {value: '120'}, '2 h par sous-créneau'),
-    ) as HTMLSelectElement;
-
-    ouvrirModal('Nouveau macro-créneau', (fermer) => h('div', {style: {display: 'flex', flexDirection: 'column', gap: '10px'}},
-      h('div', {class: 'field'}, h('label', null, 'Jour'), champDate),
-      h('div', {class: 'field'}, h('label', null, 'Nom'), champNom),
-      h('div', {class: 'modal__row'},
-        h('div', {class: 'field'}, h('label', null, 'Début (HH:MM)'), champDebut),
-        h('div', {class: 'field'}, h('label', null, 'Fin (HH:MM, > 24:00 si après minuit)'), champFin),
-      ),
-      h('div', {class: 'field'}, h('label', null, 'Sous-créneaux générés automatiquement'), champDuree),
-      h('div', {class: 'modal__actions'},
-        h('button', {class: 'btn btn--ghost', type: 'button', onclick: fermer}, 'Annuler'),
-        h('button', {
-          class: 'btn btn--primary', type: 'button',
-          onclick: () => {
-            const debut = epochDepuisDateEtHeure(champDate.value, champDebut.value);
-            const fin = epochDepuisDateEtHeure(champDate.value, champFin.value);
-            if (debut == null || fin == null || fin <= debut) { return; }
-            const nom = champNom.value.trim() || `Créneau du ${champDate.value}`;
-            const idMacro = m.enregistrerMacroCreneau({Nom: nom, Debut: debut, Fin: fin});
-            const dureeSec = Number(champDuree.value) * 60;
-            for (let t = debut; t < fin; t += dureeSec) {
-              const finSous = Math.min(t + dureeSec, fin);
-              m.enregistrerSousCreneau({
-                Macro_creneau: idMacro, Mission: null, Libelle: libelleHeurePlage(t, finSous), Debut: t, Fin: finSous,
-              });
-            }
-            fermer();
-          },
-        }, 'Créer'),
-      ),
-    ));
   }
 
   const desabonner = m.subscribe(rafraichir);

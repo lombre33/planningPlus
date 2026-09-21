@@ -13,7 +13,7 @@ import type {
 } from '../domain/types';
 import {type Couverture, type Index, type Jour, couvertureBesoin} from './derive';
 import type {Magasin} from '../store';
-import {PAS_SECONDES, TIMEZONE} from '../temps';
+import {PAS_SECONDES} from '../temps';
 
 function quartsEntre(debut: Epoch, fin: Epoch): Epoch[] {
   const quarts: Epoch[] = [];
@@ -28,69 +28,10 @@ export function estHeurePleine(epoch: Epoch): boolean {
   return new Date(epoch * 1000).getUTCMinutes() === 0;
 }
 
-// --- Jour de festival (cahier des charges §6.2) -----------------------------
-//
-// Concept purement visuel, jamais stocké : un jour de festival bascule à une
-// heure de coupure paramétrable (6h par défaut), pas à minuit civil, pour
-// qu'une soirée qui franchit minuit (22h–2h) reste un seul jour d'affichage.
-// `logic/derive.ts` (`regrouperParJour`, utilisé par l'Agenda) groupe encore
-// par jour calendaire à minuit ; les deux vues de ce module ont besoin de la
-// coupure à heure paramétrable, donc la logique vit ici plutôt que d'être
-// dupliquée dans chaque vue. À unifier avec l'Agenda si le fil Maquette
-// interactive souhaite la reprendre à son compte.
-
-export const HEURE_COUPURE_PAR_DEFAUT = 6;
-
-function composantsLocaux(epoch: Epoch, fuseau: string): {annee: number; mois: number; jour: number; heure: number} {
-  const format = new Intl.DateTimeFormat('en-US', {
-    timeZone: fuseau, hour12: false,
-    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit',
-  });
-  const parties = Object.fromEntries(
-    format.formatToParts(new Date(epoch * 1000)).map((p) => [p.type, p.value]),
-  ) as Record<string, string>;
-  return {
-    annee: Number(parties.year), mois: Number(parties.month), jour: Number(parties.day),
-    heure: Number(parties.hour) % 24,
-  };
-}
-
-/** Clé du jour de festival auquel appartient cet instant (heure locale). */
-export function cleJourFestival(epoch: Epoch, heureCoupure = HEURE_COUPURE_PAR_DEFAUT, fuseau = TIMEZONE): string {
-  const c = composantsLocaux(epoch, fuseau);
-  const decale = c.heure < heureCoupure ? c.jour - 1 : c.jour;
-  // Date.UTC normalise les débordements (jour 0 → dernier jour du mois précédent).
-  return new Date(Date.UTC(c.annee, c.mois - 1, decale)).toISOString().slice(0, 10);
-}
-
-/** Libellé court (« ven. 17/07 ») du jour de festival d'un instant. */
-export function libelleJourFestival(epoch: Epoch, heureCoupure = HEURE_COUPURE_PAR_DEFAUT, fuseau = TIMEZONE): string {
-  const [an, mo, jo] = cleJourFestival(epoch, heureCoupure, fuseau).split('-').map(Number);
-  const midiUtc = new Date(Date.UTC(an!, mo! - 1, jo!, 12));
-  return new Intl.DateTimeFormat('fr-FR', {timeZone: 'UTC', weekday: 'short', day: '2-digit', month: '2-digit'}).format(midiUtc);
-}
-
-/** Regroupe les macro-créneaux par jour de festival plutôt que par jour
- *  calendaire (variante de `regrouperParJour` de `logic/derive.ts`, avec
- *  heure de coupure). Un macro-créneau qui franchit la coupure reste entier,
- *  rattaché au jour de festival de son début. */
-export function regrouperParJourFestival(
-  macroCreneaux: MacroCreneau[], heureCoupure = HEURE_COUPURE_PAR_DEFAUT,
-): Jour[] {
-  const parCle = new Map<string, MacroCreneau[]>();
-  for (const macro of macroCreneaux) {
-    const cle = cleJourFestival(macro.Debut, heureCoupure);
-    const liste = parCle.get(cle) ?? [];
-    liste.push(macro);
-    parCle.set(cle, liste);
-  }
-  return [...parCle.entries()]
-    .map(([cle, macros]) => ({
-      cle, libelle: libelleJourFestival(macros[0]!.Debut, heureCoupure),
-      macros: macros.sort((a, b) => a.Debut - b.Debut),
-    }))
-    .sort((a, b) => a.macros[0]!.Debut - b.macros[0]!.Debut);
-}
+// Le regroupement par jour de festival (heure de coupure paramétrable plutôt
+// que minuit civil, §6.2) vit dans `regrouperParJour` de `logic/derive.ts` et
+// `cleJourFestival`/`epochDebutJourFestival` de `temps.ts` — pas ici : ce
+// module s'appuie dessus plutôt que de dupliquer sa propre variante.
 
 export interface BlocMacro {
   macro: MacroCreneau;
