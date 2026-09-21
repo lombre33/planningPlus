@@ -13,7 +13,7 @@ import type {Id} from '../domain/types';
 import {indexer} from '../logic/derive';
 import {
   blocsDuJour, contraintesBenevole, estHeurePleine, graviteContraintes, indexerDisponibilitesParBenevole,
-  libelleContraintes, regrouperParJourFestival, statutCellule,
+  libelleContraintes, regrouperParJourCourt, statutCellule,
 } from '../logic/dispos-terrain';
 import type {Magasin} from '../store';
 import {libelleHeure} from '../temps';
@@ -32,7 +32,7 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
 
   function rafraichir(): void {
     const ix = indexer(m);
-    const jours = regrouperParJourFestival(m.macroCreneaux);
+    const jours = regrouperParJourCourt(m.macroCreneaux);
     if (jourCle == null || !jours.some((j) => j.cle === jourCle)) {
       jourCle = jours[0]?.cle ?? null;
     }

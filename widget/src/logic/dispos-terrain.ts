@@ -45,7 +45,7 @@ export const HEURE_COUPURE_PAR_DEFAUT = HEURE_COUPURE_JOUR_FESTIVAL;
 
 /** Regroupe les macro-créneaux par jour de festival, avec un libellé court
  *  adapté aux onglets (variante d'affichage de `regrouperParJour`). */
-export function regrouperParJourFestival(
+export function regrouperParJourCourt(
   macroCreneaux: MacroCreneau[], heureCoupure = HEURE_COUPURE_JOUR_FESTIVAL,
 ): Jour[] {
   return regrouperParJour(macroCreneaux, heureCoupure).map((jour) => ({
