@@ -614,48 +614,48 @@ button {
   flex-wrap: wrap;
 }
 
+/* Disposition horizontale (choisie par Antoine après comparaison avec une
+   disposition verticale, fil dédié) : jours en lignes, temps de gauche à
+   droite. .agenda__grid est un simple conteneur défilant, chaque ligne
+   (.agenda__row) porte une étiquette de jour à largeur fixe (sticky à
+   gauche) suivie d'une piste (.agenda__track) à largeur calculée
+   (longueurAxePx). La première ligne joue le rôle d'axe du temps. */
+
 .agenda__grid {
-  display: grid;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  overflow: hidden;
-  background: var(--surface);
-  overflow-x: auto;
-}
-
-.agenda__axis {
-  border-right: 1px solid var(--border);
+  overflow: auto;
   background: var(--surface);
 }
 
-.agenda__axis-cell {
-  height: 52px;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--text-faint);
-  text-align: right;
-  padding-right: 6px;
-  border-top: 1px solid var(--border);
-  transform: translateY(-6px);
+.agenda__row {
+  display: flex;
+  border-bottom: 1px solid var(--border);
 }
 
-.agenda__day {
-  border-right: 1px solid var(--border);
-  position: relative;
-  min-width: 148px;
+.agenda__row:last-child {
+  border-bottom: none;
 }
 
-.agenda__day:last-child { border-right: none; }
-
-.agenda__day-head {
+.agenda__row--axe {
   position: sticky;
   top: 0;
+  z-index: 3;
   background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  padding: 8px 8px 6px;
+}
+
+.agenda__corner,
+.agenda__day-head {
+  position: sticky;
+  left: 0;
   z-index: 2;
+  flex: none;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 8px;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 1px;
 }
 
@@ -672,10 +672,27 @@ button {
   color: var(--text-muted);
 }
 
+.agenda__axis {
+  position: relative;
+  flex: none;
+  height: 32px;
+}
+
+.agenda__axis-tick {
+  position: absolute;
+  top: 8px;
+  padding-left: 4px;
+  border-left: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
 .agenda__track {
   position: relative;
+  flex: none;
   background-image: repeating-linear-gradient(
-    to bottom,
+    to right,
     var(--border) 0,
     var(--border) 1px,
     transparent 1px,
@@ -683,10 +700,32 @@ button {
   );
 }
 
+.agenda__minuit {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 1px dashed var(--border-strong);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.agenda__minuit span {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  writing-mode: vertical-rl;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-faint);
+  background: var(--surface);
+  padding: 0 3px;
+  border-radius: 3px;
+}
+
 .macro-bloc {
   position: absolute;
-  left: 4px;
-  right: 4px;
+  top: 4px;
+  bottom: 4px;
   border-radius: var(--radius-sm);
   background: var(--night-tint);
   border: 1px solid var(--night);
@@ -697,15 +736,15 @@ button {
 
 .macro-bloc__resize {
   position: absolute;
-  left: 0;
-  right: 0;
-  height: 7px;
-  cursor: ns-resize;
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  cursor: ew-resize;
   z-index: 2;
 }
 
-.macro-bloc__resize--haut { top: 0; }
-.macro-bloc__resize--bas { bottom: 0; }
+.macro-bloc__resize--gauche { left: 0; }
+.macro-bloc__resize--droite { right: 0; }
 
 .macro-bloc__resize:hover {
   background: rgba(255, 255, 255, 0.4);
@@ -1470,137 +1509,6 @@ table.grille .mission-cell .lieu {
   .affectation__layout { grid-template-columns: 1fr; }
   .affectation__roster { position: static; }
   .affectation__roster-liste { max-height: none; }
-}
-
-/* ---------- Comparatif agenda (vertical/horizontal) ----------
-   La disposition verticale réutilise .agenda__grid/.macro-bloc/.sous-bloc
-   ci-dessus telles quelles (mêmes jetons, même densité) : seule la
-   disposition horizontale, qui n'a pas d'équivalent existant, ajoute ses
-   propres classes ci-dessous. */
-
-.agenda-cmp__h {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  overflow: auto;
-  background: var(--surface);
-}
-
-.agenda-cmp__h-row {
-  display: flex;
-  border-bottom: 1px solid var(--border);
-}
-
-.agenda-cmp__h-row:last-child {
-  border-bottom: none;
-}
-
-.agenda-cmp__h-corner,
-.agenda-cmp__h-day-head {
-  position: sticky;
-  left: 0;
-  z-index: 2;
-  flex: none;
-  background: var(--surface);
-  border-right: 1px solid var(--border);
-  padding: 8px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 1px;
-}
-
-.agenda-cmp__h-row--axe {
-  position: sticky;
-  top: 0;
-  z-index: 3;
-  background: var(--surface);
-}
-
-.agenda-cmp__h-day-head .jour {
-  font-family: var(--font-display);
-  font-weight: 700;
-  text-transform: uppercase;
-  font-size: 13px;
-  letter-spacing: 0.02em;
-}
-
-.agenda-cmp__h-day-head .date {
-  font-size: 10.5px;
-  color: var(--text-muted);
-}
-
-.agenda-cmp__h-axis {
-  position: relative;
-  flex: none;
-  height: 32px;
-}
-
-.agenda-cmp__h-axis-tick {
-  position: absolute;
-  top: 8px;
-  padding-left: 4px;
-  border-left: 1px solid var(--border);
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--text-faint);
-}
-
-.agenda-cmp__h-track {
-  position: relative;
-  flex: none;
-  background-image: repeating-linear-gradient(
-    to right,
-    var(--border) 0,
-    var(--border) 1px,
-    transparent 1px,
-    transparent 52px
-  );
-}
-
-/* .macro-bloc se positionne par défaut en top/height (disposition
-   verticale) ; ce modificateur bascule en left/width sans toucher au
-   reste (fond, bordure, contenu). */
-.macro-bloc--horizontal {
-  left: auto;
-  right: auto;
-  top: 4px;
-  bottom: 4px;
-}
-
-.agenda-cmp__minuit {
-  position: absolute;
-  left: 0;
-  right: 0;
-  border-top: 1px dashed var(--border-strong);
-  z-index: 1;
-  pointer-events: none;
-}
-
-.agenda-cmp__minuit span {
-  position: absolute;
-  left: 2px;
-  top: 1px;
-  font-family: var(--font-mono);
-  font-size: 9px;
-  color: var(--text-faint);
-  background: var(--surface);
-  padding: 0 3px;
-  border-radius: 3px;
-}
-
-.agenda-cmp__minuit--horizontal {
-  left: auto;
-  right: auto;
-  top: 0;
-  bottom: 0;
-  border-top: none;
-  border-left: 1px dashed var(--border-strong);
-}
-
-.agenda-cmp__minuit--horizontal span {
-  top: 2px;
-  left: 2px;
-  writing-mode: vertical-rl;
 }
 
 /* ---------- Tableau générique (bénévole, équipe, artistes) ---------- */

@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'vitest';
 import {
   construirePlageJournaliere, graduationsHoraires, graduationsMinuit, longueurAxePx, positionCreneau,
-} from './agenda-comparatif-disposition';
+} from './agenda-disposition';
 import {regrouperParJour} from '../logic/derive';
 import {epochDepuisHeureLocale} from '../temps';
 import type {MacroCreneau} from '../domain/types';
@@ -71,6 +71,11 @@ describe('construirePlageJournaliere', () => {
   it('ignore un jour sans macro-créneau', () => {
     const plage = construirePlageJournaliere([[], [macro(1, VENDREDI, 10, 18)]]);
     expect(plage).toEqual({minMinute: 10 * 60, maxMinute: 18 * 60});
+  });
+
+  it("retombe sur une plage par défaut (9h-18h) quand aucun macro-créneau n'existe, pour rester affichable sur un document neuf", () => {
+    expect(construirePlageJournaliere([])).toEqual({minMinute: 9 * 60, maxMinute: 18 * 60});
+    expect(construirePlageJournaliere([[], []])).toEqual({minMinute: 9 * 60, maxMinute: 18 * 60});
   });
 });
 
