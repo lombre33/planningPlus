@@ -104,4 +104,31 @@ describe('calculerAnomalies (adaptateur)', () => {
     expect(sousEffectif).toMatchObject({type: 'sous-effectif', gravite: 'danger', manque: 1, missionNom: 'Bar'});
     expect(anomalies.every((a, i) => i === 0 || a.gravite !== 'danger' || anomalies[i - 1]!.gravite === 'danger')).toBe(true);
   });
+
+  it('signale le chevauchement de créneaux du fixture (SC1 et SC2, même macro-créneau, 0-3600 tous les deux)', () => {
+    const m = new Magasin(construireModele());
+    const ix = indexer(m);
+    const anomalies = calculerAnomalies(m, ix);
+    const chevauchement = anomalies.find((a) => a.type === 'chevauchement-creneaux');
+    expect(chevauchement).toMatchObject({type: 'chevauchement-creneaux', gravite: 'warn'});
+    if (chevauchement?.type === 'chevauchement-creneaux') {
+      expect([1, 2]).toContain(chevauchement.sousCreneau.id);
+    }
+  });
+
+  it('signale un double engagement quand une édition directe des tables place le même bénévole sur deux places dont les créneaux se recouvrent', () => {
+    const modele = construireModele();
+    // Deuxième groupe/place sur le besoin Accueil (SC2, 0-3600, chevauche SC1
+    // où Alix est déjà placée) : n'arrive jamais par le glisser-déposer
+    // (`verifierDepot` le refuse), seulement par une édition directe.
+    modele.groupes.push({id: 2, Code: 'ACC1', Taille: 1, Equipe: 2, Notes: ''});
+    modele.positionsGroupe.push({id: 2, Groupe: 2, Besoin: 2});
+    modele.places[0]!.Benevole = 1;
+    modele.places.push({id: 2, Groupe: 2, Rang: 1, Benevole: 1, Origine: 'Manuel', Verrouillee: false, Score: 0});
+    const m = new Magasin(modele);
+    const ix = indexer(m);
+    const anomalies = calculerAnomalies(m, ix);
+    const doubleEngagement = anomalies.find((a) => a.type === 'double-engagement');
+    expect(doubleEngagement).toMatchObject({type: 'double-engagement', gravite: 'danger', benevoleId: 1, benevoleNom: 'Alix'});
+  });
 });

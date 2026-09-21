@@ -46,7 +46,16 @@ function construireModele(): Modele {
       {id: 2, Groupe: 2, Rang: 1, Benevole: 1, Origine: 'Algorithme', Verrouillee: false, Score: 1},
       {id: 3, Groupe: 3, Rang: 1, Benevole: null, Origine: 'Algorithme', Verrouillee: false, Score: 0},
     ],
-    disponibilites: [],
+    // Le vrai moteur (`moteur/anomalies.ts`) considère par défaut qu'un
+    // bénévole sans disponibilité renseignée pour un quart est indisponible
+    // (choix conservateur) : on couvre donc explicitement tous les quarts du
+    // modèle (0 à 6300 par pas de 900 s) pour les deux bénévoles, sinon
+    // chaque affectation de ce jeu de test déclencherait une fausse
+    // « indisponibilité ».
+    disponibilites: [0, 900, 1800, 2700, 3600, 4500, 5400, 6300].flatMap((quart) => ([
+      {Benevole: 1, Quart_heure: quart, Statut: 'Disponible' as const, Artiste: null},
+      {Benevole: 2, Quart_heure: quart, Statut: 'Disponible' as const, Artiste: null},
+    ])),
     souhaitsMissions: [],
     affinites: [],
   };

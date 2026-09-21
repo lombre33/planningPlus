@@ -16,6 +16,8 @@ function titreAnomalie(a: Anomalie): string {
     case 'indisponibilite': return `${a.benevoleNom} — ${a.sousCreneauLibelle}`;
     case 'conflit-artiste': return `${a.benevoleNom} veut voir ${a.artisteNom}`;
     case 'hors-quota': return a.benevoleNom;
+    case 'chevauchement-creneaux': return a.sousCreneau.Libelle;
+    case 'double-engagement': return a.benevoleNom;
   }
 }
 
@@ -33,6 +35,10 @@ function detailAnomalie(a: Anomalie): string {
       return `Préférence forte non respectée : ${a.benevoleNom} sera sur l'indicatif ${a.groupeCode} pendant le passage de ${a.artisteNom}.`;
     case 'hors-quota':
       return `${formatHeures(a.heures)} affectées pour un quota maximum de ${formatHeures(a.quotaMax)}.`;
+    case 'chevauchement-creneaux':
+      return "Ce sous-créneau chevauche un autre sous-créneau du même macro-créneau dans le temps. Peut être volontaire (deux missions à des rythmes différents) : signalé pour information, pas à corriger d'office.";
+    case 'double-engagement':
+      return `${a.benevoleNom} occupe deux places dont les créneaux se recouvrent dans le temps — contrainte dure violée (§7.1). L'interface de glisser-déposer refuse ce cas à la saisie ; il ne peut venir que d'une édition directe des tables.`;
   }
 }
 
@@ -43,6 +49,8 @@ const LIBELLE_TYPE: Record<Anomalie['type'], string> = {
   'indisponibilite': 'Indisponibilité',
   'conflit-artiste': 'Conflit artiste',
   'hors-quota': 'Quota dépassé',
+  'chevauchement-creneaux': 'Chevauchement de créneaux',
+  'double-engagement': 'Double engagement',
 };
 
 export function montrerAnomalies(container: HTMLElement, m: Magasin): () => void {

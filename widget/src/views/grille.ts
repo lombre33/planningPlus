@@ -8,9 +8,10 @@
 import type {Groupe, Id, Mission, Place, SousCreneau} from '../domain/types';
 import {TYPE_PLACE_DRAG} from '../logic/dnd-types';
 import {
-  type Candidat, type Index, classerCandidats, couvertureBesoin, indexer, regrouperParJour,
+  type Candidat, type Index, couvertureBesoin, indexer, regrouperParJour,
 } from '../logic/derive';
 import {apercuEchange, verifierDepot} from '../logic/glisser-deposer';
+import {classerCandidats} from '../moteur/adaptateur-magasin';
 import type {Magasin} from '../store';
 import {fermerPanneau, h, icone, ICONES, ouvrirModal, ouvrirPanneau, vider} from '../ui/dom';
 import {creerErreur} from '../ui/modalCreneau';
@@ -258,9 +259,12 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
       benevole
         ? h('span', {style: {flex: '1'}}, benevole.Nom)
         : h('span', {style: {flex: '1', color: 'var(--text-faint)'}}, 'Place non pourvue — glissez un occupant ici, ou :'),
+      place.Verrouillee
+        ? h('span', {class: 'pill pill--neutral'}, icone(ICONES.cadenas), 'Verrouillée')
+        : null,
       h('button', {
         class: 'btn btn--ghost btn--sm', type: 'button',
-        title: place.Verrouillee ? 'Déverrouiller' : 'Verrouiller',
+        title: place.Verrouillee ? 'Déverrouiller cette place' : 'Verrouiller cette place',
         onclick: () => { m.basculerVerrouillage(place.id); ouvrirDetailBesoin(besoinId); },
       }, icone(ICONES.cadenas)),
       benevole

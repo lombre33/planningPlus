@@ -20,10 +20,23 @@ import type {Benevole, Besoin, Groupe, Id, Place} from '../domain/types';
 import {TYPE_BENEVOLE_DRAG as TYPE_BENEVOLE, TYPE_PLACE_DRAG as TYPE_PLACE} from '../logic/dnd-types';
 import {type Index, couvertureBesoin, heuresAffectees, indexer, regrouperParJour} from '../logic/derive';
 import {type DiffAnomalies, apercuAffectation, apercuEchange, verifierDepot} from '../logic/glisser-deposer';
+import {lancerAlgorithme, type ResumeLancement} from '../logic/moteur-pont';
+import type {CodeAnomalie, GraviteAnomalie} from '../moteur';
 import type {Magasin} from '../store';
 import {formatHeures, h, icone, ICONES, vider} from '../ui/dom';
 
 type Ton = 'ok' | 'warn' | 'danger';
+
+const LIBELLE_ANOMALIE: Record<CodeAnomalie, string> = {
+  sous_effectif: 'Sous-effectifs',
+  sur_effectif: 'Sur-effectifs',
+  souhait_refuse: 'Souhaits refusés forcés',
+  indisponibilite: 'Indisponibilités forcées',
+  conflit_artiste: 'Conflits artiste',
+  chevauchement_creneaux: 'Chevauchements de créneaux',
+  double_engagement: 'Doubles engagements',
+  hors_quota: 'Quotas dépassés',
+};
 
 export function montrerAffectation(container: HTMLElement, m: Magasin): () => void {
   let jourIndex = 0;
@@ -31,6 +44,7 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
   let rechercheRoster = '';
   let voirTout = false;
   let dernierMessage: {texte: string; ton: Ton} | null = null;
+  let dernierResume: ResumeLancement | null = null;
 
   function messageDepuisDiff(base: string, diff: DiffAnomalies): {texte: string; ton: Ton} {
     if (diff.creees.length === 0 && diff.resolues.length === 0) { return {texte: base, ton: 'ok'}; }
@@ -42,6 +56,36 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
       parties.push(`${diff.creees.length} anomalie${diff.creees.length > 1 ? 's' : ''} créée${diff.creees.length > 1 ? 's' : ''}`);
     }
     return {texte: parties.join(' — '), ton: diff.creees.length > 0 ? 'danger' : 'ok'};
+  }
+
+  function executerAlgorithme(): void {
+    dernierMessage = null;
+    dernierResume = lancerAlgorithme(m);
+    rafraichir();
+  }
+
+  function resumeAlgorithmeVue(resume: ResumeLancement): Node {
+    const groupes = new Map<CodeAnomalie, {gravite: GraviteAnomalie; nombre: number}>();
+    for (const a of resume.resultat.anomalies) {
+      const entree = groupes.get(a.code);
+      if (entree) { entree.nombre++; } else { groupes.set(a.code, {gravite: a.gravite, nombre: 1}); }
+    }
+    const tries = [...groupes.entries()].sort(([, a], [, b]) => (
+      a.gravite === b.gravite ? 0 : a.gravite === 'a_corriger' ? -1 : 1
+    ));
+    return h('div', {class: 'card', style: {marginBottom: '12px'}},
+      h('div', {style: {display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap'}},
+        h('span', {class: 'pill pill--ok'}, `${resume.placesRemplies}/${resume.placesTraitees} places remplies`),
+        ...tries.map(([code, {gravite, nombre}]) => h(
+          'span', {class: `pill pill--${gravite === 'a_corriger' ? 'danger' : 'warn'}`},
+          `${nombre} ${LIBELLE_ANOMALIE[code].toLowerCase()}`,
+        )),
+      ),
+      tries.length === 0
+        ? h('p', {class: 'view__intro', style: {margin: '8px 0 0'}}, 'Aucune anomalie : le planning est entièrement couvert.')
+        : h('p', {class: 'view__intro', style: {margin: '8px 0 0'}},
+          'Les besoins à traiter en priorité (à corriger) apparaissent déjà dans le tableau ci-dessous.'),
+    );
   }
 
   function deposerBenevoleSurPlace(benevoleId: Id, placeId: Id): void {
@@ -133,10 +177,13 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
       benevole
         ? h('span', {class: 'place-slot__nom'}, benevole.Nom)
         : h('span', {class: 'place-slot__vide-texte'}, 'Glissez un bénévole ici'),
+      place.Verrouillee
+        ? h('span', {class: 'pill pill--neutral'}, icone(ICONES.cadenas), 'Verrouillée')
+        : null,
       h('div', {class: 'place-slot__actions'},
         h('button', {
           class: 'btn btn--ghost btn--sm', type: 'button',
-          title: place.Verrouillee ? 'Déverrouiller' : 'Verrouiller',
+          title: place.Verrouillee ? 'Déverrouiller cette place' : 'Verrouiller cette place',
           onclick: () => m.basculerVerrouillage(place.id),
         }, icone(ICONES.cadenas)),
         benevole ? h('button', {
@@ -222,6 +269,12 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
 
     vider(container);
     container.append(
+      h('div', {class: 'affectation__lancement', style: {display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', flexWrap: 'wrap'}},
+        h('button', {class: 'btn btn--primary', type: 'button', onclick: executerAlgorithme}, "Lancer l'algorithme"),
+        h('span', {class: 'view__intro', style: {margin: '0'}},
+          "Remplit tout le planning non verrouillé à partir des indicatifs positionnés et des disponibilités (§7.5.1). Peut se relancer à volonté : les corrections manuelles, verrouillées, ne sont jamais reprises."),
+      ),
+      h('div', null, dernierResume ? resumeAlgorithmeVue(dernierResume) : null),
       h('div', {class: 'affectation__banniere'},
         dernierMessage
           ? h('span', {class: `pill pill--${dernierMessage.ton}`}, dernierMessage.texte)

@@ -17,8 +17,9 @@
  */
 
 import type {Id} from '../domain/types';
-import {type Anomalie, type Index, calculerAnomalies, indexer, quartsCouvertsParGroupe} from './derive';
+import {calculerAnomalies} from '../moteur/adaptateur-magasin';
 import type {Magasin} from '../store';
+import {type Anomalie, type Index, indexer, quartsCouvertsParGroupe} from './derive';
 
 export interface RefusDepot {
   ok: false;
@@ -78,6 +79,8 @@ function cleAnomalie(a: Anomalie): string {
     case 'indisponibilite': return `indisponibilite:${a.place.id}`;
     case 'conflit-artiste': return `conflit-artiste:${a.place.id}`;
     case 'hors-quota': return `hors-quota:${a.benevoleId}`;
+    case 'chevauchement-creneaux': return `chevauchement-creneaux:${a.sousCreneau.id}`;
+    case 'double-engagement': return `double-engagement:${a.benevoleId}`;
   }
 }
 

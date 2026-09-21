@@ -7,7 +7,7 @@
  */
 
 import type {
-  Artiste, Benevole, Besoin, Disponibilite, Equipe, Groupe, Id, Lieu, MacroCreneau,
+  Affinite, Artiste, Benevole, Besoin, Disponibilite, Equipe, Groupe, Id, Lieu, MacroCreneau,
   Mission, Modele, OriginePlace, Place, PositionGroupe, SouhaitMission, SousCreneau,
 } from './domain/types';
 
@@ -49,6 +49,7 @@ export class Magasin {
   get places(): Place[] { return this.data.places; }
   get disponibilites(): Disponibilite[] { return this.data.disponibilites; }
   get souhaitsMissions(): SouhaitMission[] { return this.data.souhaitsMissions; }
+  get affinites(): Affinite[] { return this.data.affinites; }
 
   // --- Écriture : agenda -----------------------------------------------------
 
@@ -91,13 +92,19 @@ export class Magasin {
 
   /** Affecte (ou vide) une place. Une place appartient à un indicatif : ceci
    *  vaut donc pour tous les besoins sur lesquels l'indicatif est positionné
-   *  (§6.3). */
+   *  (§6.3). Verrouille toujours la place quand l'origine est manuelle, y
+   *  compris en la vidant — même contrat que `corrigerPlace` du moteur
+   *  (`moteur/affectation.ts`) : un recalcul algorithmique ne doit jamais
+   *  reprendre la main sur une correction humaine sans déverrouillage
+   *  explicite. Une proposition d'algorithme (origine `'Algorithme'`) ne
+   *  verrouille jamais — voir `appliquerPropositionsAlgorithme`. */
   assignerPlace(placeId: Id, benevoleId: Id | null, origine: OriginePlace = 'Manuel'): void {
     const place = this.data.places.find((p) => p.id === placeId);
     if (!place) { return; }
     place.Benevole = benevoleId;
     place.Origine = origine;
     place.Score = benevoleId != null ? 1 : 0;
+    if (origine === 'Manuel') { place.Verrouillee = true; }
     this.notifier();
   }
 
@@ -206,6 +213,24 @@ export class Magasin {
 
   supprimerPosition(positionId: Id): void {
     this.data.positionsGroupe = this.data.positionsGroupe.filter((p) => p.id !== positionId);
+    this.notifier();
+  }
+
+  /** Applique le résultat d'un calcul d'algorithme (§7.5.1) : chaque place du
+   *  périmètre reçoit l'occupant proposé, verrouillée seulement si le moteur
+   *  l'a demandé (jamais le cas pour une proposition d'algorithme — seule
+   *  une correction manuelle verrouille, voir `logic/moteur-pont.ts`). */
+  appliquerPropositionsAlgorithme(propositions: {
+    placeId: Id; benevoleIdApres: Id | null; origineApres: OriginePlace; verrouilleeApres: boolean; score: number | null;
+  }[]): void {
+    for (const proposition of propositions) {
+      const place = this.data.places.find((p) => p.id === proposition.placeId);
+      if (!place) { continue; }
+      place.Benevole = proposition.benevoleIdApres;
+      place.Origine = proposition.origineApres;
+      place.Verrouillee = proposition.verrouilleeApres;
+      place.Score = proposition.score ?? 0;
+    }
     this.notifier();
   }
 

@@ -374,6 +374,12 @@ button {
   line-height: 1.6;
 }
 
+.pill svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
 .pill--ok { background: var(--ok-tint); color: var(--ok); }
 .pill--warn { background: var(--warn-tint); color: var(--warn); }
 .pill--danger { background: var(--danger-tint); color: var(--danger); }

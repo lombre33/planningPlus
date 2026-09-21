@@ -110,7 +110,12 @@ export function couvertureBesoin(m: Magasin, ix: Index, besoinId: Id): Couvertur
   });
   const places = groupesPositionnes.reduce((n, g) => n + g.groupe.Taille, 0);
   const pourvues = groupesPositionnes.reduce((n, g) => n + g.places.filter((pl) => pl.Benevole != null).length, 0);
-  const statut: Couverture['statut'] = pourvues < besoin.Effectif_min ? 'sous'
+  // Une zone sans aucun indicatif positionné n'est pas encore construite : ce
+  // n'est pas une anomalie, juste un choix de l'utilisateur de s'en occuper
+  // plus tard (parcours de construction incrémental, §7.4 — même règle que
+  // `moteur/anomalies.ts` côté vrai moteur).
+  const statut: Couverture['statut'] = groupesPositionnes.length === 0 ? 'ok'
+    : pourvues < besoin.Effectif_min ? 'sous'
     : pourvues < places ? 'partiel' : 'ok';
   return {besoin, groupesPositionnes, places, pourvues, statut};
 }
@@ -243,7 +248,16 @@ export type Anomalie =
   | {type: 'souhait-refuse'; gravite: 'danger'; place: Place; benevoleNom: string; missionNom: string; groupeCode: string}
   | {type: 'indisponibilite'; gravite: 'danger'; place: Place; benevoleNom: string; groupeCode: string; sousCreneauLibelle: string}
   | {type: 'conflit-artiste'; gravite: 'warn'; place: Place; benevoleNom: string; artisteNom: string; groupeCode: string}
-  | {type: 'hors-quota'; gravite: 'warn'; benevoleId: Id; benevoleNom: string; heures: number; quotaMax: number};
+  | {type: 'hors-quota'; gravite: 'warn'; benevoleId: Id; benevoleNom: string; heures: number; quotaMax: number}
+  // §7.4 v1.4 : structurel, à surveiller — deux sous-créneaux qui se
+  // recouvrent dans le temps, potentiellement voulu (missions à des rythmes
+  // différents). Ne pas confondre avec le double engagement ci-dessous.
+  | {type: 'chevauchement-creneaux'; gravite: 'warn'; sousCreneau: SousCreneau}
+  // §7.1 contrainte dure, §7.4 v1.4 : un bénévole affecté sur deux places
+  // dont les créneaux se recouvrent. Toujours une erreur, mais un filet de
+  // sécurité seulement — `logic/glisser-deposer.ts` refuse déjà ce cas à la
+  // saisie ; ceci ne peut arriver qu'après une édition directe des tables.
+  | {type: 'double-engagement'; gravite: 'danger'; benevoleId: Id; benevoleNom: string};
 
 export function calculerAnomalies(m: Magasin, ix: Index): Anomalie[] {
   const anomalies: Anomalie[] = [];

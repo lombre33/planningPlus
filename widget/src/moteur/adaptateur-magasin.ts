@@ -22,34 +22,21 @@
  *    §7.5.3) mais ce n'est pas dans la forme `Candidat[]` actuelle. Si une
  *    vue veut cette liste enrichie, il faut appeler le moteur directement
  *    plutôt que passer par cet adaptateur.
- * 2. `calculerAnomalies` ne peut pas représenter deux des huit types du
- *    moteur : `chevauchement_creneaux` (deux sous-créneaux d'un même
- *    macro-créneau qui se recouvrent dans le temps — indépendant de tout
- *    bénévole ou place) et `double_engagement` (un bénévole sur deux places
- *    qui se recouvrent — la contrainte dure §7.1 règle 1 ; ne devrait
- *    survenir que par une édition directe des tables Grist). Le type
- *    `Anomalie` de `derive.ts` n'a que six cas : tant qu'un 7e et 8e cas n'y
- *    sont pas ajoutés (leur fichier, leur décision), ces deux anomalies sont
- *    calculées par le moteur mais n'atteignent jamais l'affichage. Rien
- *    n'est perdu : `moteurDetecterAnomalies` les retourne toujours, seule la
- *    conversion vers `Anomalie` (UI) les ignore explicitement ci-dessous
- *    plutôt que de planter.
- * 3. `Magasin` ne modélise pas encore les affinités (`get affinites()`
- *    absent de `../store.ts`, alors que `Modele.affinites` existe) :
- *    `versDonneesPlanning` retourne toujours `affinites: []`, donc le bonus
- *    d'affinité du moteur est neutre pour l'instant à travers cet
- *    adaptateur — de toute façon en attente d'une décision d'Antoine
- *    (2026-09-21) : ce score ne correspond à aucun des six objectifs
- *    actuels du §7.2, voir la note dans `./types.ts`.
- * 4. Ce fichier ne couvre PAS le sens écriture (poser une affectation). Le
- *    fil UI a dit vouloir appeler `corrigerPlace` du moteur directement sur
- *    un `DonneesPlanning` obtenu via `versDonneesPlanning`, puis reporter le
- *    résultat dans le `Magasin` avec ses propres `assignerPlace` /
- *    `basculerVerrouillage` : à faire attention, `corrigerPlace` verrouille
- *    TOUJOURS la place corrigée (même vidée), alors que `Magasin.assignerPlace`
- *    ne touche jamais `Verrouillee` aujourd'hui — sans relayer ce
- *    verrouillage, un recalcul reprendrait la main sur une place qu'un
- *    humain vient de corriger à la main.
+ * 2. (Résolu le 2026-09-21) `calculerAnomalies` couvre maintenant les huit
+ *    types : `derive.ts` a ajouté les cas `chevauchement-creneaux` et
+ *    `double-engagement`, ce fichier les convertit ci-dessous comme les six
+ *    autres.
+ * 3. `Magasin` expose désormais `get affinites()`, mais `versDonneesPlanning`
+ *    retourne volontairement toujours `affinites: []` : le bonus d'affinité
+ *    du moteur reste en attente d'une décision d'Antoine (2026-09-21) — ce
+ *    score ne correspond à aucun des six objectifs actuels du §7.2, voir la
+ *    note dans `./types.ts`. À câbler seulement une fois cette décision
+ *    prise, pas avant.
+ * 4. (Résolu le 2026-09-21) `Magasin.assignerPlace` verrouille désormais
+ *    systématiquement la place sur une origine `'Manuel'` (même vidée),
+ *    exactement comme `corrigerPlace` du moteur : plus de risque qu'un
+ *    recalcul reprenne la main sur une correction manuelle faute de relais
+ *    du verrouillage.
  */
 
 import type {Anomalie as AnomalieUI, Candidat, Index} from '../logic/derive';
@@ -193,12 +180,8 @@ export function classerCandidats(m: Magasin, ix: Index, groupeId: Id, options: {
 
 /**
  * Remplace `derive.ts` `calculerAnomalies` : même signature, même forme de
- * retour (six cas), mais détecté par le vrai moteur (`./anomalies`
+ * retour (les huit cas), mais détecté par le vrai moteur (`./anomalies`
  * `detecterAnomalies`) plutôt que par une réimplémentation indépendante.
- * Voir l'écart n°2 en tête de fichier : deux des huit types du moteur
- * (`chevauchement_creneaux`, `double_engagement`) n'ont pas d'équivalent
- * dans le type `Anomalie` ci-contre et sont donc ignorés ici, pas perdus
- * côté moteur.
  */
 export function calculerAnomalies(m: Magasin, ix: Index): AnomalieUI[] {
   const donnees = versDonneesPlanning(m);
@@ -265,10 +248,16 @@ export function calculerAnomalies(m: Magasin, ix: Index): AnomalieUI[] {
         });
         break;
       }
-      case 'chevauchement_creneaux':
-      case 'double_engagement':
-        // Pas de cas correspondant dans le type `Anomalie` de `derive.ts` — voir l'écart n°2.
+      case 'chevauchement_creneaux': {
+        const sousCreneau = ix.sousCreneau.get(a.sousCreneauId!)!;
+        anomalies.push({type: 'chevauchement-creneaux', gravite: 'warn', sousCreneau});
         break;
+      }
+      case 'double_engagement': {
+        const benevole = ix.benevole.get(a.benevoleId!)!;
+        anomalies.push({type: 'double-engagement', gravite: 'danger', benevoleId: benevole.id, benevoleNom: benevole.Nom});
+        break;
+      }
       case 'hors_quota': {
         const benevole = ix.benevole.get(a.benevoleId!)!;
         anomalies.push({
