@@ -166,15 +166,27 @@ curl -b cookies.txt http://localhost:8484/api/profile/apikey  # la relit
 
 ## Couche d'accès Grist (`widget/src/grist/`)
 
-Lit et écrit `DonneesPlanning` (le modèle du moteur d'affectation,
-`widget/src/moteur/`) dans un vrai document Grist, via l'API du plugin
-(`window.grist.docApi`) :
+Lit et écrit un vrai document Grist via l'API du plugin
+(`window.grist.docApi`), vers deux modèles distincts qui coexistent sans que
+l'un dérive de l'autre — `DonneesPlanning` (le moteur d'affectation,
+`widget/src/moteur/`) ne porte pas tous les champs qu'exige `Modele` (le
+modèle complet de l'UI, `widget/src/domain/types.ts` : `Contact`, `Notes`,
+`Description`, `Lieu`, `Libelle`... l'algorithme n'en a pas besoin) :
 
+- `brut.ts` : format brut colonnaire d'une table Grist et sa conversion en
+  lignes (`zipperTable`) — le socle commun à `lecture.ts` et `modele.ts`.
 - `valeurs.ts` : encodage/décodage bas niveau des valeurs de cellule (`Ref`,
   `ChoiceList`, scalaires), vérifié empiriquement contre une instance réelle.
 - `tables.ts` : résolution de l'identifiant réel de chaque table, voir
   « Pièges » ci-dessus.
-- `lecture.ts` : tables Grist brutes → `DonneesPlanning` + lignes `Parametres`.
+- `lecture.ts` : tables Grist brutes → `DonneesPlanning` + lignes
+  `Parametres`, et `lireDocument` qui orchestre lecture + résolution + les
+  deux décodages (`donnees` et `modele`) en un seul appel.
+- `modele.ts` : tables Grist brutes → `Modele` complet (14 tableaux, y
+  compris Équipes/Lieux/Artistes/Macro-créneaux) — mêmes noms de colonnes que
+  le schéma Grist, décodage plus direct que `lecture.ts`. Les bornes de
+  macro-créneau restent des timestamps Unix absolus (§6.2), aucun
+  regroupement par jour calendaire à ce niveau.
 - `ecriture.ts` : construit les `UserAction` (création de groupe, positions,
   roster, disponibilités, verrouillage d'une place, réglages) et les envoie.
   Portée volontairement limitée à ce que le widget doit pouvoir écrire selon
@@ -215,11 +227,12 @@ comment la mettre à jour.
 
 `widget/src/main.ts` n'est qu'une sonde de connexion pour l'instant (liste
 les tables du document et leur nombre de lignes) : les vues métier viennent
-d'un autre fil, une fois la maquette validée. `widget/src/grist/` (couche
-d'accès, ci-dessus) et `widget/src/moteur/` (moteur d'affectation, cahier des
-charges §7) n'ont pas encore de fil qui les branche l'un à l'autre depuis une
-vraie vue : c'est ce branchement, plus les vues elles-mêmes, qui reste à
-faire une fois la maquette validée.
+d'un autre fil, une fois la maquette validée. `lireDocument`
+(`widget/src/grist/lecture.ts`) rend déjà un `Modele` complet, prêt à
+alimenter le `Magasin` (`widget/src/store.ts`) exactement comme
+`donnees/normaliser.ts` en mode démo — mais rien ne branche encore ce mode
+connecté sur `main.ts` : c'est ce branchement, plus les vues elles-mêmes, qui
+reste à faire une fois la maquette validée.
 
 Pour le tester en local : `npm run build` dans `widget/`, servir `dist/` en
 statique (`python3 -m http.server` par exemple), puis dans Grist : Add

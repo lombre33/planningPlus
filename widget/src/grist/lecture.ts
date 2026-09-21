@@ -25,33 +25,15 @@ import type {
   SousCreneau,
   SouhaitMission,
 } from '../moteur/types';
+import type {Modele} from '../domain/types';
 import {decoderBool, decoderListe, decoderNombre, decoderNumeriqueOptionnel, decoderRef, decoderTexte} from './valeurs';
+import {type DocumentBrut, type LigneBrute, type TableBrute, zipperTable} from './brut';
+import {construireModele} from './modele';
 import {type LigneParametre} from './parametres';
 import {resoudreIdsTables} from './tables';
 
-/** Table telle que renvoyée par `docApi.fetchTable` : colonnaire, `id` inclus. */
-export type TableBrute = Record<string, unknown[]>;
-
-/** L'ensemble des tables d'un document, indexées par identifiant de table. */
-export type DocumentBrut = Record<string, TableBrute>;
-
-/** Une ligne « dézippée » : les valeurs d'une même rangée, par nom de colonne. */
-export type LigneBrute = Record<string, unknown> & {id: number};
-
-/** Convertit une table colonnaire en tableau de lignes. Pure, sans effet de bord. */
-export function zipperTable(table: TableBrute | undefined): LigneBrute[] {
-  if (!table) { return []; }
-  const ids = table.id;
-  if (!Array.isArray(ids)) { return []; }
-  return ids.map((id, i) => {
-    const ligne: Record<string, unknown> = {id};
-    for (const colonne of Object.keys(table)) {
-      if (colonne === 'id') { continue; }
-      ligne[colonne] = table[colonne]?.[i];
-    }
-    return ligne as LigneBrute;
-  });
-}
+export type {DocumentBrut, LigneBrute, TableBrute} from './brut';
+export {zipperTable} from './brut';
 
 function benevoleDepuisLigne(l: LigneBrute): Benevole {
   return {
@@ -189,8 +171,13 @@ export function construireLignesParametres(document: DocumentBrut): (LigneParame
 /**
  * Lit tout le document via l'API du plugin (une requête `fetchTable` par
  * table canonique résolue, voir `./tables`) et le convertit en
- * `DonneesPlanning` + lignes `Parametres`. Seule fonction de ce module qui
- * parle réellement à Grist.
+ * `DonneesPlanning` (moteur), `Modele` (UI, `./modele`) + lignes
+ * `Parametres`. Seule fonction de ce module qui parle réellement à Grist.
+ *
+ * Rend `donnees` et `modele` côte à côte plutôt que l'un dérivé de l'autre :
+ * `DonneesPlanning` ne porte pas tous les champs de `Modele` (voir
+ * `./modele`). La coquille (`main.ts`) consomme `modele` pour alimenter le
+ * `Magasin` ; le moteur d'affectation consomme `donnees`.
  *
  * Rend aussi `resolution` (canonique → identifiant réel) : `ecriture.ts` en
  * a besoin pour cibler les mêmes tables réelles en écriture.
@@ -199,6 +186,7 @@ export async function lireDocument(
   docApi: {listTables(): Promise<string[]>; fetchTable(tableId: string): Promise<TableBrute>},
 ): Promise<{
   donnees: DonneesPlanning;
+  modele: Modele;
   parametres: (LigneParametre & {id: number})[];
   resolution: Record<string, string>;
 }> {
@@ -210,6 +198,7 @@ export async function lireDocument(
   }
   return {
     donnees: construireDonneesPlanning(document),
+    modele: construireModele(document),
     parametres: construireLignesParametres(document),
     resolution,
   };
