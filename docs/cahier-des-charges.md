@@ -1,9 +1,10 @@
 # PlanningPlus — Cahier des charges
 
-**Version :** v1.2 (§6.3 validé par Antoine sur la maquette reconstruite, 2026-09-21)
-**Statut :** structure et règles validées, y compris le mécanisme d'indicatifs
-(§6.3) ; le parcours d'affectation et de correction (§7.5) reste le point à
-maquetter et à valider en priorité
+**Version :** v1.3 (parcours utilisateur de référence et distinction
+zone vide / sous-effectif, 2026-09-21)
+**Statut :** structure et règles validées, y compris le mécanisme
+d'indicatifs (§6.3) et le parcours d'affectation et de correction (§7.5),
+maquettés l'un et l'autre
 **Dernière mise à jour :** 2026-09-21
 
 > Les décisions issues du cadrage sont annotées *(Décision Antoine,
@@ -34,6 +35,29 @@ Le cas d'usage pilote est l'organisation des bénévoles d'un festival :
 
 L'outil doit rester générique : le cas festival est le premier client, pas le
 seul horizon.
+
+### 1.1 Parcours utilisateur de référence
+
+*(Défini par Antoine, 2026-09-21 — la lecture de référence pour comprendre à
+quoi sert l'outil, avant même la liste des vues au §8.)*
+
+1. **Macro-créneaux** — les définir facilement, avec une interface soignée
+   (§6.2, vue Agenda au §8).
+2. **Sous-créneaux et missions** — les définir, y compris en laissant des
+   zones vides : on n'est jamais obligé de couvrir toute la durée d'un
+   macro-créneau, ni de créer un besoin pour chaque mission sur chaque
+   sous-créneau. Une zone laissée vide n'est pas une anomalie (§6.2, §6.3,
+   §7.4).
+3. **Indicatifs** — positionner les binômes (ou plus) sur les besoins créés
+   (§6.3).
+4. **Disponibilités et contraintes** — consulter les disponibilités et les
+   souhaits déclarés par les bénévoles (§6.4).
+5. **Algorithme** — le lancer pour qu'il répartisse les bénévoles sur les
+   indicatifs positionnés (§7).
+
+Toute correction manuelle ultérieure (§7.5) s'inscrit dans ce même parcours,
+sans en sortir : elle ajuste le résultat de l'étape 5 sans revenir sur les
+étapes 1 à 4.
 
 ## 2. Objectifs mesurables
 
@@ -119,9 +143,11 @@ Un changement d'affectation ne doit jamais imposer de recalcul global. Le moteur
 doit savoir résoudre un sous-problème borné : « repourvoir ces *k* places, tout
 le reste étant verrouillé ».
 
-## 6. Modèle de données proposé (v0)
+## 6. Modèle de données
 
-> Proposition à valider. Les noms de tables et de colonnes sont provisoires.
+> Noms de tables et de colonnes provisoires. La structure a été éprouvée par
+> la maquette (§6.2 et §6.3 notamment) ; ce qui reste ouvert est signalé au
+> fil du texte, section par section, plutôt que par un statut global.
 
 ### 6.1 Référentiel
 
@@ -152,9 +178,17 @@ sous-créneaux communs sont alors ignorés pour elle et remplacés par les
 siens. *(Décision Antoine, 2026-09-21 : « communs, avec exceptions ».)*
 
 Les sous-créneaux d'un même macro-créneau ne sont **pas** tenus de former une
-partition stricte : un trou ou un chevauchement n'est pas bloqué à la saisie,
-il est simplement remonté dans la vue anomalies pour correction. *(Décision
-Antoine, 2026-09-21 : « tolérée, signalée ».)*
+partition stricte. *(Décision Antoine, 2026-09-21 : « tolérée, signalée ».)*
+Cette tolérance recouvre deux cas bien distincts, précisés le 2026-09-21 après
+un premier passage trop large :
+
+- un **trou** (aucun sous-créneau sur une partie du macro-créneau) est un état
+  normal et volontaire — rien ne se passe à 4h du matin — jamais bloqué et
+  jamais signalé ; ce n'est pas une anomalie (voir aussi §7.4) ;
+- un **chevauchement** (deux sous-créneaux qui se recouvrent) n'est pas bloqué
+  à la saisie non plus, mais reste, lui, remonté dans la vue anomalies pour
+  correction : il signale le plus souvent une erreur de saisie, jamais un
+  choix délibéré.
 
 **Franchissement de minuit (règle explicitée le 2026-09-21, suite à un cas
 rencontré sur la maquette).** Une soirée de festival qui va de 22h à 2h le
@@ -192,6 +226,15 @@ jamais scindé entre deux jours d'affichage.
 | `Groupes` | `Code` (indicatif, ex. « Beta12 »), `Taille`, `Equipe` (→) |
 | `Positions_groupe` | `Groupe` (→), `Besoin` (→) |
 | `Places` | `Groupe` (→), `Rang` (1..*n*), `Benevole` (→), `Origine` (algorithme / manuel), `Verrouillee` (booléen), `Score` |
+
+**Zone volontairement vide (précision du 2026-09-21, voir aussi §1.1 et §6.2).**
+Un `Besoin` n'existe que s'il a été créé délibérément pour un couple (mission,
+sous-créneau) : il n'y a pas de ligne « à zéro » générée par défaut. L'absence
+de `Besoin` signifie simplement qu'aucune personne n'est requise à cet endroit
+— ce n'est jamais une anomalie et ça ne doit jamais apparaître dans le
+catalogue du §7.4. Ce n'est qu'une fois un `Besoin` créé que son effectif
+minimum peut, ou non, être atteint (voir « Sous-effectif », juste en dessous,
+et §7.4).
 
 **Dimensionnement par défaut d'un besoin (décision Antoine, 2026-09-21).** À la
 création, un besoin reçoit un seul binôme (un `Groupe` de `Taille` 2, positionné
@@ -370,6 +413,16 @@ jamais bloquant).
 Cette liste s'enrichira avec le développement, mais le principe reste le même
 pour toute nouvelle anomalie : signaler plutôt que bloquer, sauf les trois
 premières qui signent une vraie violation de règle.
+
+**Zone vide vs sous-effectif (précision du 2026-09-21, voir §1.1 et §6.3).**
+Ce catalogue ne concerne que les besoins réellement créés. Une zone
+volontairement laissée vide — pas de sous-créneau sur une partie du
+macro-créneau (§6.2), ou pas de `Besoin` pour tel couple mission/sous-créneau
+(§6.3) — n'est *jamais* une anomalie et n'entre dans aucune des lignes
+ci-dessus, en particulier pas « Sous-effectif ». Cette dernière ne se déclenche
+que pour un `Besoin` qui existe et dont l'effectif minimum n'est pas atteint.
+Sans cette distinction, tout planning partiel — le cas normal en cours de
+construction — remonterait une avalanche de faux positifs.
 
 ### 7.5 Parcours d'affectation et de correction
 
