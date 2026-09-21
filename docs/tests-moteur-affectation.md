@@ -43,8 +43,11 @@ npm run build          # type-check strict + build (fait aussi office de lint)
 | 3. Souhaits de mission, du refus (exclusion, voir objectif 1) au souhait fort | `eligibilite.test.ts` « score plus haut un souhait « Souhaite fortement »... » |
 | 4. Équipe : à égalité, préférer un bénévole de la même équipe que le groupe — jamais un blocage (Décision Antoine, question 5.2 du cadrage : « toléré si besoin ») | `eligibilite.test.ts` « score plus haut un candidat de la même équipe que le groupe » et « laisse equipeCorrespond à null... » |
 | 5. Équité (heures, quota) | `eligibilite.test.ts` « favorise un bénévole en-dessous de son quota minimum » et « signale depasseraitQuota... » |
-| Affinités entre bénévoles (préférence de second rang, `dev/seed/schema.mjs`) | `eligibilite.test.ts` « score plus haut un candidat en affinité « Ensemble »... » |
 | Score toujours dans [0, 1], même à poids extrêmes | `eligibilite.test.ts` « borne toujours le score à [0, 1]... » |
+
+⚠️ Le score « affinité » (`eligibilite.test.ts` « score plus haut un candidat
+en affinité « Ensemble »... ») code un comportement qui n'est PAS un des six
+objectifs ci-dessus — voir la décision non tranchée listée plus bas.
 
 ## §7.3 — Propriétés attendues
 
@@ -107,12 +110,22 @@ besoin sans aucun indicatif positionné... ».
 - **Équité** : faute d'un champ « mission pénible » dans le modèle de
   données actuel (`dev/seed/schema.mjs`), l'équité ne porte aujourd'hui que
   sur les heures (vs `Quota_heures_min`/`max`), pas sur la pénibilité
-  mentionnée au §7.2 objectif 4. À ajouter si/quand ce champ existe.
+  mentionnée au §7.2 objectif 5. À ajouter si/quand ce champ existe.
 - **« Équipe »** est un bonus de score et un champ d'explication, pas une
   contrainte dure : absent du catalogue §7.1, un renfort inter-équipe reste
   possible si besoin. Confirmé par le cadrage §7.2 objectif 4 (question 5.2,
   « toléré si besoin ») — le point comblait un trou du document, la règle
   était déjà appliquée ici sans y être écrite.
+- **⚠️ Décision non tranchée : score « affinité » (`Ensemble`/`Éviter`,
+  table `Affinites`)**. Ce score n'a jamais été écrit dans le §7.2 : repéré
+  le 2026-09-21 par le fil « Vues disponibilités et terrain », qui hésitait
+  à l'afficher à Antoine comme une contrainte réelle sur l'écran des
+  disponibilités. L'objectif 6 (continuité) dit explicitement que la
+  stabilité des binômes est portée par le mécanisme des indicatifs (§6.3),
+  « plutôt que par un objectif d'algorithme » — ce que le score d'affinité
+  fait pourtant, pour une préférence voisine (qui travaille avec qui). Posé
+  à Antoine en carte à trancher dans le fil Algorithme d'affectation ;
+  garder ce paragraphe à jour une fois la réponse connue.
 - **`DonneesPlanning` ne connaît pas Grist** : tableaux de domaine
   camelCase, sans `_ref` ni encodage `ChoiceList`. La conversion depuis un
   document Grist réel (ou vers un document) est hors périmètre de ce

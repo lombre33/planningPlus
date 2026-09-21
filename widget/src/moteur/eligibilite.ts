@@ -154,8 +154,12 @@ function clamp01(valeur: number): number {
 
 /**
  * Score et explication d'un candidat déjà jugé éligible (§7.2, dans l'ordre :
- * artiste > souhait de mission > équité > affinité — la couverture, premier
+ * artiste > souhait de mission > équipe > équité — la couverture, premier
  * objectif, se joue au niveau du choix du groupe à traiter, pas ici).
+ *
+ * Le terme d'affinité ci-dessous n'est PAS un des six objectifs du §7.2 —
+ * voir la note sur `affiniteEnsemble`/`affiniteEviter` dans `types.ts`,
+ * en attente de confirmation par Antoine.
  */
 export function calculerScore(
   ctx: Contexte,
