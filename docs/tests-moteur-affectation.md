@@ -5,7 +5,7 @@ la détection d'anomalies et les opérations de correction manuelle décrites
 au §7.5 du [cahier des charges](cahier-des-charges.md). Pas les vues (fils
 « Maquette interactive » et « Interface d'affectation des bénévoles »).
 
-**Statut :** 62 tests, tous verts. `npm test` (vitest) et `npm run build`
+**Statut :** 67 tests, tous verts. `npm test` (vitest) et `npm run build`
 (`tsc --noEmit` strict + build Vite) dans `widget/`.
 
 **Politique de mise à jour (NF7, demande d'Antoine 2026-09-21) :** cette
@@ -41,8 +41,8 @@ npm run build          # type-check strict + build (fait aussi office de lint)
 | 1. Sous-staffé plutôt que forcé contre un refus explicite | `affectation.test.ts` « laisse la place vide plutôt que de forcer un bénévole contre un refus explicite » ; `eligibilite.test.ts` « exclut un bénévole ayant explicitement refusé la mission » |
 | 2. Conflit artiste : préférence forte, violable seulement si nécessaire pour l'effectif minimum | `affectation.test.ts` « utilise un candidat en conflit artiste en dernier recours... » et « n'utilise PAS un candidat en conflit artiste quand l'effectif minimum est déjà atteint autrement » ; `eligibilite.test.ts` « reste éligible, avec conflitArtiste... » |
 | 3. Souhaits de mission, du refus (exclusion, voir objectif 1) au souhait fort | `eligibilite.test.ts` « score plus haut un souhait « Souhaite fortement »... » |
-| 4. Équité (heures, quota) | `eligibilite.test.ts` « favorise un bénévole en-dessous de son quota minimum » et « signale depasseraitQuota... » |
-| Repère opérationnel « équipe » (§7.5.3 : fait partie de l'explication donnée à l'humain, absent du catalogue §7.1) | `eligibilite.test.ts` « score plus haut un candidat de la même équipe que le groupe » et « laisse equipeCorrespond à null... » |
+| 4. Équipe : à égalité, préférer un bénévole de la même équipe que le groupe — jamais un blocage (Décision Antoine, question 5.2 du cadrage : « toléré si besoin ») | `eligibilite.test.ts` « score plus haut un candidat de la même équipe que le groupe » et « laisse equipeCorrespond à null... » |
+| 5. Équité (heures, quota) | `eligibilite.test.ts` « favorise un bénévole en-dessous de son quota minimum » et « signale depasseraitQuota... » |
 | Affinités entre bénévoles (préférence de second rang, `dev/seed/schema.mjs`) | `eligibilite.test.ts` « score plus haut un candidat en affinité « Ensemble »... » |
 | Score toujours dans [0, 1], même à poids extrêmes | `eligibilite.test.ts` « borne toujours le score à [0, 1]... » |
 
@@ -51,7 +51,7 @@ npm run build          # type-check strict + build (fait aussi office de lint)
 | Propriété | Test |
 | --- | --- |
 | Déterminisme (mêmes données + paramètres ⇒ même résultat) | `affectation.test.ts` « produit exactement le même résultat... » ; `integration-seed.test.ts` « est déterministe à cette échelle... » |
-| Résolution partielle : un périmètre restreint, le reste figé | `affectation.test.ts` « ne touche que les places du périmètre demandé », « un périmètre par mission résout les groupes de cette mission uniquement » |
+| Résolution partielle : un périmètre restreint, le reste figé | `affectation.test.ts` « ne touche que les places du périmètre demandé », « un périmètre par mission résout les groupes de cette mission uniquement », « un périmètre par besoin résout uniquement les groupes positionnés sur ce besoin » |
 | Permutations autorisées dans le périmètre si ça donne une meilleure solution, jamais hors périmètre | `affectation.test.ts` « libère un bénévole d'une place pour en pourvoir une autre du même périmètre... » — voir le commentaire d'en-tête de `affectation.ts` : ce n'est pas un mécanisme séparé, il émerge du fait que tout le périmètre non verrouillé est libéré puis reréparti ensemble |
 
 ## §7.4 — Catalogue des anomalies (sept types exacts)
@@ -67,7 +67,8 @@ Franchissement de minuit sans fausse détection de chevauchement :
 | Étape | Test |
 | --- | --- |
 | 1–2. Lancement, résultat (Origine/Score écrits, place vide alimente « sous-effectif ») | `affectation.test.ts` « pourvoit une place avec un candidat disponible... » |
-| 3. Correction manuelle place par place : liste classée + explication | `affectation.test.ts` « classe les candidats par score décroissant et exclut les inéligibles » (`candidatsEligibles`) |
+| 3. Correction manuelle place par place : liste classée (éligibles d'abord, par score décroissant) + explication ; les inéligibles restent visibles avec leur raison, pour qu'Antoine puisse forcer un cas impossible en connaissance de cause | `affectation.test.ts` « classe les éligibles par score décroissant puis liste les inéligibles avec leur raison » et « libère la place cible avant de classer... » (`classerCandidats`) |
+| 3. Aperçu d'un déplacement/échange avant application, avec les anomalies apparues/résolues, sans muter les données ni toucher une place verrouillée | `affectation.test.ts` « échange deux bénévoles sans modifier les données... », « refuse un déplacement touchant une place verrouillée », « refuse un déplacement vers une place introuvable » (`previsualiserDeplacement`) |
 | 3. Une place modifiée à la main (y compris vidée) passe Manuel + Verrouillée, un recalcul ne la touche plus tant qu'elle n'est pas déverrouillée | `affectation.test.ts` « verrouille toujours la place corrigée, y compris en la vidant... » |
 | 4. Repositionner un indicatif ne change qu'une ligne de `Positions_groupe`, jamais les `Places` | `affectation.test.ts` « ne change que la ligne Positions_groupe visée, jamais les Places » |
 | 5. Recalcul partiel après absence déclarée | `affectation.test.ts` « ne retient que les places non verrouillées actuellement tenues par ce bénévole » (`perimetreAbsence`) — le flux complet (marquer `Absent`, calculer le périmètre, relancer `calculerAffectation`) est documenté dans le commentaire de `perimetreAbsence` |
@@ -101,7 +102,9 @@ Franchissement de minuit sans fausse détection de chevauchement :
   mentionnée au §7.2 objectif 4. À ajouter si/quand ce champ existe.
 - **« Équipe »** est un bonus de score et un champ d'explication, pas une
   contrainte dure : absent du catalogue §7.1, un renfort inter-équipe reste
-  possible si besoin.
+  possible si besoin. Confirmé par le cadrage §7.2 objectif 4 (question 5.2,
+  « toléré si besoin ») — le point comblait un trou du document, la règle
+  était déjà appliquée ici sans y être écrite.
 - **`DonneesPlanning` ne connaît pas Grist** : tableaux de domaine
   camelCase, sans `_ref` ni encodage `ChoiceList`. La conversion depuis un
   document Grist réel (ou vers un document) est hors périmètre de ce

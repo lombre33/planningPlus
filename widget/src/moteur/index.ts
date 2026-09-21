@@ -19,6 +19,7 @@ export type {
   Anomalie,
   Benevole,
   Besoin,
+  CandidatClasse,
   CandidatEligible,
   CauseNonPourvue,
   CodeAnomalie,
@@ -35,8 +36,10 @@ export type {
   Perimetre,
   Place,
   PositionGroupe,
+  PrevisualisationDeplacement,
   PrioriteMission,
   Proposition,
+  RaisonInEligibilite,
   ResultatAffectation,
   SousCreneau,
   SouhaitMission,
@@ -49,10 +52,11 @@ export {GRAVITE_PAR_CODE, PARAMETRES_PAR_DEFAUT} from './types';
 export {
   appliquerPropositions,
   calculerAffectation,
-  candidatsEligibles,
+  classerCandidats,
   corrigerPlace,
   deverrouillerPlace,
   perimetreAbsence,
+  previsualiserDeplacement,
   repositionnerGroupe,
 } from './affectation';
 
