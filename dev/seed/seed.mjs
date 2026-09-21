@@ -136,8 +136,8 @@ function definitionColonne(colonne) {
   const fields = {
     label: colonne.libelle ?? colonne.id,
     type: colonne.type,
-    isFormula: false,
-    formula: '',
+    isFormula: Boolean(colonne.formule),
+    formula: colonne.formule ?? '',
   };
   if (colonne.description) { fields.description = colonne.description; }
   if (colonne.choix) {

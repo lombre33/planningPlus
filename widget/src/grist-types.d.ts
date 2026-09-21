@@ -21,9 +21,16 @@ interface GristRowRecord {
   [colonne: string]: unknown;
 }
 
+/** Résultat d'`applyUserActions`, tel que renvoyé par le serveur (`ApplyUAResult`). */
+interface GristApplyUAResult {
+  retValues: unknown[];
+}
+
 interface GristDocApi {
   listTables(): Promise<string[]>;
   fetchTable(tableId: string): Promise<Record<string, unknown[]>>;
+  /** Chaque action est un tuple `[nom, ...arguments]` (`UserAction` côté grist-core). */
+  applyUserActions(actions: unknown[][]): Promise<GristApplyUAResult>;
 }
 
 interface GristApi {
