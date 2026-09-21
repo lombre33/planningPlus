@@ -321,9 +321,18 @@ plutôt que d'être bloqué. Décision Antoine, 2026-09-21 ; voir §6.3 et §7.4
 3. **Missions souhaitées** : privilégier les missions que le bénévole
    souhaite, ne jamais l'affecter à une mission qu'il a explicitement
    écartée (voir objectif 1).
-4. **Équité** : équilibrer le nombre d'heures et la répartition des missions
+4. **Équipe** : à égalité sur les critères précédents, préférer un bénévole de
+   la même équipe que le groupe/indicatif à couvrir. Jamais un blocage : un
+   bénévole hors équipe reste éligible, et c'est même souhaitable s'il
+   correspond mieux aux objectifs 1 à 3 ou si personne de l'équipe n'est
+   disponible. *(Décision Antoine, 2026-09-21, question 5.2 : « toléré si
+   besoin » plutôt qu'une contrainte dure. Ce point comblait un trou du
+   document — la règle était appliquée sans être écrite ici ; le fil
+   Algorithme d'affectation en a demandé confirmation à Antoine dans son
+   propre fil, à recouper si sa réponse nuance celle-ci.)*
+5. **Équité** : équilibrer le nombre d'heures et la répartition des missions
    marquées « pénibles » entre bénévoles.
-5. **Continuité** : limiter le nombre de missions différentes par bénévole. Ne
+6. **Continuité** : limiter le nombre de missions différentes par bénévole. Ne
    s'applique plus à la stabilité des binômes, portée nativement par le
    mécanisme des indicatifs (§6.3) plutôt que par un objectif d'algorithme.
 
