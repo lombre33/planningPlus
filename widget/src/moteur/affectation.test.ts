@@ -2,10 +2,11 @@ import {beforeEach, describe, expect, it} from 'vitest';
 import {
   appliquerPropositions,
   calculerAffectation,
-  candidatsEligibles,
+  classerCandidats,
   corrigerPlace,
   deverrouillerPlace,
   perimetreAbsence,
+  previsualiserDeplacement,
   repositionnerGroupe,
 } from './affectation';
 import type {DonneesPlanning} from './types';
@@ -183,8 +184,15 @@ describe('calculerAffectation — périmètre et verrouillage', () => {
         ...disponibilitesIntervalle(benevole2.id, h(0, 10), h(0, 11)),
       ],
     });
-    return {d, groupe1, groupe2, place1, place2};
+    return {d, groupe1, groupe2, place1, place2, besoin1, besoin2};
   }
+
+  it('un périmètre par besoin résout uniquement les groupes positionnés sur ce besoin', () => {
+    const {d, besoin1, place1, place2} = scenarioDeuxGroupes();
+    const resultat = calculerAffectation(d, {perimetre: {besoinIds: [besoin1.id]}});
+    expect(resultat.propositions.map((p) => p.placeId)).toEqual([place1.id]);
+    expect(resultat.propositions.some((p) => p.placeId === place2.id)).toBe(false);
+  });
 
   it('ne touche que les places du périmètre demandé', () => {
     const {d, groupe1, place1, place2} = scenarioDeuxGroupes();
@@ -382,8 +390,8 @@ describe('perimetreAbsence', () => {
   });
 });
 
-describe('candidatsEligibles', () => {
-  it('classe les candidats par score décroissant et exclut les inéligibles', () => {
+describe('classerCandidats', () => {
+  it('classe les éligibles par score décroissant puis liste les inéligibles avec leur raison', () => {
     const mission = creerMission();
     const sousCreneau = creerSousCreneau(h(0, 10), h(0, 11));
     const besoin = creerBesoin(mission.id, sousCreneau.id);
@@ -404,9 +412,109 @@ describe('candidatsEligibles', () => {
       souhaitsMissions: [creerSouhait(excellent.id, mission.id, 'Souhaite fortement')],
     });
 
-    const candidats = candidatsEligibles(d, groupe.id, place.id);
-    expect(candidats.map((c) => c.benevoleId)).toEqual([excellent.id, moyen.id]);
-    expect(candidats[0]!.score).toBeGreaterThan(candidats[1]!.score);
+    const candidats = classerCandidats(d, groupe.id, place.id);
+    // Tous les bénévoles apparaissent désormais, y compris les inéligibles
+    // (§7.5.3 : Antoine veut pouvoir forcer un cas impossible en connaissance
+    // de cause plutôt que ne rien voir).
+    expect(candidats).toHaveLength(3);
+    expect(candidats.map((c) => c.benevoleId)).toEqual([excellent.id, moyen.id, inelegible.id]);
+
+    expect(candidats[0]).toMatchObject({eligible: true, raison: null});
+    expect(candidats[1]).toMatchObject({eligible: true, raison: null});
+    expect(candidats[0]!.score!).toBeGreaterThan(candidats[1]!.score!);
+
+    expect(candidats[2]).toMatchObject({eligible: false, score: null, explication: null, raison: 'statut_absent'});
+  });
+
+  it('libère la place cible avant de classer, pour réévaluer son occupant actuel comme un candidat ordinaire', () => {
+    const mission = creerMission();
+    const sousCreneau = creerSousCreneau(h(0, 10), h(0, 11));
+    const besoin = creerBesoin(mission.id, sousCreneau.id);
+    const groupe = creerGroupe();
+    const position = creerPositionGroupe(groupe.id, besoin.id);
+    const benevole = creerBenevole();
+    const place = creerPlace(groupe.id, 1, {benevoleId: benevole.id});
+
+    const d = donnees({
+      benevoles: [benevole], missions: [mission], sousCreneaux: [sousCreneau],
+      besoins: [besoin], groupes: [groupe], positionsGroupe: [position], places: [place],
+      disponibilites: disponibilitesIntervalle(benevole.id, h(0, 10), h(0, 11)),
+    });
+
+    const candidats = classerCandidats(d, groupe.id, place.id);
+    expect(candidats).toEqual([expect.objectContaining({benevoleId: benevole.id, eligible: true})]);
+  });
+});
+
+describe('previsualiserDeplacement', () => {
+  it('échange deux bénévoles sans modifier les données et rapporte les anomalies apparues/résolues', () => {
+    const mission = creerMission();
+    const sousCreneau = creerSousCreneau(h(0, 10), h(0, 11));
+    const besoin = creerBesoin(mission.id, sousCreneau.id);
+    const groupe = creerGroupe();
+    const position = creerPositionGroupe(groupe.id, besoin.id);
+    const benevoleA = creerBenevole();
+    const benevoleB = creerBenevole();
+    const placeSource = creerPlace(groupe.id, 1, {benevoleId: benevoleA.id});
+    const placeCible = creerPlace(groupe.id, 2, {benevoleId: benevoleB.id});
+
+    const d = donnees({
+      benevoles: [benevoleA, benevoleB], missions: [mission], sousCreneaux: [sousCreneau],
+      besoins: [besoin], groupes: [groupe], positionsGroupe: [position], places: [placeSource, placeCible],
+      disponibilites: [
+        ...disponibilitesIntervalle(benevoleA.id, h(0, 10), h(0, 11)),
+        ...disponibilitesIntervalle(benevoleB.id, h(0, 10), h(0, 11)),
+      ],
+    });
+
+    const resultat = previsualiserDeplacement(d, placeSource.id, placeCible.id);
+    expect(resultat.possible).toBe(true);
+    expect(resultat.donneesApres.places.find((p) => p.id === placeSource.id)?.benevoleId).toBe(benevoleB.id);
+    expect(resultat.donneesApres.places.find((p) => p.id === placeCible.id)?.benevoleId).toBe(benevoleA.id);
+    // Le jeu de données d'origine reste intact (fonction pure).
+    expect(placeSource.benevoleId).toBe(benevoleA.id);
+
+    expect(resultat.anomaliesCreees).toEqual([]);
+    expect(resultat.anomaliesResolues).toEqual([]);
+  });
+
+  it('refuse un déplacement touchant une place verrouillée', () => {
+    const mission = creerMission();
+    const sousCreneau = creerSousCreneau(h(0, 10), h(0, 11));
+    const besoin = creerBesoin(mission.id, sousCreneau.id);
+    const groupe = creerGroupe();
+    const position = creerPositionGroupe(groupe.id, besoin.id);
+    const benevoleA = creerBenevole();
+    const placeSource = creerPlace(groupe.id, 1, {benevoleId: benevoleA.id, verrouillee: true});
+    const placeCible = creerPlace(groupe.id, 2);
+
+    const d = donnees({
+      benevoles: [benevoleA], missions: [mission], sousCreneaux: [sousCreneau],
+      besoins: [besoin], groupes: [groupe], positionsGroupe: [position], places: [placeSource, placeCible],
+      disponibilites: disponibilitesIntervalle(benevoleA.id, h(0, 10), h(0, 11)),
+    });
+
+    const resultat = previsualiserDeplacement(d, placeSource.id, placeCible.id);
+    expect(resultat).toMatchObject({possible: false, raisonImpossible: 'place_verrouillee'});
+  });
+
+  it("refuse un déplacement vers une place introuvable", () => {
+    const mission = creerMission();
+    const sousCreneau = creerSousCreneau(h(0, 10), h(0, 11));
+    const besoin = creerBesoin(mission.id, sousCreneau.id);
+    const groupe = creerGroupe();
+    const position = creerPositionGroupe(groupe.id, besoin.id);
+    const benevoleA = creerBenevole();
+    const placeSource = creerPlace(groupe.id, 1, {benevoleId: benevoleA.id});
+
+    const d = donnees({
+      benevoles: [benevoleA], missions: [mission], sousCreneaux: [sousCreneau],
+      besoins: [besoin], groupes: [groupe], positionsGroupe: [position], places: [placeSource],
+      disponibilites: disponibilitesIntervalle(benevoleA.id, h(0, 10), h(0, 11)),
+    });
+
+    const resultat = previsualiserDeplacement(d, placeSource.id, 999999);
+    expect(resultat).toMatchObject({possible: false, raisonImpossible: 'place_introuvable'});
   });
 });
 

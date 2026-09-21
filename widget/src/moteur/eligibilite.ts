@@ -15,7 +15,7 @@
 
 import type {Contexte} from './contexte';
 import {clePaireBenevoles} from './contexte';
-import type {CandidatEligible, ExplicationScore, Id, ParametresAlgorithme} from './types';
+import type {CandidatEligible, ExplicationScore, Id, ParametresAlgorithme, RaisonInEligibilite} from './types';
 
 export interface EtatOccupation {
   /** Groupes actuellement tenus par un bénévole (au moins une place). */
@@ -70,13 +70,6 @@ export function heuresActuelles(etat: EtatOccupation, ctx: Contexte, benevoleId:
   for (const groupeId of groupes) { total += ctx.heuresParGroupe.get(groupeId) ?? 0; }
   return total;
 }
-
-export type RaisonInEligibilite =
-  | 'statut_absent'
-  | 'competence_manquante'
-  | 'refus_mission'
-  | 'deja_occupe'
-  | 'indisponible';
 
 export type StatutEligibilite =
   | {eligible: true; conflitArtiste: boolean}
