@@ -1,20 +1,25 @@
 # Environnement de développement
 
-Ce dossier contient ce qu'il faut pour tester le widget contre un vrai
-document Grist, avec un jeu de données de festival réaliste.
+Ce dossier contient ce qu'il faut pour tester le widget (`widget/`) contre un
+vrai document Grist, avec un jeu de données de festival réaliste.
 
 ## Générateur de données (`dev/seed/`)
 
 `dev/seed/` construit un document Grist de test à partir de rien :
 
-- `schema.mjs` décrit les tables et colonnes du modèle de données (celui
-  proposé dans le cahier des charges : macro-créneaux, sous-créneaux,
-  missions, artistes, bénévoles, disponibilités au quart d'heure, équipes,
-  binômes, postes et affectations).
+- `schema.mjs` décrit les tables et colonnes du modèle de données v1 du
+  cahier des charges (§6) : équipes, lieux, bénévoles, missions, artistes,
+  macro-créneaux, sous-créneaux, besoins, groupes (indicatifs), positions de
+  groupe, places, disponibilités au quart d'heure, souhaits de mission,
+  affinités, plus `Versions`/`Journal` (créées vides — remplies par le widget
+  à l'usage, pas par le générateur).
 - `generate.mjs` tire un jeu de données déterministe (même graine → mêmes
-  données) : festival de plusieurs jours, une centaine de bénévoles,
-  disponibilités et souhaits d'artiste au quart d'heure, un remplissage
-  glouton des affectations pour avoir un document qui n'est pas vide.
+  données) : festival de plusieurs jours, disponibilités et souhaits
+  d'artiste au quart d'heure, des groupes positionnés sur plusieurs besoins
+  d'un même macro-créneau (mécanisme §6.3), et au moins une mission
+  volontairement sous-staffée plus un ou deux conflits volontaires (souhait
+  refusé ou indisponibilité), pour avoir de quoi éprouver la vue anomalies
+  dès le premier jeu de données.
 - `grist-api.mjs` est un client REST minimal pour l'API Grist (aucune
   dépendance externe, `fetch` natif).
 - `seed.mjs` orchestre les deux : il recrée entièrement le document (schéma
@@ -37,8 +42,29 @@ GRIST_API_KEY=...
 La clé d'API se récupère dans Grist : menu du profil → Profile Settings →
 API Key.
 
-Options : `--jours` (défaut 3), `--benevoles` (défaut 120), `--graine`
-(défaut 20260717), `--workspace` et `--nom` pour le nom du document.
+Options : `--jours` (défaut 5), `--benevoles` (défaut 70), `--equipes`
+(défaut 3), `--artistes` (défaut 20), `--duree-sous-creneau` en minutes
+(défaut 90), `--graine` (défaut 20260717), `--workspace` et `--nom` pour le
+nom du document. Les défauts correspondent à l'ordre de grandeur réel du
+festival d'Antoine (cahier des charges, NF1) ; volontairement paramétrables
+plutôt qu'en dur, pour rester utilisable sur d'autres cas d'usage.
+
+### Export JSON statique (`dev/seed/export-json.mjs`)
+
+Pour un besoin qui n'exige pas de document Grist réel — par exemple une
+maquette interactive travaillée dans un autre fil, sur données simulées —
+`export-json.mjs` écrit le même jeu de données dans un fichier JSON, sans
+rien créer côté Grist :
+
+```
+node dev/seed/export-json.mjs --sortie=dev/seed/festival.json
+```
+
+Mêmes options que `seed.mjs` pour la volumétrie. Les références
+inter-tables restent sous la forme locale `{_ref: n}` (index dans le
+tableau de la table cible) : il n'y a pas d'identifiant Grist réel sans
+document. Le fichier n'est pas versionné (voir `.gitignore`) : il se
+régénère à la demande, comme le reste de `dev/seed/`.
 
 ## Notes de montage d'un Grist local
 
@@ -70,6 +96,58 @@ node _build/stubs/app/server/server.js
 
 `GRIST_TEST_LOGIN=1` ouvre `/test/login?username=<email>&next=/`, qui pose
 une session sans passer par un vrai fournisseur d'identité — pratique en
-environnement sans accès réseau sortant vers Cognito. La clé d'API se pose
-ensuite normalement depuis l'interface, ou via `user.apiKey` en base pour
-l'automatiser entièrement.
+environnement sans accès réseau sortant vers Cognito.
+
+Sur une installation neuve, l'API refuse toute requête tant qu'aucun
+administrateur n'est défini (« Grist is not yet configured. Visit /boot »).
+Le plus simple pour tout automatiser, sans étape manuelle dans un
+navigateur : au démarrage, la console affiche une `BOOT KEY` ; l'échanger
+contre une session admin et une clé d'API se fait en deux appels HTTP,
+sans UI :
+
+```
+curl -c cookies.txt -X POST -H "Content-Type: application/json" \
+  -d '{"bootKey":"<clé affichée au démarrage>","adminEmail":"<email au choix>"}' \
+  http://localhost:8484/boot/login
+
+curl -b cookies.txt -c cookies.txt -X POST -d '{}' \
+  http://localhost:8484/api/profile/apikey   # crée la clé
+curl -b cookies.txt http://localhost:8484/api/profile/apikey  # la relit
+```
+
+## Pièges rencontrés en écrivant `dev/seed/`
+
+- **L'identifiant réel d'une table peut différer de celui demandé à la
+  création, et changer une seconde fois.** `POST /tables` accepte un `id`
+  proposé, mais Grist peut lui substituer un identifiant dérivé (accents et
+  tirets normalisés, mots séparés par `_`, parfois avec un connecteur
+  ajouté). Poser ensuite le *titre* d'une table (`UpdateRecord
+  _grist_Views_section {title}`, ce que fait `reglerLibellesTables`) peut la
+  **renommer une seconde fois**, dérivé cette fois du titre. `seed.mjs` ne
+  suppose donc jamais qu'un identifiant capturé reste valable : il le
+  retrouve systématiquement via l'identifiant de ligne (stable) de la table
+  en métadonnée `_grist_Tables` (voir `idsReelsDepuisLignes`).
+- **Une colonne ChoiceList attend un encodage particulier.** L'API REST
+  refuse un tableau JS brut pour une cellule ChoiceList : il faut le
+  préfixer du code d'objet Grist `'L'` (`['L', 'a', 'b']`, pas `['a', 'b']`).
+  Voir `listeGrist` dans `generate.mjs` et `GristObjCode.List` dans les
+  sources de grist-core (`app/plugin/GristData.ts`).
+
+## Widget (`widget/`)
+
+Squelette Vite + TypeScript strict + vitest, pensé pour être servi en statique
+(GitHub Pages en pratique — chemins relatifs, aucune requête sortante hors
+API Grist). `widget/public/vendor/grist-plugin-api.js` est une copie figée du
+fichier que sert n'importe quelle instance Grist à `/grist-plugin-api.js` (ici
+compilé depuis les sources de grist-core), vendorisée plutôt que chargée
+depuis un CDN — voir `widget/public/vendor/README.md` pour pourquoi et
+comment la mettre à jour.
+
+`widget/src/main.ts` n'est qu'une sonde de connexion pour l'instant (liste
+les tables du document et leur nombre de lignes) : les vues métier viennent
+d'un autre fil, une fois la maquette validée.
+
+Pour le tester en local : `npm run build` dans `widget/`, servir `dist/` en
+statique (`python3 -m http.server` par exemple), puis dans Grist : Add
+widget to page → Custom → coller l'URL locale. Un document créé par
+`seed.mjs` fournit de vraies données à lire.

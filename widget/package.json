@@ -1,0 +1,19 @@
+{
+  "name": "planningplus-widget",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Custom widget Grist de PlanningPlus.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.5",
+    "jsdom": "^25.0.1"
+  }
+}

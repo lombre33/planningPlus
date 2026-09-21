@@ -64,8 +64,11 @@ const config = {
   cleApi: args.cle ?? env.GRIST_API_KEY ?? '',
   nomDoc: args.nom ?? env.GRIST_DOC_NAME ?? 'PlanningPlus — festival de test',
   nomWorkspace: args.workspace ?? env.GRIST_WORKSPACE ?? 'PlanningPlus',
-  nbJours: Number(args.jours ?? 3),
-  nbBenevoles: Number(args.benevoles ?? 120),
+  nbJours: Number(args.jours ?? 5),
+  nbBenevoles: Number(args.benevoles ?? 70),
+  nbEquipes: Number(args.equipes ?? 3),
+  nbArtistes: Number(args.artistes ?? 20),
+  dureeSousCreneauMinutes: Number(args['duree-sous-creneau'] ?? 90),
   graine: Number(args.graine ?? 20260717),
 };
 
@@ -104,6 +107,30 @@ async function lireMetadonnees(idDoc) {
   return new Metadonnees(tables.records, colonnes.records);
 }
 
+/**
+ * Retrouve, pour chaque table du schéma, l'identifiant réel courant dans le
+ * document, à partir de l'identifiant de ligne (stable) de sa métadonnée
+ * `_grist_Tables`.
+ *
+ * Nécessaire parce que poser le titre d'une table (`reglerLibellesTables`)
+ * renomme silencieusement son identifiant réel quand celui-ci n'a jamais été
+ * personnalisé à la main : un identifiant capturé juste après la création
+ * peut donc devenir invalide. On ne s'appuie jamais sur l'identifiant déclaré
+ * au schéma ni sur un identifiant capturé plus tôt pour construire une URL
+ * d'API : on le retrouve toujours via l'identifiant de ligne.
+ */
+async function idsReelsDepuisLignes(idDoc, rowIdParSchema) {
+  const tables = (await client.lireEnregistrements(idDoc, '_grist_Tables')).records;
+  const idParRowId = new Map(tables.map((t) => [t.id, t.fields.tableId]));
+  const idReelParSchema = new Map();
+  for (const [schemaId, rowId] of rowIdParSchema) {
+    const idReel = idParRowId.get(rowId);
+    if (!idReel) { throw new Error(`Table « ${schemaId} » : ligne de métadonnée ${rowId} introuvable.`); }
+    idReelParSchema.set(schemaId, idReel);
+  }
+  return idReelParSchema;
+}
+
 /** Traduit une colonne du schéma en définition de colonne pour l'API Grist. */
 function definitionColonne(colonne) {
   const fields = {
@@ -119,34 +146,64 @@ function definitionColonne(colonne) {
   return {id: colonne.id, fields};
 }
 
-/** Crée les tables et leurs colonnes, hors références différées. */
+/**
+ * Crée les tables et leurs colonnes, hors références différées.
+ *
+ * Grist peut réassigner l'identifiant réel d'une table à la création (par
+ * exemple à partir d'un identifiant en casse mixte comme `MacroCreneaux`) :
+ * on ne suppose donc jamais que l'identifiant déclaré au schéma est celui du
+ * document, on relit systématiquement celui que l'API renvoie.
+ *
+ * L'identifiant renvoyé par cet appel n'est valable qu'à cet instant : poser
+ * le titre d'une table plus tard (`reglerLibellesTables`) peut la renommer.
+ * On capture donc aussi, dans la foulée, l'identifiant de ligne (stable) de
+ * chaque table en métadonnée, seule référence fiable sur la durée du script
+ * (voir `idsReelsDepuisLignes`).
+ *
+ * @returns {Promise<Map<string, number>>} identifiant du schéma → identifiant de ligne dans `_grist_Tables`.
+ */
 async function creerTables(idDoc) {
+  const idInitialParSchema = new Map();
   for (const table of TABLES) {
-    await client.requete('POST', `/api/docs/${idDoc}/tables`, {
+    const reponse = await client.requete('POST', `/api/docs/${idDoc}/tables`, {
       tables: [{
         id: table.id,
         columns: table.colonnes.map(definitionColonne),
       }],
     });
-    console.log(`  table ${table.id} créée (${table.colonnes.length} colonnes)`);
+    const idReel = reponse.tables[0].id;
+    idInitialParSchema.set(table.id, idReel);
+    const suffixe = idReel === table.id ? '' : ` (identifiant réel : ${idReel})`;
+    console.log(`  table ${table.id} créée (${table.colonnes.length} colonnes)${suffixe}`);
   }
   for (const differee of REFERENCES_DIFFEREES) {
-    await client.requete('POST', `/api/docs/${idDoc}/tables/${differee.table}/columns`, {
+    const idReelCible = idInitialParSchema.get(differee.table);
+    await client.requete('POST', `/api/docs/${idDoc}/tables/${idReelCible}/columns`, {
       columns: [definitionColonne(differee.colonne)],
     });
     console.log(`  colonne ${differee.table}.${differee.colonne.id} ajoutée`);
   }
+
+  const tables = (await client.lireEnregistrements(idDoc, '_grist_Tables')).records;
+  const rowIdParIdReel = new Map(tables.map((t) => [t.fields.tableId, t.id]));
+  const rowIdParSchema = new Map();
+  for (const [schemaId, idReel] of idInitialParSchema) {
+    const rowId = rowIdParIdReel.get(idReel);
+    if (!rowId) { throw new Error(`Table « ${schemaId} » (${idReel}) : ligne de métadonnée introuvable.`); }
+    rowIdParSchema.set(schemaId, rowId);
+  }
+  return rowIdParSchema;
 }
 
 /**
  * Grist crée toute nouvelle table avec une colonne texte « A », « B », « C »
  * dont on n'a pas l'usage : on les retire une fois nos colonnes en place.
  */
-async function retirerColonnesParDefaut(idDoc) {
+async function retirerColonnesParDefaut(idDoc, idReelParSchema) {
   const meta = await lireMetadonnees(idDoc);
   const actions = [];
   const attendues = new Map(TABLES.map((t) => [
-    t.id,
+    idReelParSchema.get(t.id),
     new Set([...t.colonnes, ...REFERENCES_DIFFEREES.filter((r) => r.table === t.id).map((r) => r.colonne)]
       .map((c) => c.id)),
   ]));
@@ -172,7 +229,7 @@ async function retirerColonnesParDefaut(idDoc) {
  * affiche un libellé plutôt qu'un identifiant de ligne. C'est la contrainte
  * de lisibilité du projet, appliquée au niveau du document.
  */
-async function reglerAffichageReferences(idDoc) {
+async function reglerAffichageReferences(idDoc, idReelParSchema) {
   const meta = await lireMetadonnees(idDoc);
   const actions = [];
   const toutes = [
@@ -181,14 +238,16 @@ async function reglerAffichageReferences(idDoc) {
   ];
   for (const {table, colonne} of toutes) {
     if (!colonne.visibleCol) { continue; }
+    const idReelTable = idReelParSchema.get(table);
     const tableCible = colonne.type.split(':')[1];
-    const refColonneCible = meta.refColonne.get(`${tableCible}.${colonne.visibleCol}`);
-    const refColonne = meta.refColonne.get(`${table}.${colonne.id}`);
+    const idReelCible = idReelParSchema.get(tableCible);
+    const refColonneCible = meta.refColonne.get(`${idReelCible}.${colonne.visibleCol}`);
+    const refColonne = meta.refColonne.get(`${idReelTable}.${colonne.id}`);
     if (!refColonneCible || !refColonne) {
       throw new Error(`Référence introuvable pour ${table}.${colonne.id}`);
     }
-    actions.push(['ModifyColumn', table, colonne.id, {visibleCol: refColonneCible}]);
-    actions.push(['SetDisplayFormula', table, null, refColonne,
+    actions.push(['ModifyColumn', idReelTable, colonne.id, {visibleCol: refColonneCible}]);
+    actions.push(['SetDisplayFormula', idReelTable, null, refColonne,
       `$${colonne.id}.${colonne.visibleCol}`]);
   }
   await client.appliquerActions(idDoc, actions);
@@ -196,11 +255,12 @@ async function reglerAffichageReferences(idDoc) {
 }
 
 /** Pose le libellé et la description de chaque table sur sa vue brute. */
-async function reglerLibellesTables(idDoc) {
+async function reglerLibellesTables(idDoc, idReelParSchema) {
   const meta = await lireMetadonnees(idDoc);
   const actions = TABLES
-    .filter((table) => meta.rawViewSection.get(table.id))
-    .map((table) => ['UpdateRecord', '_grist_Views_section', meta.rawViewSection.get(table.id), {
+    .map((table) => ({table, idReel: idReelParSchema.get(table.id)}))
+    .filter(({idReel}) => meta.rawViewSection.get(idReel))
+    .map(({table, idReel}) => ['UpdateRecord', '_grist_Views_section', meta.rawViewSection.get(idReel), {
       title: table.libelle ?? table.id,
       description: table.description ?? '',
     }]);
@@ -254,35 +314,35 @@ function resoudreReferences(tableId, lignes, idsParTable) {
   ));
 }
 
-async function injecterDonnees(idDoc, donnees) {
+async function injecterDonnees(idDoc, donnees, idReelParSchema) {
   const idsParTable = new Map();
-  // Les équipes sont insérées avant les bénévoles, donc sans leur responsable ;
+  // Les équipes sont insérées avant les bénévoles, donc sans leur référent ;
   // on revient le poser une fois les bénévoles créés.
-  const responsables = donnees.Equipes.map((e) => e.Responsable);
-  const equipesSansResponsable = donnees.Equipes.map(({Responsable, ...reste}) => reste);
+  const referents = donnees.Equipes.map((e) => e.Referent);
+  const equipesSansReferent = donnees.Equipes.map(({Referent, ...reste}) => reste);
 
   for (const table of TABLES) {
-    const lignes = table.id === 'Equipes' ? equipesSansResponsable : donnees[table.id];
+    const lignes = table.id === 'Equipes' ? equipesSansReferent : donnees[table.id];
     if (!lignes || lignes.length === 0) {
       idsParTable.set(table.id, []);
       continue;
     }
     const resolues = resoudreReferences(table.id, lignes, idsParTable);
-    const ids = await client.ajouterEnregistrements(idDoc, table.id, resolues);
+    const ids = await client.ajouterEnregistrements(idDoc, idReelParSchema.get(table.id), resolues);
     idsParTable.set(table.id, ids);
     console.log(`  ${table.id} : ${ids.length} ligne(s)`);
   }
 
-  const majResponsables = responsables
-    .map((responsable, i) => ({responsable, i}))
-    .filter(({responsable}) => responsable)
-    .map(({responsable, i}) => ({
+  const majReferents = referents
+    .map((referent, i) => ({referent, i}))
+    .filter(({referent}) => referent)
+    .map(({referent, i}) => ({
       id: idsParTable.get('Equipes')[i],
-      fields: {Responsable: idsParTable.get('Benevoles')[responsable._ref]},
+      fields: {Referent: idsParTable.get('Benevoles')[referent._ref]},
     }));
-  if (majResponsables.length > 0) {
-    await client.majEnregistrements(idDoc, 'Equipes', majResponsables);
-    console.log(`  Equipes : ${majResponsables.length} responsable(s) renseignés`);
+  if (majReferents.length > 0) {
+    await client.majEnregistrements(idDoc, idReelParSchema.get('Equipes'), majReferents);
+    console.log(`  Equipes : ${majReferents.length} référent(s) renseigné(s)`);
   }
   return idsParTable;
 }
@@ -315,19 +375,29 @@ async function principal() {
   console.log(`Document créé : ${idDoc}`);
 
   console.log('Schéma :');
-  await creerTables(idDoc);
-  await retirerColonnesParDefaut(idDoc);
+  const rowIdParSchema = await creerTables(idDoc);
+  let idReelParSchema = await idsReelsDepuisLignes(idDoc, rowIdParSchema);
+  await retirerColonnesParDefaut(idDoc, idReelParSchema);
   await retirerTableParDefaut(idDoc);
-  await reglerAffichageReferences(idDoc);
-  await reglerLibellesTables(idDoc);
+  await reglerAffichageReferences(idDoc, idReelParSchema);
+  await reglerLibellesTables(idDoc, idReelParSchema);
+  // Poser le titre d'une table peut la renommer (voir `idsReelsDepuisLignes`) :
+  // on relit les identifiants réels avant l'injection de données, qui en dépend.
+  idReelParSchema = await idsReelsDepuisLignes(idDoc, rowIdParSchema);
 
-  console.log(`Données (graine ${config.graine}, ${config.nbJours} jours, ${config.nbBenevoles} bénévoles) :`);
+  console.log(
+    `Données (graine ${config.graine}, ${config.nbJours} jours, ${config.nbBenevoles} bénévoles, `
+    + `${config.nbEquipes} équipes, ${config.nbArtistes} artistes) :`,
+  );
   const donnees = genererFestival({
     graine: config.graine,
     nbJours: config.nbJours,
     nbBenevoles: config.nbBenevoles,
+    nbEquipes: config.nbEquipes,
+    nbArtistes: config.nbArtistes,
+    dureeSousCreneauMinutes: config.dureeSousCreneauMinutes,
   });
-  await injecterDonnees(idDoc, donnees);
+  await injecterDonnees(idDoc, donnees, idReelParSchema);
 
   console.log(`\nFuseau horaire du document : ${TIMEZONE}`);
   console.log(`Document prêt : ${config.url}/o/docs/${idDoc}`);
