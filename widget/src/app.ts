@@ -13,11 +13,16 @@ import {montrerAffectation} from './views/affectation';
 import {montrerAgenda} from './views/agenda';
 import {montrerComparatifAgenda} from './views/agenda-comparatif';
 import {montrerAnomalies} from './views/anomalies';
+import {montrerArtistes} from './views/artistes';
+import {montrerBenevole} from './views/benevole';
+import {montrerEquipe} from './views/equipe';
 import {montrerGrille} from './views/grille';
 import {montrerIndicatifs} from './views/indicatifs';
 import {montrerJourJ} from './views/jourJ';
 
-type IdOnglet = 'agenda' | 'agenda-comparatif' | 'grille' | 'affectation' | 'anomalies' | 'indicatifs' | 'jourj';
+type IdOnglet =
+  | 'agenda' | 'agenda-comparatif' | 'grille' | 'affectation' | 'anomalies' | 'indicatifs' | 'jourj'
+  | 'benevole' | 'equipe' | 'artistes';
 
 interface DefinitionOnglet {
   id: IdOnglet;
@@ -71,6 +76,24 @@ const ONGLETS: DefinitionOnglet[] = [
     sousTitre: 'Une absence libère ses places. Remplaçants classés, permutation proposée avec aperçu avant validation (§7.3).',
     montrer: montrerJourJ,
   },
+  {
+    id: 'benevole', libelle: 'Bénévole', icone: ICONES.personne,
+    titre: 'Feuille de route bénévole',
+    sousTitre: "La feuille individuelle d'un bénévole sur toute la durée, imprimable pour le jour J.",
+    montrer: montrerBenevole,
+  },
+  {
+    id: 'equipe', libelle: 'Équipe', icone: ICONES.groupe,
+    titre: 'Vue équipe',
+    sousTitre: 'Une équipe sur toute la durée, par indicatif. Vue de consultation pour les cheffes d’équipe : on repère, on ne modifie pas ici.',
+    montrer: montrerEquipe,
+  },
+  {
+    id: 'artistes', libelle: 'Artistes', icone: ICONES.artiste,
+    titre: 'Artistes',
+    sousTitre: 'Qui joue quand, et combien de bénévoles veulent le voir — et parmi eux, combien sont déjà en conflit.',
+    montrer: montrerArtistes,
+  },
 ];
 
 export function demarrerApp(racine: HTMLElement, magasin: Magasin, sourceLibelle: string): void {
@@ -122,4 +145,12 @@ export function demarrerApp(racine: HTMLElement, magasin: Magasin, sourceLibelle
 
   racine.replaceChildren(shell);
   activer('grille');
+
+  // Zone d'impression : un enfant direct de <body>, pas de #app, pour que
+  // masquer « tout sauf elle » (`.impression-active` dans style.css) au
+  // moment d'imprimer masque bien tout le reste (rail, topbar) d'un coup,
+  // #app compris. Vidée et remplie ponctuellement par la vue Bénévole.
+  if (!document.getElementById('zone-impression')) {
+    document.body.append(h('div', {id: 'zone-impression'}));
+  }
 }
