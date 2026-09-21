@@ -15,43 +15,15 @@
  */
 
 import type {MacroCreneau} from '../domain/types';
-import {cleJour, epochMinuitLocal, libelleJourLong} from '../temps';
-
-/** Un jour de festival et les macro-créneaux qui lui appartiennent (voir `regrouperParJourFestival`). */
-export interface JourFestival {
-  cle: string;
-  libelle: string;
-  macros: MacroCreneau[];
-}
+import {epochMinuitLocal} from '../temps';
 
 /**
- * Regroupe des macro-créneaux par **jour de festival** (cahier des charges
- * §6.2), pas par jour civil : un regroupement purement visuel, jamais
- * stocké, qui bascule à `heureCoupureHeures` (6h par défaut) plutôt qu'à
- * minuit. Une soirée de 22h à 2h appartient tout entière au jour de
- * festival commencé la veille, jamais scindée entre deux jours d'affichage
- * — contrairement à un simple regroupement par jour civil du début de
- * chaque macro-créneau, qui suffit tant qu'aucun macro-créneau ne commence
- * lui-même après minuit et avant la coupure (un poste de nuit 2h–6h, par
- * exemple).
+ * Le regroupement par jour affiché (jour de festival, coupure à 6h plutôt
+ * qu'à minuit civil — cahier des charges §6.2) vient de `logic/derive.ts`
+ * (`regrouperParJour`), pas d'ici : c'est la version canonique, partagée
+ * avec la vue Agenda et la grille missions. Ce module ne calcule que la
+ * géométrie (position sur l'axe du temps), une fois les jours déjà groupés.
  */
-export function regrouperParJourFestival(macroCreneaux: MacroCreneau[], heureCoupureHeures = 6): JourFestival[] {
-  const decalageSecondes = heureCoupureHeures * 3600;
-  const parCle = new Map<string, MacroCreneau[]>();
-  for (const macro of macroCreneaux) {
-    const cle = cleJour(macro.Debut - decalageSecondes);
-    const liste = parCle.get(cle) ?? [];
-    liste.push(macro);
-    parCle.set(cle, liste);
-  }
-  return [...parCle.entries()]
-    .map(([cle, macros]) => ({
-      cle,
-      libelle: libelleJourLong(macros[0]!.Debut),
-      macros: macros.sort((a, b) => a.Debut - b.Debut),
-    }))
-    .sort((a, b) => a.macros[0]!.Debut - b.macros[0]!.Debut);
-}
 
 /** Plage commune (en minutes depuis minuit local) couvrant tous les jours affichés. */
 export interface PlageJournaliere {
