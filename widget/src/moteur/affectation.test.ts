@@ -158,6 +158,9 @@ describe('calculerAffectation — jamais de double réservation', () => {
     const affectes = resultat.propositions.filter((p) => p.benevoleIdApres != null);
     expect(affectes.length).toBeLessThanOrEqual(1); // jamais les deux à la fois
     expect(resultat.anomalies.some((a) => a.code === 'sous_effectif')).toBe(true); // l'autre place reste ouverte
+    // La contrainte dure §7.1 règle 1 reste une exclusion, jamais un objectif pondéré :
+    // le solveur ne produit donc jamais l'anomalie « double engagement » (§7.4).
+    expect(resultat.anomalies.some((a) => a.code === 'double_engagement')).toBe(false);
   });
 });
 
@@ -565,6 +568,76 @@ describe('calculerAffectation — planning partiel (parcours de construction inc
     ]);
     // Aucune anomalie côté Accueil : le besoin n'a encore aucun indicatif positionné.
     expect(resultat.anomalies.some((a) => a.besoinId === besoinAccueil.id)).toBe(false);
+  });
+
+  it("ne plante jamais et ne renvoie jamais un résultat vide sans explication, même sans aucun bénévole", () => {
+    // Un besoin réellement positionné (donc une vraie tentative de staffing) mais
+    // zéro bénévole dans tout le jeu de données — le cas le plus dégradé possible.
+    const mission = creerMission();
+    const sousCreneau = creerSousCreneau(h(0, 10), h(0, 11));
+    const besoin = creerBesoin(mission.id, sousCreneau.id, {effectifMin: 2, effectifMax: 2});
+    const groupe = creerGroupe();
+    const position = creerPositionGroupe(groupe.id, besoin.id);
+    const place1 = creerPlace(groupe.id, 1);
+    const place2 = creerPlace(groupe.id, 2);
+
+    // Des pans entiers du festival sans le moindre besoin créé, à côté de ça
+    // (une journée entière déjà découpée en macro/sous-créneaux et missions,
+    // mais où personne n'a encore défini de besoin — étape 2 pas terminée).
+    const missionVide = creerMission();
+    const sousCreneauVide = creerSousCreneau(h(1, 9), h(1, 18));
+
+    const resultat = calculerAffectation(donnees({
+      benevoles: [], missions: [mission, missionVide], sousCreneaux: [sousCreneau, sousCreneauVide],
+      besoins: [besoin], groupes: [groupe], positionsGroupe: [position], places: [place1, place2],
+    }));
+
+    expect(resultat.propositions).toEqual([]);
+    expect(resultat.anomalies).toEqual([
+      expect.objectContaining({code: 'sous_effectif', besoinId: besoin.id}),
+    ]);
+  });
+
+  it('reste exploitable en pénurie globale (plus de besoins que de bénévoles sur tout le festival) : pourvoit ce qu\'il peut, sous-staffe le reste, jamais de blocage ni de planté', () => {
+    resetIds();
+    const seulBenevole = creerBenevole();
+    // Cinq missions différentes, toutes sur le MÊME créneau (cas réaliste : cinq
+    // postes à tenir en même temps) — un seul bénévole ne peut en couvrir qu'un.
+    const sousCreneau = creerSousCreneau(h(0, 10), h(0, 11));
+    const besoinsEtPlaces: {besoinId: number; placeId: number}[] = [];
+    const missions = [];
+    const besoins = [];
+    const groupes = [];
+    const positions = [];
+    const places = [];
+
+    for (let i = 0; i < 5; i++) {
+      const mission = creerMission();
+      const besoin = creerBesoin(mission.id, sousCreneau.id, {effectifMin: 1, effectifMax: 1});
+      const groupe = creerGroupe();
+      const position = creerPositionGroupe(groupe.id, besoin.id);
+      const place = creerPlace(groupe.id, 1);
+      missions.push(mission); besoins.push(besoin);
+      groupes.push(groupe); positions.push(position); places.push(place);
+      besoinsEtPlaces.push({besoinId: besoin.id, placeId: place.id});
+    }
+
+    const resultat = calculerAffectation(donnees({
+      benevoles: [seulBenevole], missions, sousCreneaux: [sousCreneau], besoins, groupes, positionsGroupe: positions, places,
+      disponibilites: disponibilitesIntervalle(seulBenevole.id, h(0, 10), h(0, 11)),
+    }));
+
+    const affectees = resultat.propositions.filter((p) => p.benevoleIdApres != null);
+    expect(affectees).toHaveLength(1); // un seul bénévole, jamais plus d'une place à la fois
+    const placePourvueId = affectees[0]!.placeId;
+    const besoinPourvuId = besoinsEtPlaces.find((bp) => bp.placeId === placePourvueId)!.besoinId;
+
+    // Les quatre besoins restés sans candidat portent chacun une explication
+    // (§7.4) — jamais un résultat vide sans raison, même en pénurie totale.
+    const sousEffectifs = resultat.anomalies.filter((a) => a.code === 'sous_effectif');
+    expect(sousEffectifs.map((a) => a.besoinId).sort()).toEqual(
+      besoinsEtPlaces.map((bp) => bp.besoinId).filter((id) => id !== besoinPourvuId).sort(),
+    );
   });
 });
 

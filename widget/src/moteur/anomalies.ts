@@ -1,5 +1,5 @@
 /**
- * Détection des anomalies (§7.4) : sept types exacts, deux niveaux de
+ * Détection des anomalies (§7.4) : huit types exacts, deux niveaux de
  * gravité fixes (voir `GRAVITE_PAR_CODE` dans `types.ts`). Fonction de
  * lecture pure sur l'état courant — elle ne sait rien de qui a produit cet
  * état (algorithme ou correction manuelle) et peut être rejouée après
@@ -152,6 +152,48 @@ function detecterChevauchements(ctx: Contexte): Anomalie[] {
   return anomalies;
 }
 
+/**
+ * Un bénévole affecté à deux places dont les quarts d'heure se recouvrent
+ * (§7.1, règle 1 — la contrainte dure numéro un, jamais violée par
+ * l'algorithme ni par `corrigerPlace`, voir `eligibilite.ts`
+ * `evaluerEligibilite` raison `deja_occupe`). Ne devrait donc survenir que
+ * par une édition directe des tables Grist, hors du widget : ce détecteur
+ * est le filet de sécurité résiduel pour ce cas, distinct de
+ * `chevauchement_creneaux` qui porte sur la structure (deux sous-créneaux),
+ * pas sur qui est affecté dessus (§7.4, précision du 2026-09-21).
+ */
+function detecterDoubleEngagement(ctx: Contexte): Anomalie[] {
+  const anomalies: Anomalie[] = [];
+  const placesParBenevole = new Map<Id, typeof ctx.donnees.places>();
+  for (const place of ctx.donnees.places) {
+    if (place.benevoleId == null) { continue; }
+    const liste = placesParBenevole.get(place.benevoleId);
+    if (liste) { liste.push(place); } else { placesParBenevole.set(place.benevoleId, [place]); }
+  }
+  for (const [benevoleId, places] of placesParBenevole) {
+    for (let i = 0; i < places.length; i++) {
+      for (let j = i + 1; j < places.length; j++) {
+        const a = places[i]!;
+        const b = places[j]!;
+        const quartsA = ctx.quartsParGroupe.get(a.groupeId) ?? new Set<number>();
+        const quartsB = ctx.quartsParGroupe.get(b.groupeId) ?? new Set<number>();
+        const chevauche = [...quartsA].some((q) => quartsB.has(q));
+        if (chevauche) {
+          anomalies.push({
+            code: 'double_engagement',
+            gravite: GRAVITE_PAR_CODE.double_engagement,
+            placeId: a.id,
+            groupeId: a.groupeId,
+            benevoleId,
+            message: `Bénévole #${benevoleId} occupe à la fois la place #${a.id} et la place #${b.id}, dont les quarts d'heure se recouvrent.`,
+          });
+        }
+      }
+    }
+  }
+  return anomalies;
+}
+
 function detecterHorsQuota(ctx: Contexte): Anomalie[] {
   const anomalies: Anomalie[] = [];
   const etat = construireEtatOccupation(ctx);
@@ -178,6 +220,7 @@ export function detecterAnomalies(
   return [
     ...detecterEffectifs(ctx),
     ...detecterViolationsParPlace(ctx),
+    ...detecterDoubleEngagement(ctx),
     ...detecterChevauchements(ctx),
     ...detecterHorsQuota(ctx),
   ];
