@@ -185,7 +185,7 @@ export function demarrerApp(racine: HTMLElement, magasin: Magasin, sourceLibelle
   }
 
   racine.replaceChildren(shell);
-  activer('grille');
+  activer('agenda');
 
   // Zone d'impression : un enfant direct de <body>, pas de #app, pour que
   // masquer « tout sauf elle » (`.impression-active` dans style.css) au
