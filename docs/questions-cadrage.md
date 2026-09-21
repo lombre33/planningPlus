@@ -1,6 +1,7 @@
 # PlanningPlus — Questions de cadrage
 
-**Statut :** en attente de réponses
+**Statut :** les 14 questions clivantes sont répondues ; les défauts proposés
+tiennent pour le reste, sauf remarque contraire d'Antoine.
 **Dernière mise à jour :** 2026-09-21
 
 Chaque question est accompagnée d'un **défaut proposé** : à défaut de réponse,
@@ -99,6 +100,12 @@ Les réponses seront reportées ici au fil de l'eau, sous chaque question.
 | 5.7 | Un groupe peut-il rester partiellement rempli (1 personne sur un binôme), ou est-ce une anomalie bloquante ? | Possible mais listé comme anomalie, sauf si l'effectif minimum est atteint. |
 | 5.8 | Les cheffes d'équipe sont-elles elles-mêmes affectées à des missions, ou sont-elles en dehors du planning ? | Elles sont des bénévoles comme les autres, avec un indicateur « référent ». |
 
+**Réponses d'Antoine (2026-09-21) :**
+
+- **5.2** (carte) — « Toléré si besoin » : confirmé, l'équipe est une préférence forte et non une contrainte dure.
+- **5.3** (texte libre, hors carte) — À l'inverse du défaut proposé : l'indicatif **traverse plusieurs créneaux**, y compris sur des missions différentes. Un indicatif (ex. « Beta12 ») est positionné à l'avance sur toute une série de créneaux ; une fois un binôme réel affecté à cet indicatif, il suit tous les créneaux où l'indicatif a été positionné. Antoine reste ouvert au débat sur ce point, à retrancher sur la maquette. Voir le modèle révisé au §6.3 du cahier des charges (nouvelle table `Positions_groupe`).
+- **5.5** (texte libre, hors carte) — Confirme et précise la stabilité : au sein d'un indicatif, le binôme reste le même sur toute une journée. C'est la **mission** qui change d'un sous-créneau à l'autre pour cet indicatif, pas les personnes. La question « stabilité vs rotation » se résout donc par construction via le mécanisme du §6.3 : il n'y a pas de rotation des personnes à paramétrer séparément.
+
 ## 6. Algorithme d'affectation
 
 | # | Question | Défaut proposé |
@@ -132,6 +139,10 @@ Les réponses seront reportées ici au fil de l'eau, sous chaque question.
 | 7.8 | Faut-il une notion de bénévole « volant » / réserve mobilisable ? | Oui, via un indicateur sur le bénévole, utilisé en priorité pour les remplacements. |
 | 7.9 | Faut-il prévenir les personnes concernées (SMS, mail) ? | Hors périmètre v1 ; on prévoit un export de la liste des changements à communiquer. |
 
+**Réponse d'Antoine (2026-09-21, via carte de décision) :**
+
+- **7.3** — « Permutations autorisées » : à l'inverse du défaut proposé, le recalcul jour J peut déplacer d'autres bénévoles déjà affectés dans le périmètre restreint touché par l'annulation, si cela donne une meilleure solution. Toujours avec aperçu avant validation (7.2 reste acquis : rien ne bouge sans validation). Reporté au cahier des charges §7.3 (« Propriétés attendues »).
+
 ## 8. Rôles, permissions et données personnelles
 
 | # | Question | Défaut proposé |
@@ -142,6 +153,10 @@ Les réponses seront reportées ici au fil de l'eau, sous chaque question.
 | 8.4 | Quelles données personnelles seront stockées (téléphone, e-mail, âge, régime alimentaire, santé) ? | Nom, contact, équipe, compétences. Pas de donnée sensible. |
 | 8.5 | Y a-t-il un cadre RGPD à respecter (mention d'information, durée de conservation, suppression après l'événement) ? | À documenter dans le cahier des charges ; suppression ou anonymisation après l'édition. |
 | 8.6 | Le dépôt sera-t-il public, et le code publié en logiciel libre ? | Oui, dépôt public avec une licence à choisir (MIT ou EUPL). |
+
+**Réponse d'Antoine (2026-09-21, via carte de décision) :**
+
+- **8.1** — « Consultent, signalent » : à l'inverse du défaut proposé, les cheffes d'équipe n'ont pas de droit de modification directe du planning, seulement consultation et signalement. La coordination reste le seul point de modification. Reporté au cahier des charges §4 (acteurs et rôles).
 
 ## 9. Vues et UX
 
@@ -177,7 +192,7 @@ Les réponses seront reportées ici au fil de l'eau, sous chaque question.
 
 | # | Question | Défaut proposé |
 | --- | --- | --- |
-| 12.1 | Avez-vous une préférence de technologie (JavaScript sans cadriciel, TypeScript, React, Svelte) ? | TypeScript, sans cadriciel d'interface lourd, compilé en fichiers statiques. Choix favorable à l'audit. |
+| 12.1 | Avez-vous une préférence de technologie (JavaScript sans cadriciel, TypeScript, React, Svelte) ? | TypeScript, sans cadriciel d'interface lourd, compilé en fichiers statiques. Choix favorable à l'audit. — **Confirmé par Antoine le 2026-09-21 (carte de décision).** |
 | 12.2 | Où le widget sera-t-il hébergé (GitHub Pages, serveur DINUM, fichier déposé dans Grist) ? | GitHub Pages pour les essais, hébergement DINUM pour la production. |
 | 12.3 | Le widget doit-il n'émettre aucune requête réseau en dehors de l'API Grist (pas de CDN, pas de police distante) ? | Oui, aucune requête sortante. Toutes les ressources sont embarquées. |
 | 12.4 | Navigateurs à couvrir ? | Versions récentes de Firefox et Chromium sur ordinateur, Safari et Chrome sur mobile. |

@@ -1,12 +1,13 @@
 # PlanningPlus — Cahier des charges
 
-**Version :** v0 (socle rédigé avant les réponses de cadrage)
-**Statut :** en cours de rédaction
+**Version :** v1 (intègre les réponses de cadrage du 2026-09-21)
+**Statut :** structure et règles validées ; reste à valider sur la maquette
+interactive (étape 2)
 **Dernière mise à jour :** 2026-09-21
 
-> Les sections marquées `[À CONFIRMER]` dépendent des réponses aux
-> [questions de cadrage](questions-cadrage.md). Le numéro entre crochets renvoie
-> à la question correspondante.
+> Les décisions issues du cadrage sont annotées *(Décision Antoine,
+> 2026-09-21)* dans le texte. Voir le détail question par question dans
+> [questions de cadrage](questions-cadrage.md).
 
 ---
 
@@ -61,12 +62,19 @@ seul horizon.
 
 ## 4. Acteurs et rôles
 
-| Rôle | Besoin principal | `[À CONFIRMER]` |
+| Rôle | Besoin principal | Accès |
 | --- | --- | --- |
-| Coordination (Antoine) | construire le planning, lancer l'algorithme, arbitrer | — |
-| Cheffe d'équipe | voir son équipe et ses missions, signaler les absences | périmètre d'écriture [Q8.1] |
-| Bénévole | connaître son planning personnel | accès direct ou non [Q8.3] |
-| Auditeur (DINUM) | relire le code et les traitements de données | [Q8.5] |
+| Coordination (Antoine) | construire le planning, lancer l'algorithme, arbitrer, seul point de modification du planning | lecture/écriture complète |
+| Cheffe d'équipe | consulter son équipe et ses missions, signaler un problème (absence, place vide) | lecture, signalement |
+| Bénévole | connaître son planning personnel | pas d'accès direct au document en v1 ; diffusion par export ou impression |
+| Auditeur (DINUM) | relire le code et les traitements de données | lecture du dépôt de code (hors périmètre du document Grist) |
+
+Les cheffes d'équipe n'écrivent pas directement dans le planning : elles
+consultent leur équipe et signalent (absence, problème) via un mécanisme dédié
+(par exemple un statut à cocher ou une entrée dans le journal), et c'est la
+coordination qui valide et modifie. Cela évite les conflits d'édition entre
+plusieurs personnes sur les mêmes données. *(Décision Antoine, 2026-09-21 :
+« consultent, signalent ».)*
 
 ## 5. Contraintes structurantes
 
@@ -87,8 +95,9 @@ typées et des références explicites. Conséquences :
 
 - Code lisible, structuré en modules à responsabilité unique, commenté là où
   l'intention n'est pas évidente.
-- Pas d'appel réseau sortant depuis le widget en dehors de l'API Grist
-  `[À CONFIRMER Q12.3]`.
+- Aucun appel réseau sortant depuis le widget en dehors de l'API Grist :
+  toutes les ressources (polices, scripts) sont embarquées, aucun CDN. Cohérent
+  avec l'hébergement sur GitHub Pages, qui ne sert que des fichiers statiques.
 - Pas d'exécution de code dynamique (`eval`, `new Function`), échappement
   systématique de tout contenu issu des données lors du rendu.
 - Dépendances tierces minimales, épinglées, et justifiées une par une.
@@ -131,7 +140,7 @@ le reste étant verrouillé ».
 Les bornes sont des date-heures alignées sur le quart d'heure. Le découpage au
 quart d'heure n'est pas matérialisé en base : il est dérivé des bornes au moment
 du calcul. Cela évite une table de plusieurs dizaines de milliers de lignes et
-garde les vues natives lisibles `[À CONFIRMER Q3.1]`.
+garde les vues natives lisibles.
 
 Par défaut, les sous-créneaux d'un macro-créneau sont communs à toutes les
 missions (une seule grille de rotation). La colonne `Mission` reste vide dans
@@ -145,21 +154,44 @@ partition stricte : un trou ou un chevauchement n'est pas bloqué à la saisie,
 il est simplement remonté dans la vue anomalies pour correction. *(Décision
 Antoine, 2026-09-21 : « tolérée, signalée ».)*
 
-### 6.3 Besoins et places
+### 6.3 Besoins, indicatifs et places
 
 | Table | Colonnes principales |
 | --- | --- |
 | `Missions` | `Nom`, `Lieu` (→), `Equipe` (→), `Priorite`, `Competences_requises`, `Description` |
 | `Besoins` | `Mission` (→), `Sous_creneau` (→), `Effectif_min`, `Effectif_max`, `Taille_groupe` |
-| `Groupes` | `Code` (indicatif, ex. « BAR-B2 »), `Besoin` (→), `Taille`, `Equipe` (→) |
+| `Groupes` | `Code` (indicatif, ex. « Beta12 »), `Taille`, `Equipe` (→) |
+| `Positions_groupe` | `Groupe` (→), `Besoin` (→) |
 | `Places` | `Groupe` (→), `Rang` (1..*n*), `Benevole` (→), `Origine` (algorithme / manuel), `Verrouillee` (booléen), `Score` |
 
-`Places` est la table centrale du résultat : une ligne = une personne sur une
-mission à un moment donné. Elle reste lisible telle quelle dans Grist, triable et
-filtrable par mission, par équipe, par bénévole ou par créneau.
+**Révision du modèle initial (décision Antoine, 2026-09-21).** Un indicatif
+(`Groupes`) n'est plus rattaché à un seul besoin : il est positionné à l'avance
+sur autant de besoins que nécessaire via `Positions_groupe`, y compris sur des
+missions différentes d'un sous-créneau à l'autre. Exemple concret donné par
+Antoine : l'indicatif « Beta12 » est positionné sur le bar à 14h, puis sur la
+sécurité à 15h ; le binôme réel qui occupe Beta12 (les deux `Places` de rang 1
+et 2) est le même sur les deux créneaux, seule la mission change. C'est ce
+mécanisme qui porte à la fois :
+
+- la **stabilité des binômes** (un indicatif = un binôme qui ne change pas
+  d'identité au sein d'une journée, résolvant du même coup la question de la
+  rotation : ce sont les *missions* qui tournent d'un sous-créneau à l'autre,
+  pas les personnes) ;
+- l'**ajustement à chaud** (contrainte C) : déplacer un indicatif d'un besoin à
+  un autre, ou changer sa composition, ne touche qu'une ligne de
+  `Positions_groupe` ou de `Places`, jamais l'ensemble du planning.
+
+`Places` reste la table centrale du résultat : une ligne = une personne dans un
+indicatif, sur un rang donné. Croisée avec `Positions_groupe`, elle donne « qui
+est où et quand », et les deux tables restent lisibles et filtrables nativement
+dans Grist (par mission, par équipe, par bénévole ou par créneau).
 
 La généralisation binôme → trinôme → *n*-uplet est portée par la seule colonne
 `Taille` : aucune structure n'est spécifique à la taille 2.
+
+*Point ouvert, pas bloquant :* Antoine se dit ouvert au débat sur ce
+mécanisme — à valider concrètement sur la maquette interactive plutôt qu'en
+abstrait.
 
 ### 6.4 Préférences des bénévoles
 
@@ -192,7 +224,8 @@ disponibilité explicitement déclarée ouvre la possibilité d'une affectation.
 
 `Versions.Instantane` est la seule donnée volontairement non lisible nativement ;
 elle sert à revenir à un état antérieur et à comparer deux planifications. Le
-`Journal` reste, lui, parfaitement lisible `[À CONFIRMER Q10.1]`.
+`Journal` reste, lui, parfaitement lisible : une ligne = une modification,
+qui, quand, avant/après et pourquoi.
 
 ## 7. Principes de l'algorithme d'affectation
 
@@ -221,10 +254,11 @@ elle sert à revenir à un état antérieur et à comparer deux planifications. 
 3. **Missions souhaitées** : privilégier les missions que le bénévole
    souhaite, ne jamais l'affecter à une mission qu'il a explicitement
    écartée (voir objectif 1).
-4. **Équité** : répartir la charge et les créneaux ingrats
-   `[À CONFIRMER Q6.3]`.
-5. **Continuité** : limiter le nombre de missions différentes par bénévole, et
-   garder les binômes stables quand c'est possible `[À CONFIRMER Q5.5]`.
+4. **Équité** : équilibrer le nombre d'heures et la répartition des missions
+   marquées « pénibles » entre bénévoles.
+5. **Continuité** : limiter le nombre de missions différentes par bénévole. Ne
+   s'applique plus à la stabilité des binômes, portée nativement par le
+   mécanisme des indicatifs (§6.3) plutôt que par un objectif d'algorithme.
 
 L'ordre et les poids relatifs sont paramétrables, et le paramétrage est stocké
 dans le document pour être audité et rejoué.
@@ -237,7 +271,12 @@ dans le document pour être audité et rejoué.
   artiste…).
 - **Résolution partielle** : le moteur accepte un périmètre restreint de places à
   (re)pourvoir, le reste du planning étant traité comme figé. C'est le mécanisme
-  qui sert la contrainte C.
+  qui sert la contrainte C. En cas d'annulation le jour J, le recalcul peut
+  aller jusqu'à permuter d'autres bénévoles déjà affectés dans ce périmètre
+  restreint si cela donne une meilleure solution — jamais hors périmètre, et
+  toujours avec un aperçu des permutations proposées avant validation.
+  *(Décision Antoine, 2026-09-21 : « permutations autorisées », plutôt que de
+  ne jamais toucher aux places déjà pourvues.)*
 
 ## 8. Vues attendues
 
@@ -263,12 +302,12 @@ Liste de travail, à arbitrer (voir le brainstorm dans le fil et la
 
 | # | Exigence | Cible |
 | --- | --- | --- |
-| NF1 | Volumétrie supportée | `[À CONFIRMER Q1.1]` |
-| NF2 | Temps de calcul complet | `[À CONFIRMER Q6.8]` |
+| NF1 | Volumétrie supportée | de l'ordre de 100 bénévoles, 5 jours, 20 missions, 20 artistes, une dizaine d'équipes (marge au-delà du cas concret d'Antoine : 70 bénévoles, 5 jours, 20 artistes, 3 équipes) |
+| NF2 | Temps de calcul complet | moins de 10 secondes dans le navigateur, pour la volumétrie ci-dessus |
 | NF3 | Temps de recalcul partiel | quelques secondes, perçu comme immédiat |
-| NF4 | Fonctionnement hors ligne | `[À CONFIRMER Q1.6]` |
-| NF5 | Navigateurs cibles | `[À CONFIRMER Q12.4]` |
-| NF6 | Accessibilité | `[À CONFIRMER Q1.7]` |
+| NF4 | Fonctionnement hors ligne | non requis ; lecture confortable sur mobile mais connexion réseau nécessaire |
+| NF5 | Navigateurs cibles | versions récentes de Firefox et Chromium sur ordinateur, Safari et Chrome sur mobile |
+| NF6 | Accessibilité | bonnes pratiques (contrastes, navigation clavier, libellés), sans audit RGAA formel en v1 |
 | NF7 | Tests | batterie de tests unitaires exhaustive, rejouée à chaque fonctionnalité majeure |
 
 ## 10. Hors périmètre (v1)
