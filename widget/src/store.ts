@@ -148,6 +148,36 @@ export class Magasin {
     return id;
   }
 
+  /** Crée un nouvel indicatif (un `Groupe` de `taille` places vides) et le
+   *  positionne sur `besoinId` : c'est le « + binôme » d'un besoin qui a
+   *  déjà son binôme par défaut (§6.3, dimensionnement — un second binôme
+   *  s'ajoute explicitement plutôt que d'agrandir le premier). L'équipe du
+   *  nouvel indicatif reprend celle de la mission du besoin. */
+  creerGroupeSurBesoin(besoinId: Id, taille = 2): Id {
+    const besoin = this.data.besoins.find((b) => b.id === besoinId);
+    if (!besoin) { return -1; }
+    const mission = this.data.missions.find((mi) => mi.id === besoin.Mission);
+    const equipeId = mission?.Equipe ?? this.data.equipes[0]?.id ?? 0;
+    const equipe = this.data.equipes.find((e) => e.id === equipeId);
+    const prefixe = (equipe?.Nom ?? 'XX').slice(0, 2).toUpperCase();
+    const numero = this.data.groupes.length + 1;
+
+    const groupeId = prochainId(this.data.groupes);
+    this.data.groupes.push({
+      id: groupeId, Code: `${prefixe}${String(numero).padStart(2, '0')}`,
+      Taille: taille, Equipe: equipeId, Notes: '',
+    });
+    for (let rang = 1; rang <= taille; rang++) {
+      this.data.places.push({
+        id: prochainId(this.data.places), Groupe: groupeId, Rang: rang,
+        Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0,
+      });
+    }
+    this.data.positionsGroupe.push({id: prochainId(this.data.positionsGroupe), Groupe: groupeId, Besoin: besoinId});
+    this.notifier();
+    return groupeId;
+  }
+
   supprimerPosition(positionId: Id): void {
     this.data.positionsGroupe = this.data.positionsGroupe.filter((p) => p.id !== positionId);
     this.notifier();
