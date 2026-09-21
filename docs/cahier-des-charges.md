@@ -1,7 +1,7 @@
 # PlanningPlus — Cahier des charges
 
-**Version :** v1.3 (parcours utilisateur de référence et distinction
-zone vide / sous-effectif, 2026-09-21)
+**Version :** v1.4 (double engagement distingué du chevauchement de créneaux,
+persistance et accès concurrent explicités, 2026-09-21)
 **Statut :** structure et règles validées, y compris le mécanisme
 d'indicatifs (§6.3) et le parcours d'affectation et de correction (§7.5),
 maquettés l'un et l'autre
@@ -143,6 +143,39 @@ Un changement d'affectation ne doit jamais imposer de recalcul global. Le moteur
 doit savoir résoudre un sous-problème borné : « repourvoir ces *k* places, tout
 le reste étant verrouillé ».
 
+### 5.4 Persistance et accès concurrent (précision du 2026-09-21)
+
+Répond à une exigence du message d'ouverture d'Antoine — « il faut pouvoir
+sauvegarder, dans une table/colonne dédiée sur Grist » — qui découlait déjà
+des contraintes A et B mais n'avait pas été rassemblée en un seul endroit.
+
+- **Une seule source de vérité : le document Grist.** Le widget n'a ni base de
+  données ni serveur à lui (cohérent avec la contrainte B : hébergement
+  statique GitHub Pages, aucun appel réseau hors API Grist). Tout ce qui doit
+  survivre à la fermeture du navigateur, ou être visible depuis un autre
+  poste, est écrit dans une table Grist via l'API du plugin — le planning
+  (§6) bien sûr, mais aussi l'état de travail du widget qui a une valeur
+  d'audit ou de reproductibilité : verrouillages (`Places.Verrouillee`, déjà
+  une colonne native, §6.3), paramétrage de l'algorithme (`Parametres`,
+  §7.2), heure de coupure du jour de festival (§3, §6.2).
+- **Ce qui peut rester dans le navigateur.** Seules les préférences
+  d'affichage sans conséquence sur le planning ou sur l'audit (colonnes
+  visibles, onglet ouvert, filtre courant) peuvent vivre en stockage local du
+  navigateur ; leur perte au changement de poste est sans gravité,
+  contrairement à tout ce qui précède.
+- **Accès concurrent.** La coordination est le seul point d'écriture du
+  planning (§4) : les cheffes d'équipe consultent et signalent mais n'écrivent
+  jamais dans les mêmes données, ce qui évite par construction le cas de
+  conflit le plus visible — une cheffe d'équipe qui consulte pendant qu'on
+  réaffecte (§4, décision « consultent, signalent »). Le risque résiduel,
+  propre à la coordination elle-même — une correction manuelle et un recalcul
+  d'algorithme qui se chevauchent dans le temps — est déjà couvert par le
+  mécanisme du §7.3 : le recalcul ne touche jamais une place verrouillée, et
+  toute proposition (y compris une permutation le jour J) est présentée en
+  aperçu avant validation plutôt qu'appliquée directement. Grist gère
+  lui-même la synchronisation des écritures concurrentes au niveau du
+  document ; ce point n'appelle pas de mécanisme supplémentaire pour la v1.
+
 ## 6. Modèle de données
 
 > Noms de tables et de colonnes provisoires. La structure a été éprouvée par
@@ -185,10 +218,20 @@ un premier passage trop large :
 - un **trou** (aucun sous-créneau sur une partie du macro-créneau) est un état
   normal et volontaire — rien ne se passe à 4h du matin — jamais bloqué et
   jamais signalé ; ce n'est pas une anomalie (voir aussi §7.4) ;
-- un **chevauchement** (deux sous-créneaux qui se recouvrent) n'est pas bloqué
-  à la saisie non plus, mais reste, lui, remonté dans la vue anomalies pour
-  correction : il signale le plus souvent une erreur de saisie, jamais un
-  choix délibéré.
+- un **chevauchement** (deux sous-créneaux qui se recouvrent dans le temps,
+  au sein du même macro-créneau) n'est pas bloqué à la saisie non plus, mais
+  reste, lui, remonté dans la vue anomalies pour correction : le plus souvent
+  une erreur de saisie (bornes mal ajustées), mais possiblement un choix
+  volontaire (deux missions dont les rythmes de rotation diffèrent, §6.2 plus
+  haut), d'où « à surveiller » et non bloquant.
+
+**À ne pas confondre avec un double engagement (§7.1, §7.4).** Un
+chevauchement de sous-créneaux est une propriété de la *structure* du planning
+(deux tranches horaires qui se recouvrent) ; il n'implique pas qu'un bénévole
+soit affecté aux deux à la fois. Le double engagement d'un bénévole — la même
+personne sur deux places dont les quarts d'heure se recouvrent — est une
+question d'*affectation*, traitée comme une contrainte dure de l'algorithme
+(§7.1) et cataloguée séparément (§7.4, anomalie « Double engagement »).
 
 **Franchissement de minuit (règle explicitée le 2026-09-21, suite à un cas
 rencontré sur la maquette).** Une soirée de festival qui va de 22h à 2h le
@@ -321,18 +364,23 @@ disponibilité explicitement déclarée ouvre la possibilité d'une affectation.
 | --- | --- |
 | `Versions` | `Nom`, `Date`, `Auteur`, `Commentaire`, `Instantane` (données sérialisées) |
 | `Journal` | `Date`, `Auteur`, `Action`, `Place` (→), `Avant`, `Apres`, `Motif` |
+| `Parametres` | `Cle`, `Valeur` (ordre et poids des objectifs du §7.2, heure de coupure du jour de festival du §6.2, etc. — voir §5.4) |
 
 `Versions.Instantane` est la seule donnée volontairement non lisible nativement ;
 elle sert à revenir à un état antérieur et à comparer deux planifications. Le
 `Journal` reste, lui, parfaitement lisible : une ligne = une modification,
-qui, quand, avant/après et pourquoi.
+qui, quand, avant/après et pourquoi. `Parametres` est la table qui porte tout
+réglage ayant un effet sur le résultat ou sur l'audit ; c'est elle qui rend
+explicite la règle du §5.4 (rien de significatif ne vit hors du document).
 
 ## 7. Principes de l'algorithme d'affectation
 
 ### 7.1 Contraintes dures (jamais violées)
 
 1. Un bénévole n'occupe qu'une place à la fois : pas de recouvrement, au quart
-   d'heure près.
+   d'heure près (anomalie « Double engagement » si violée malgré tout, §7.4 —
+   à distinguer d'un chevauchement de sous-créneaux, qui est une question de
+   structure et non d'affectation, §6.2).
 2. Un bénévole n'est affecté que sur des quarts d'heure où il est disponible.
 3. Les compétences requises par la mission sont détenues par le bénévole.
 4. Une affectation verrouillée n'est jamais déplacée.
@@ -373,7 +421,9 @@ plutôt que d'être bloqué. Décision Antoine, 2026-09-21 ; voir §6.3 et §7.4
    mécanisme des indicatifs (§6.3) plutôt que par un objectif d'algorithme.
 
 L'ordre et les poids relatifs sont paramétrables, et le paramétrage est stocké
-dans le document pour être audité et rejoué.
+dans le document pour être audité et rejoué, dans une table dédiée
+(`Parametres` : `Cle`, `Valeur` — voir aussi §5.4) plutôt que dans le code du
+widget, pour rester visible et modifiable sans déploiement.
 
 ### 7.3 Propriétés attendues
 
@@ -394,25 +444,43 @@ dans le document pour être audité et rejoué.
 
 La première maquette a implémenté cinq types d'anomalies ; le retour
 d'Antoine en ajoute un sixième (sur-effectif) et confirme un septième déjà
-décidé mais pas encore construit (chevauchement, §6.2). Deux niveaux de
-gravité, repris tels quels de la maquette : **à corriger** (une règle a été
-violée, ce qui ne devrait arriver que par une correction manuelle qui l'a
-introduite) et **à surveiller** (un état normal du système, à regarder mais
-jamais bloquant).
+décidé mais pas encore construit (chevauchement, §6.2). Un huitième, le double
+engagement, était déjà une contrainte dure de l'algorithme (§7.1) sans avoir
+son entrée ici — comblé le 2026-09-21 après une divergence entre les fils
+Algorithme et Interface d'affectation sur ce que « chevauchement » recouvrait
+(voir la note sous le tableau). Deux niveaux de gravité, repris tels quels de
+la maquette : **à corriger** (une règle a été violée, ce qui ne devrait
+arriver que par une correction manuelle qui l'a introduite) et **à
+surveiller** (un état normal du système, à regarder mais jamais bloquant).
 
 | Type | Gravité | Déclencheur |
 | --- | --- | --- |
 | Sous-effectif | À corriger | Le besoin n'atteint pas son effectif minimum (§7.2 : jamais forcé contre un souhait). |
 | Souhait refusé | À corriger | Un bénévole occupe une place sur une mission qu'il a explicitement refusée. |
 | Indisponibilité | À corriger | Un bénévole occupe une place sur un quart d'heure où il est indisponible. |
+| Double engagement | À corriger | Un bénévole occupe deux places dont les quarts d'heure se recouvrent (§7.1, règle 1). Ne devrait survenir que par une édition directe des tables Grist, hors du widget — l'interface d'affectation le refuse déjà à la saisie. |
 | Sur-effectif | À surveiller | Le besoin dépasse son effectif maximum. *(Nouveau, décision Antoine, 2026-09-21 : n'est plus bloqué, voir §6.3.)* |
 | Conflit artiste | À surveiller | Un bénévole occupe une place pendant le passage d'un artiste qu'il veut voir (préférence forte violée en dernier recours, §7.2). |
-| Chevauchement de créneaux | À surveiller | Deux sous-créneaux d'un même macro-créneau se chevauchent (§6.2). Décidé, pas encore construit dans la première maquette. |
+| Chevauchement de créneaux | À surveiller | Deux sous-créneaux d'un même macro-créneau se chevauchent dans le temps (§6.2) — indépendamment de qui est affecté dessus. Décidé, pas encore construit dans la première maquette. |
 | Hors quota | À surveiller | Un bénévole dépasse son quota d'heures maximum. |
 
 Cette liste s'enrichira avec le développement, mais le principe reste le même
-pour toute nouvelle anomalie : signaler plutôt que bloquer, sauf les trois
+pour toute nouvelle anomalie : signaler plutôt que bloquer, sauf les quatre
 premières qui signent une vraie violation de règle.
+
+**Chevauchement de créneaux vs double engagement (précision du 2026-09-21,
+demandée par les fils Algorithme et Interface d'affectation).** Ce sont deux
+choses différentes, à garder comme deux entrées distinctes dans ce catalogue
+et dans toute union de types côté code :
+
+- **Chevauchement de créneaux** porte sur la *structure* du planning (deux
+  `Sous_creneaux` qui se recouvrent dans le temps) ; il n'implique rien sur
+  qui est affecté dessus, et peut être volontaire (§6.2).
+- **Double engagement** porte sur l'*affectation* (un bénévole sur deux
+  places qui se recouvrent) ; c'est toujours une erreur, jamais un choix, et
+  c'est pour cela que l'interface d'affectation le refuse en amont plutôt que
+  de le laisser remonter — cette entrée du catalogue est le filet de
+  sécurité pour le cas, résiduel, d'une édition directe des tables.
 
 **Zone vide vs sous-effectif (précision du 2026-09-21, voir §1.1 et §6.3).**
 Ce catalogue ne concerne que les besoins réellement créés. Une zone
