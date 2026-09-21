@@ -50,8 +50,9 @@ seul horizon.
 
 | Terme | Définition |
 | --- | --- |
-| **Macro-créneau** | Grande plage de temps structurante (ex. « Samedi après-midi »). |
+| **Macro-créneau** | Grande plage de temps structurante (ex. « Samedi après-midi »). Peut franchir minuit (ex. 22h–2h) : voir §6.2. |
 | **Sous-créneau** | Découpage d'un macro-créneau correspondant à une rotation de bénévoles. |
+| **Jour de festival** | Journée d'affichage regroupant les créneaux, calculée depuis une heure de coupure paramétrable (6h par défaut) plutôt qu'à minuit civil, pour ne jamais couper une soirée en deux (§6.2). Concept purement visuel, jamais stocké. |
 | **Quart d'heure** | Unité de granularité du planning. Toutes les bornes sont alignées sur 00/15/30/45. |
 | **Mission** | Tâche à tenir (bar, accueil, sécurité…), avec un besoin en effectif. |
 | **Besoin** | Couple (mission, sous-créneau) avec un effectif minimum et maximum. |
@@ -155,6 +156,33 @@ Les sous-créneaux d'un même macro-créneau ne sont **pas** tenus de former une
 partition stricte : un trou ou un chevauchement n'est pas bloqué à la saisie,
 il est simplement remonté dans la vue anomalies pour correction. *(Décision
 Antoine, 2026-09-21 : « tolérée, signalée ».)*
+
+**Franchissement de minuit (règle explicitée le 2026-09-21, suite à un cas
+rencontré sur la maquette).** Une soirée de festival qui va de 22h à 2h le
+lendemain est le cas normal, pas une exception : toutes les bornes de temps du
+modèle (`Macro_creneaux.Debut/Fin`, `Sous_creneaux.Debut/Fin`,
+`Disponibilites.Quart_heure`, les horaires des `Artistes`) sont des
+**date-heures absolues** (un horodatage unique sur tout l'événement), jamais un
+couple (jour, heure locale) ni un indice de quart d'heure remis à zéro à
+minuit. Un macro-créneau 22h–2h est donc une seule ligne, avec `Fin`
+postérieure à `Debut` d'un jour calendaire ; ses sous-créneaux et les quarts
+d'heure de disponibilité qui le couvrent suivent la même logique, sans
+découpage ni recodage à minuit. Par construction, aucun calcul du modèle
+(couverture d'un besoin, détection de chevauchement, recherche de
+disponibilité) ne doit donc jamais recalculer ou dépendre d'un « jour
+calendaire » : tout se compare sur l'axe absolu du temps. *(Confirmé par le
+générateur de données de test, `dev/seed/temps.mjs`, qui stocke déjà tout en
+horodatage Unix.)*
+
+Le regroupement par **jour de festival**, utile à l'affichage (colonnes de
+l'agenda, filtres, feuilles de route), est un concept dérivé et purement
+visuel, distinct du jour calendaire civil — il ne doit jamais être stocké ni
+servir de clé de calcul. Un jour de festival ne bascule pas à minuit mais à
+une **heure de coupure paramétrable** (par défaut 6h du matin, réglable par
+document pour s'adapter à un événement qui se termine plus tôt ou continue
+jusqu'à l'aube) : un macro-créneau qui commence à 22h et finit à 2h appartient
+tout entier au jour de festival qui a commencé la veille à l'heure de coupure,
+jamais scindé entre deux jours d'affichage.
 
 ### 6.3 Besoins, indicatifs et places
 
