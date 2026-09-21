@@ -1,8 +1,10 @@
 # PlanningPlus — Cahier des charges
 
-**Version :** v1 (intègre les réponses de cadrage du 2026-09-21)
-**Statut :** structure et règles validées ; reste à valider sur la maquette
-interactive (étape 2)
+**Version :** v1.1 (intègre les retours sur la première maquette, 2026-09-21)
+**Statut :** structure et règles en grande partie validées ; le mécanisme
+d'indicatifs (§6.3) et le parcours d'affectation/correction (§7.5) restent à
+valider sur une maquette refaite — la première a été jugée inutilisable à
+l'usage
 **Dernière mise à jour :** 2026-09-21
 
 > Les décisions issues du cadrage sont annotées *(Décision Antoine,
@@ -164,6 +166,22 @@ Antoine, 2026-09-21 : « tolérée, signalée ».)*
 | `Positions_groupe` | `Groupe` (→), `Besoin` (→) |
 | `Places` | `Groupe` (→), `Rang` (1..*n*), `Benevole` (→), `Origine` (algorithme / manuel), `Verrouillee` (booléen), `Score` |
 
+**Dimensionnement par défaut d'un besoin (décision Antoine, 2026-09-21).** À la
+création, un besoin reçoit un seul binôme (un `Groupe` de `Taille` 2, positionné
+dessus via une ligne `Positions_groupe`). Si l'effectif nécessaire dépasse ce
+qu'un binôme peut fournir, un second binôme est ajouté explicitement sur le
+même besoin plutôt que d'agrandir le premier. C'est un défaut de création, pas
+une limite : `Besoins.Taille_groupe` reste le réglage qui permet de partir
+directement sur des trinômes ou plus quand une mission l'exige vraiment.
+
+**Effectif minimum et maximum (précision du 2026-09-21).** En interface, seul
+l'effectif minimum est mis en avant : c'est lui qui déclenche l'alerte visuelle
+et l'anomalie « sous-effectif » quand il n'est pas atteint (§7.4). Dépasser
+l'effectif maximum ne bloque plus rien — un renfort ponctuel reste possible —
+mais remonte comme anomalie « sur-effectif » plutôt que d'être empêché. Ce
+n'est donc plus une contrainte dure de l'algorithme (§7.1, révisé en
+conséquence).
+
 **Révision du modèle initial (décision Antoine, 2026-09-21).** Un indicatif
 (`Groupes`) n'est plus rattaché à un seul besoin : il est positionné à l'avance
 sur autant de besoins que nécessaire via `Positions_groupe`, y compris sur des
@@ -189,9 +207,14 @@ dans Grist (par mission, par équipe, par bénévole ou par créneau).
 La généralisation binôme → trinôme → *n*-uplet est portée par la seule colonne
 `Taille` : aucune structure n'est spécifique à la taille 2.
 
-*Point ouvert, pas bloquant :* Antoine se dit ouvert au débat sur ce
-mécanisme — à valider concrètement sur la maquette interactive plutôt qu'en
-abstrait.
+*Point ouvert, toujours en attente de validation (mise à jour du
+2026-09-21).* La première maquette a implémenté ce mécanisme fidèlement (vue
+Indicatifs : un indicatif, sa trajectoire sur plusieurs missions, un
+repositionnement qui ne touche qu'une ligne de `Positions_groupe`). Antoine a
+jugé cette vue catastrophique et inutilisable — un verdict sur l'interface,
+pas sur le modèle : il n'a pas remis en cause la séparation `Groupes` /
+`Positions_groupe` / `Places`. Le §6.3 reste donc non validé, dans l'attente
+d'une maquette refaite qui permette de le tester pour de vrai.
 
 ### 6.4 Préférences des bénévoles
 
@@ -235,8 +258,11 @@ qui, quand, avant/après et pourquoi.
    d'heure près.
 2. Un bénévole n'est affecté que sur des quarts d'heure où il est disponible.
 3. Les compétences requises par la mission sont détenues par le bénévole.
-4. L'effectif maximum d'un besoin n'est jamais dépassé.
-5. Une affectation verrouillée n'est jamais déplacée.
+4. Une affectation verrouillée n'est jamais déplacée.
+
+*(L'effectif maximum d'un besoin n'est plus une contrainte dure : le dépasser
+reste possible — un renfort ponctuel — et remonte en anomalie « sur-effectif »
+plutôt que d'être bloqué. Décision Antoine, 2026-09-21 ; voir §6.3 et §7.4.)*
 
 ### 7.2 Objectifs (pondérés, dans l'ordre demandé)
 
@@ -278,6 +304,67 @@ dans le document pour être audité et rejoué.
   *(Décision Antoine, 2026-09-21 : « permutations autorisées », plutôt que de
   ne jamais toucher aux places déjà pourvues.)*
 
+### 7.4 Catalogue des anomalies
+
+La première maquette a implémenté cinq types d'anomalies ; le retour
+d'Antoine en ajoute un sixième (sur-effectif) et confirme un septième déjà
+décidé mais pas encore construit (chevauchement, §6.2). Deux niveaux de
+gravité, repris tels quels de la maquette : **à corriger** (une règle a été
+violée, ce qui ne devrait arriver que par une correction manuelle qui l'a
+introduite) et **à surveiller** (un état normal du système, à regarder mais
+jamais bloquant).
+
+| Type | Gravité | Déclencheur |
+| --- | --- | --- |
+| Sous-effectif | À corriger | Le besoin n'atteint pas son effectif minimum (§7.2 : jamais forcé contre un souhait). |
+| Souhait refusé | À corriger | Un bénévole occupe une place sur une mission qu'il a explicitement refusée. |
+| Indisponibilité | À corriger | Un bénévole occupe une place sur un quart d'heure où il est indisponible. |
+| Sur-effectif | À surveiller | Le besoin dépasse son effectif maximum. *(Nouveau, décision Antoine, 2026-09-21 : n'est plus bloqué, voir §6.3.)* |
+| Conflit artiste | À surveiller | Un bénévole occupe une place pendant le passage d'un artiste qu'il veut voir (préférence forte violée en dernier recours, §7.2). |
+| Chevauchement de créneaux | À surveiller | Deux sous-créneaux d'un même macro-créneau se chevauchent (§6.2). Décidé, pas encore construit dans la première maquette. |
+| Hors quota | À surveiller | Un bénévole dépasse son quota d'heures maximum. |
+
+Cette liste s'enrichira avec le développement, mais le principe reste le même
+pour toute nouvelle anomalie : signaler plutôt que bloquer, sauf les trois
+premières qui signent une vraie violation de règle.
+
+### 7.5 Parcours d'affectation et de correction
+
+C'est le cœur de l'outil, et le retour d'Antoine sur la première maquette est
+clair sur ce point : ce parcours n'était ni écrit finement ni maquetté. Ce qui
+suit cadre ce qu'une version refaite doit couvrir, indépendamment de
+l'interface retenue.
+
+1. **Lancement de l'algorithme**, sur tout le planning ou sur un périmètre
+   choisi (une mission, un macro-créneau — §7.3). Il ne crée jamais de
+   `Groupe` ni de `Positions_groupe` : il remplit les `Places` déjà
+   positionnées (§6.3), en respectant les contraintes dures (§7.1) et en
+   pondérant selon les objectifs (§7.2).
+2. **Résultat** : chaque `Place` remplie porte `Origine = Algorithme` et un
+   `Score` ; chaque `Place` non pourvue reste vide et alimente l'anomalie
+   « sous-effectif » (§7.4).
+3. **Correction manuelle, place par place.** Pour toute place, pourvue ou
+   non : voir les bénévoles éligibles, classés par le même score que
+   l'algorithme et avec la même explication (équipe, souhait, artiste,
+   quota — §7.2) ; choisir un bénévole dans cette liste l'affecte ; vider une
+   place la libère. Une place modifiée à la main passe `Origine = Manuel` et
+   `Verrouillee = vrai` : un recalcul ultérieur, global ou partiel, ne la
+   touche plus tant qu'elle n'est pas déverrouillée explicitement (cohérent
+   avec §7.1 et la réponse à la question 6.6 du cadrage).
+4. **Correction manuelle, indicatif par indicatif.** Un indicatif peut être
+   repositionné d'un besoin à un autre — une seule ligne de `Positions_groupe`
+   change, rien d'autre (§6.3, mécanisme encore en attente de validation sur
+   son ergonomie) — sans toucher aux personnes qui l'occupent.
+5. **Recalcul partiel** après une correction manuelle ou une absence
+   déclarée : relancer l'algorithme sur le seul périmètre affecté reprend les
+   places encore vides sans toucher aux places verrouillées (§7.3, §5.3).
+6. **Anomalies à jour en continu** (§7.4) : chaque correction met à jour la
+   vue anomalies immédiatement, jamais en différé.
+
+C'est ce parcours, plus que les vues de consultation, qui décide si l'outil
+fait gagner du temps le jour J — il doit être le premier maquetté en détail à
+la prochaine itération.
+
 ## 8. Vues attendues
 
 Liste de travail, à arbitrer (voir le brainstorm dans le fil et la
@@ -288,10 +375,14 @@ Liste de travail, à arbitrer (voir le brainstorm dans le fil et la
 2. **Grille mission × sous-créneau** — qui est où, la vue des cheffes d'équipe.
 3. **Vue tension** — couverture par mission et par quart d'heure, trous et
    sur-effectifs.
-4. **Vue anomalies** — liste des cas à traiter : places vides, souhaits non
-   satisfaits, bénévoles hors quota.
-5. **Vue affectation manuelle** — placement assisté, avec les candidats classés
-   par pertinence.
+4. **Vue anomalies** — liste des cas à traiter, structurée par le catalogue du
+   §7.4 (sous-effectif, sur-effectif, souhait refusé, indisponibilité,
+   conflit artiste, chevauchement, hors quota).
+5. **Vue affectation manuelle** — le parcours décrit au §7.5 : candidats
+   classés par pertinence pour chaque place, repositionnement d'un indicatif
+   d'un besoin à un autre. La vue la plus critique de l'outil, et la moins
+   aboutie à ce stade : la première maquette n'en proposait qu'une ébauche,
+   jugée inutilisable.
 6. **Vue bénévole** — la feuille de route individuelle, imprimable.
 7. **Vue équipe** — une équipe sur toute la durée, par groupe.
 8. **Vue artistes** — qui joue quand, et combien de bénévoles veulent le voir.
