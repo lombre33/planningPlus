@@ -8,68 +8,32 @@
  * resterait sinon en attente indéfinie, aucune réponse n'arrivant jamais au
  * `postMessage`). Selon le résultat :
  *
- * - connecté : sonde le document et affiche le nombre de lignes par table
- *   (la lecture métier réelle — agenda, missions, anomalies… — reste à
- *   brancher une fois la maquette validée, cf. `dev/README.md`) ;
- * - non connecté (aperçu, démonstration, tests) : monte la maquette
- *   interactive sur le jeu de données figé (`donnees/festival.json`).
+ * - connecté : lit le document via `lireDocument` (`./grist`) et monte la
+ *   même maquette interactive sur le `Modele` qui en sort ;
+ * - non connecté, en échec, ou trop lent (aperçu, démonstration, tests) :
+ *   monte la maquette sur le jeu de données figé (`donnees/festival.json`).
+ *
+ * Les deux modes convergent sur un seul point de bascule, `demarrerApp` :
+ * `lireDocument` rend un `Modele` de la même forme que `normaliser()`, donc
+ * rien dans la coquille ni dans les vues ne distingue une donnée réelle
+ * d'une donnée de démonstration. C'est aussi ce qui garde la démo, seule
+ * chose qu'Antoine a en main tant qu'aucun document Grist n'est branché,
+ * strictement inchangée : le moindre pépin côté Grist (délai dépassé,
+ * table manquante, erreur réseau) retombe sur `demarrerDemo` plutôt que de
+ * laisser la page en échec.
  */
 
 import './style.css';
 import {demarrerApp} from './app';
 import {normaliser} from './donnees/normaliser';
+import {lireDocument} from './grist';
 import {Magasin} from './store';
-
-/** Une table du document, telle que résumée pour l'affichage. */
-export interface ResumeTable {
-  tableId: string;
-  lignes: number;
-}
-
-/** Trie les tables par identifiant, pour un affichage stable et lisible. */
-export function construireResume(comptes: Record<string, number>): ResumeTable[] {
-  return Object.entries(comptes)
-    .map(([tableId, lignes]) => ({tableId, lignes}))
-    .sort((a, b) => a.tableId.localeCompare(b.tableId, 'fr'));
-}
-
-/** Nombre de lignes d'une table, à partir du résultat de `fetchTable`. */
-function compterLignes(donnees: Record<string, unknown[]>): number {
-  const colonne = donnees['id'];
-  return Array.isArray(colonne) ? colonne.length : 0;
-}
 
 const DELAI_CONNEXION_MS = 1500;
 
 function demarrerDemo(racine: HTMLElement): void {
   const magasin = new Magasin(normaliser());
   demarrerApp(racine, magasin, 'Démonstration — jeu de données figé');
-}
-
-function afficherResume(racine: HTMLElement, resume: ResumeTable[]): void {
-  racine.textContent = '';
-
-  const titre = document.createElement('h1');
-  titre.textContent = 'PlanningPlus — document connecté';
-  racine.append(titre);
-
-  const tableau = document.createElement('table');
-  const enTete = tableau.insertRow();
-  for (const libelle of ['Table', 'Lignes']) {
-    const cellule = document.createElement('th');
-    cellule.textContent = libelle;
-    enTete.append(cellule);
-  }
-  for (const {tableId, lignes} of resume) {
-    const ligne = tableau.insertRow();
-    ligne.insertCell().textContent = tableId;
-    ligne.insertCell().textContent = String(lignes);
-  }
-  racine.append(tableau);
-
-  const note = document.createElement('p');
-  note.textContent = 'Les vues métier (agenda, missions, anomalies, indicatifs, jour J) restent à brancher sur ce document réel ; en attendant, ouvrez ce widget hors de Grist pour la démonstration interactive.';
-  racine.append(note);
 }
 
 async function demarrer(): Promise<void> {
@@ -83,20 +47,16 @@ async function demarrer(): Promise<void> {
 
   window.grist.ready({requiredAccess: 'full'});
   try {
-    const idsDeTables = await Promise.race([
-      window.grist.docApi.listTables(),
+    const resultat = await Promise.race([
+      lireDocument(window.grist.docApi),
       new Promise<null>((resolve) => setTimeout(() => resolve(null), DELAI_CONNEXION_MS)),
     ]);
-    if (idsDeTables == null) {
+    if (resultat == null) {
       demarrerDemo(racine);
       return;
     }
-    const comptes: Record<string, number> = {};
-    for (const tableId of idsDeTables) {
-      const donnees = await window.grist.docApi.fetchTable(tableId);
-      comptes[tableId] = compterLignes(donnees);
-    }
-    afficherResume(racine, construireResume(comptes));
+    const magasin = new Magasin(resultat.modele);
+    demarrerApp(racine, magasin, 'Document Grist connecté');
   } catch {
     demarrerDemo(racine);
   }

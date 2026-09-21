@@ -1,17 +1,50 @@
-import {describe, expect, it} from 'vitest';
-import {construireResume} from './main';
+import {afterEach, describe, expect, it, vi} from 'vitest';
 
-describe('construireResume', () => {
-  it('trie les tables par identifiant', () => {
-    const resume = construireResume({SousCreneaux: 24, Benevoles: 70, Artistes: 20});
-    expect(resume).toEqual([
-      {tableId: 'Artistes', lignes: 20},
-      {tableId: 'Benevoles', lignes: 70},
-      {tableId: 'SousCreneaux', lignes: 24},
-    ]);
+describe('démarrage du widget', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+    delete (window as {grist?: unknown}).grist;
   });
 
-  it("rend un tableau vide pour un document sans table", () => {
-    expect(construireResume({})).toEqual([]);
+  async function demarrerEtAttendre(): Promise<void> {
+    document.body.innerHTML = '<div id="app"></div>';
+    // `main.ts` s'exécute à l'import (`void demarrer()`) : un module frais
+    // par test isole ce déclenchement, `resetModules` seul ne suffit pas.
+    vi.resetModules();
+    await import('./main');
+    // `demarrer()` n'est pas exposé : on laisse ses micro-tâches (et,
+    // pour le cas « pas de réponse », son `setTimeout`) se dérouler.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  it('sans window.grist, monte la démonstration', async () => {
+    await demarrerEtAttendre();
+    expect(document.querySelector('.pill--neutral')?.textContent).toBe('Démonstration — jeu de données figé');
+  });
+
+  it('avec un document Grist connecté (même vide), monte la maquette sur ses données', async () => {
+    window.grist = {
+      ready: () => {},
+      docApi: {
+        listTables: async () => [],
+        fetchTable: async () => ({id: []}),
+        applyUserActions: async () => ({retValues: []}),
+      },
+    };
+    await demarrerEtAttendre();
+    expect(document.querySelector('.pill--neutral')?.textContent).toBe('Document Grist connecté');
+  });
+
+  it('si la lecture du document Grist échoue, retombe sur la démonstration plutôt que de casser la page', async () => {
+    window.grist = {
+      ready: () => {},
+      docApi: {
+        listTables: async () => { throw new Error('document indisponible'); },
+        fetchTable: async () => ({id: []}),
+        applyUserActions: async () => ({retValues: []}),
+      },
+    };
+    await demarrerEtAttendre();
+    expect(document.querySelector('.pill--neutral')?.textContent).toBe('Démonstration — jeu de données figé');
   });
 });
