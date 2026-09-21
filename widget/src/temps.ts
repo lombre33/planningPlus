@@ -69,24 +69,33 @@ export function cleJour(epochSecondes: number, fuseau = TIMEZONE): string {
   }).format(new Date(epochSecondes * 1000));
 }
 
-/** Jour « de festival » d'un horodatage : comme `cleJour`, mais la journée
- *  bascule à `heureCoupure` (6 h par défaut) plutôt qu'à minuit, pour qu'une
- *  soirée finissant après minuit reste affichée avec son jour de début.
- *  Purement visuel, jamais stocké (cahier des charges §6.2, décision du
- *  2026-09-21 : les bornes elles-mêmes restent des date-heures absolues). */
-export function cleJourFestival(epochSecondes: number, heureCoupure = 6, fuseau = TIMEZONE): string {
-  return cleJour(epochSecondes - heureCoupure * 3600, fuseau);
-}
-
-export function libelleJourFestival(epochSecondes: number, heureCoupure = 6, fuseau = TIMEZONE): string {
-  return libelleJourLong(epochSecondes - heureCoupure * 3600, fuseau);
-}
-
 /** Minuit local du jour civil d'un horodatage. */
 export function epochMinuitLocal(epochSecondes: number, fuseau = TIMEZONE): number {
   const cle = cleJour(epochSecondes, fuseau);
   const [annee, mois, jour] = cle.split('-').map(Number) as [number, number, number];
   return epochDepuisHeureLocale({annee, mois, jour}, fuseau);
+}
+
+/** Heure de coupure par défaut du « jour de festival » (cahier des charges
+ *  §6.2) : un jour d'affichage bascule à cette heure plutôt qu'à minuit
+ *  civil, pour ne jamais couper une soirée en deux. Concept purement visuel,
+ *  jamais stocké — distinct du jour civil utilisé par cleJour/epochMinuitLocal. */
+export const HEURE_COUPURE_JOUR_FESTIVAL = 6;
+
+/** Clé du jour de festival d'un horodatage : comme cleJour, mais la journée
+ *  bascule à heureCoupure plutôt qu'à minuit civil. */
+export function cleJourFestival(
+  epochSecondes: number, heureCoupure = HEURE_COUPURE_JOUR_FESTIVAL, fuseau = TIMEZONE,
+): string {
+  return cleJour(epochSecondes - heureCoupure * 3600, fuseau);
+}
+
+/** Horodatage du début du jour de festival contenant epochSecondes
+ *  (heure de coupure locale du jour civil correspondant). */
+export function epochDebutJourFestival(
+  epochSecondes: number, heureCoupure = HEURE_COUPURE_JOUR_FESTIVAL, fuseau = TIMEZONE,
+): number {
+  return epochMinuitLocal(epochSecondes - heureCoupure * 3600, fuseau) + heureCoupure * 3600;
 }
 
 /** Horodatage d'une date (YYYY-MM-DD) et d'une heure « HH:MM », l'heure

@@ -11,6 +11,7 @@ import {formatHeures, h, vider} from '../ui/dom';
 function titreAnomalie(a: Anomalie): string {
   switch (a.type) {
     case 'sous-effectif': return `${a.missionNom} — ${a.sousCreneauLibelle}`;
+    case 'sur-effectif': return `${a.missionNom} — ${a.sousCreneauLibelle}`;
     case 'souhait-refuse': return `${a.benevoleNom} sur ${a.missionNom}`;
     case 'indisponibilite': return `${a.benevoleNom} — ${a.sousCreneauLibelle}`;
     case 'conflit-artiste': return `${a.benevoleNom} veut voir ${a.artisteNom}`;
@@ -22,6 +23,8 @@ function detailAnomalie(a: Anomalie): string {
   switch (a.type) {
     case 'sous-effectif':
       return `Il manque ${a.manque} bénévole${a.manque > 1 ? 's' : ''} pour atteindre le minimum. On ne force personne contre son souhait pour boucler l'effectif (§7.2).`;
+    case 'sur-effectif':
+      return `${a.surplus} bénévole${a.surplus > 1 ? 's' : ''} de plus que l'effectif maximum sur ce besoin.`;
     case 'souhait-refuse':
       return `${a.benevoleNom} a explicitement refusé cette mission mais occupe une place de l'indicatif ${a.groupeCode} qui la couvre.`;
     case 'indisponibilite':
@@ -35,6 +38,7 @@ function detailAnomalie(a: Anomalie): string {
 
 const LIBELLE_TYPE: Record<Anomalie['type'], string> = {
   'sous-effectif': 'Sous-effectif',
+  'sur-effectif': 'Sur-effectif',
   'souhait-refuse': 'Souhait refusé',
   'indisponibilite': 'Indisponibilité',
   'conflit-artiste': 'Conflit artiste',

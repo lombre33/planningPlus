@@ -7,7 +7,9 @@
 import type {
   Besoin, Groupe, Id, MacroCreneau, Place, SousCreneau, StatutDisponibilite,
 } from '../domain/types';
-import {cleJourFestival, libelleJourFestival, PAS_SECONDES} from '../temps';
+import {
+  cleJourFestival, epochDebutJourFestival, HEURE_COUPURE_JOUR_FESTIVAL, libelleJourLong, PAS_SECONDES,
+} from '../temps';
 import type {Magasin} from '../store';
 
 // --- Index -------------------------------------------------------------
@@ -35,11 +37,11 @@ export interface Jour {
   macros: MacroCreneau[];
 }
 
-/** Regroupe les macro-créneaux par jour « de festival » (§6.2 : la journée
- *  bascule à `heureCoupure`, 6 h par défaut, plutôt qu'à minuit, pour qu'une
- *  soirée qui franchit minuit reste affichée avec son jour de début). Ce
- *  regroupement est purement visuel ; rien n'est stocké sous cette forme. */
-export function regrouperParJour(macroCreneaux: MacroCreneau[], heureCoupure = 6): Jour[] {
+/** Regroupe les macro-créneaux par jour de festival — bascule à une heure de
+ *  coupure paramétrable (6h par défaut) plutôt qu'à minuit civil, pour ne
+ *  jamais couper une soirée en deux (§6.2 du cahier des charges). Concept
+ *  purement visuel : ne modifie ni ne stocke aucune borne de temps. */
+export function regrouperParJour(macroCreneaux: MacroCreneau[], heureCoupure = HEURE_COUPURE_JOUR_FESTIVAL): Jour[] {
   const parCle = new Map<string, MacroCreneau[]>();
   for (const macro of macroCreneaux) {
     const cle = cleJourFestival(macro.Debut, heureCoupure);
@@ -49,7 +51,7 @@ export function regrouperParJour(macroCreneaux: MacroCreneau[], heureCoupure = 6
   }
   return [...parCle.entries()]
     .map(([cle, macros]) => ({
-      cle, libelle: libelleJourFestival(macros[0]!.Debut, heureCoupure),
+      cle, libelle: libelleJourLong(epochDebutJourFestival(macros[0]!.Debut, heureCoupure)),
       macros: macros.sort((a, b) => a.Debut - b.Debut),
     }))
     .sort((a, b) => a.macros[0]!.Debut - b.macros[0]!.Debut);
@@ -237,6 +239,7 @@ export function classerCandidats(
 
 export type Anomalie =
   | {type: 'sous-effectif'; gravite: 'danger'; besoin: Besoin; missionNom: string; sousCreneauLibelle: string; manque: number}
+  | {type: 'sur-effectif'; gravite: 'warn'; besoin: Besoin; missionNom: string; sousCreneauLibelle: string; surplus: number}
   | {type: 'souhait-refuse'; gravite: 'danger'; place: Place; benevoleNom: string; missionNom: string; groupeCode: string}
   | {type: 'indisponibilite'; gravite: 'danger'; place: Place; benevoleNom: string; groupeCode: string; sousCreneauLibelle: string}
   | {type: 'conflit-artiste'; gravite: 'warn'; place: Place; benevoleNom: string; artisteNom: string; groupeCode: string}
@@ -253,6 +256,13 @@ export function calculerAnomalies(m: Magasin, ix: Index): Anomalie[] {
         missionNom: ix.mission.get(besoin.Mission)!.Nom,
         sousCreneauLibelle: ix.sousCreneau.get(besoin.Sous_creneau)!.Libelle,
         manque: besoin.Effectif_min - c.pourvues,
+      });
+    } else if (c.pourvues > besoin.Effectif_max) {
+      anomalies.push({
+        type: 'sur-effectif', gravite: 'warn', besoin,
+        missionNom: ix.mission.get(besoin.Mission)!.Nom,
+        sousCreneauLibelle: ix.sousCreneau.get(besoin.Sous_creneau)!.Libelle,
+        surplus: c.pourvues - besoin.Effectif_max,
       });
     }
   }

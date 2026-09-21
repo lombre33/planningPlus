@@ -1,139 +1,329 @@
 /**
  * Vue indicatifs : donne à trancher visuellement le §6.3 du cahier des
- * charges. Un indicatif (ex. « BA07 ») est positionné à l'avance sur
- * plusieurs besoins, y compris sur des missions différentes : c'est la
- * mission qui tourne d'un sous-créneau à l'autre, pas le binôme qui
- * l'occupe. Déplacer une position ne touche qu'une ligne `PositionGroupe`
- * (contrainte C : ajustement à chaud sans recalcul global).
+ * charges. Reprise de zéro (première version jugée inutilisable par Antoine)
+ * — l'ancienne vue montrait un indicatif hors de tout contexte, dans une
+ * liste plate puis une rangée de cartes reliées par des flèches. Celle-ci
+ * réutilise au contraire la même grille missions × sous-créneaux que la vue
+ * Missions (déjà validée) : chaque case affiche directement le ou les
+ * indicatifs qui y sont positionnés, et sélectionner un indicatif surligne
+ * sa trajectoire *dans* la grille plutôt que de l'extraire vers une vue à
+ * part. Sélectionner une puce ouvre le détail (composition, trajectoire) et
+ * permet de repositionner une étape (§7.5 point 4) en la glissant vers une
+ * autre case, ou par un clic classer/cibler pour l'accessibilité clavier.
+ *
+ * Ce que cette vue ne fait pas : affecter un·e bénévole à une place. C'est
+ * le rôle de la vue Missions (et, à terme, de l'outil d'affectation dédié) —
+ * ici, une place se lit et se verrouille, mais ne se pourvoit pas.
  */
 
-import type {Id} from '../domain/types';
-import {classerCandidats, indexer, positionsDuGroupe} from '../logic/derive';
+import type {Groupe, Id, Mission, SousCreneau} from '../domain/types';
+import {
+  type Index, couvertureBesoin, indexer, placesDuGroupe, positionsDuGroupe, regrouperParJour,
+} from '../logic/derive';
 import type {Magasin} from '../store';
-import {h, vider} from '../ui/dom';
-import {libelleJourLong} from '../temps';
+import {fermerPanneau, h, ouvrirPanneau, vider} from '../ui/dom';
+
+type ModeCible = {groupeId: Id; positionId: Id | null; mode: 'deplacer' | 'ajouter'};
 
 export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => void {
-  let equipeId: Id | null = null;
-  let groupeId: Id | null = null;
-  let uniquementRotatifs = true;
+  let jourIndex = 0;
+  let equipeFiltre: Id | 'toutes' = 'toutes';
+  let groupeSelectionne: Id | null = null;
+  let modeCible: ModeCible | null = null;
+
+  // État transitoire du glisser-déposer natif (pas dans le magasin : ça ne
+  // survit pas à un rafraîchissement, et n'a pas à le faire).
+  let groupeDeplace: Id | null = null;
+  let besoinOrigineDeplace: Id | null = null;
 
   function rafraichir(): void {
     const ix = indexer(m);
-    if (equipeId == null) { equipeId = m.equipes[0]?.id ?? null; }
+    const jours = regrouperParJour(m.macroCreneaux);
+    jourIndex = Math.min(jourIndex, Math.max(jours.length - 1, 0));
+    const jour = jours[jourIndex];
+    const sousCreneaux = jour
+      ? m.sousCreneaux
+        .filter((sc) => jour.macros.some((ma) => ma.id === sc.Macro_creneau))
+        .sort((a, b) => a.Debut - b.Debut)
+      : [];
+    const missions = m.missions
+      .filter((mi) => equipeFiltre === 'toutes' || mi.Equipe === equipeFiltre)
+      .sort((a, b) => a.Equipe - b.Equipe || a.Nom.localeCompare(b.Nom, 'fr'));
+
     vider(container);
-    if (equipeId == null) { container.append(h('p', {class: 'empty'}, "Aucune équipe dans ce jeu de données.")); return; }
-
-    const groupesEquipe = m.groupes
-      .filter((g) => g.Equipe === equipeId)
-      .map((g) => ({groupe: g, positions: positionsDuGroupe(m, ix, g.id)}))
-      .filter((g) => !uniquementRotatifs || g.positions.length >= 2)
-      .sort((a, b) => b.positions.length - a.positions.length || a.groupe.Code.localeCompare(b.groupe.Code));
-
-    if (groupeId == null || !groupesEquipe.some((g) => g.groupe.id === groupeId)) {
-      groupeId = groupesEquipe[0]?.groupe.id ?? null;
-    }
-
     container.append(
-      h('div', {class: 'agenda__toolbar'},
-        ...m.equipes.map((eq) => h('button', {
-          class: `btn btn--sm${eq.id === equipeId ? ' btn--primary' : ''}`, type: 'button',
-          onclick: () => { equipeId = eq.id; groupeId = null; rafraichir(); },
-        }, eq.Nom)),
-        h('label', {style: {display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', marginLeft: '8px'}},
-          h('input', {
-            type: 'checkbox', checked: uniquementRotatifs,
-            onchange: (e: Event) => { uniquementRotatifs = (e.target as HTMLInputElement).checked; groupeId = null; rafraichir(); },
-          }),
-          'Qui tournent sur ≥ 2 missions',
-        ),
+      h('div', {class: 'indicatifs-layout'},
+        barreOutils(jours),
+        modeCible ? bandeauCible() : null,
+        sousCreneaux.length === 0
+          ? h('p', {class: 'empty'}, 'Aucun sous-créneau ce jour.')
+          : construireGrille(ix, missions, sousCreneaux),
       ),
-      h('p', {class: 'view__intro'},
-        `${groupesEquipe.length} indicatif${groupesEquipe.length > 1 ? 's' : ''} pour cette équipe`
-        + (uniquementRotatifs ? ' qui tournent sur au moins deux positions.' : '.'),
-      ),
-      groupesEquipe.length === 0
-        ? h('p', {class: 'empty'}, 'Aucun indicatif ne correspond à ce filtre.')
-        : h('div', {class: 'indicatif-picker'}, ...groupesEquipe.map(({groupe, positions}) => h('button', {
-          class: 'indicatif-chip', type: 'button', 'aria-pressed': String(groupe.id === groupeId),
-          onclick: () => { groupeId = groupe.id; rafraichir(); },
-        }, `${groupe.Code} (${positions.length})`))),
     );
 
-    if (groupeId != null) {
-      container.append(detailIndicatif(ix, groupeId));
+    if (groupeSelectionne != null && ix.groupe.has(groupeSelectionne)) {
+      panneauIndicatif(ix, groupeSelectionne);
+    } else {
+      fermerPanneau();
     }
   }
 
-  function detailIndicatif(ix: ReturnType<typeof indexer>, id: Id): Node {
-    const groupe = ix.groupe.get(id)!;
-    const positions = positionsDuGroupe(m, ix, id);
-    const places = m.places.filter((p) => p.Groupe === id).sort((a, b) => a.Rang - b.Rang);
-    const candidats = classerCandidats(m, ix, id);
+  // --- Barre d'outils : jour + équipe (mêmes contrôles que la vue Missions) --
 
-    return h('div', {style: {marginTop: '18px'}},
-      h('div', {class: 'section-title'}, h('h2', null, `Trajectoire de ${groupe.Code}`)),
-      h('div', {class: 'trajectoire'}, ...positions.flatMap(({position, besoin, sousCreneau}, i) => {
-        const mission = ix.mission.get(besoin.Mission)!;
-        const lieu = ix.lieu.get(mission.Lieu);
-        const carte = h('div', {class: 'trajectoire__etape'},
-          h('span', {class: 'heure mono'}, `${libelleJourLong(sousCreneau.Debut).split(' ')[0]} · ${sousCreneau.Libelle}`),
-          h('div', {class: 'mission'}, mission.Nom),
-          h('div', {style: {fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px'}}, lieu?.Nom ?? ''),
-          selecteurBesoinCible(id, position.id, besoin.id),
-        );
-        return i === 0 ? [carte] : [h('span', {class: 'trajectoire__arrow'}, '→'), carte];
-      })),
-      h('div', {class: 'section-title', style: {marginTop: '18px'}},
-        h('h2', null, 'Binôme'),
-        h('span', {class: 'count mono'}, `taille ${groupe.Taille}`),
-      ),
-      h('p', {class: 'view__intro'}, 'Ce sont les mêmes personnes sur toutes les étapes ci-dessus : seule la mission change.'),
-      h('div', {class: 'card'}, ...places.map((place) => h('div', {class: 'membre'},
-        h('span', {class: 'rang mono'}, `#${place.Rang}`),
-        h('select', {
-          class: 'select',
-          onchange: (e: Event) => {
-            const v = (e.target as HTMLSelectElement).value;
-            m.assignerPlace(place.id, v === '' ? null : Number(v));
-          },
+  function barreOutils(jours: ReturnType<typeof regrouperParJour>): Node {
+    return h('div', {class: 'agenda__toolbar'},
+      ...jours.map((j, i) => h('button', {
+        class: `btn btn--sm${i === jourIndex ? ' btn--primary' : ''}`, type: 'button',
+        onclick: () => { jourIndex = i; groupeSelectionne = null; modeCible = null; rafraichir(); },
+      }, j.libelle.split(' ').slice(0, 1).join(' '))),
+      h('select', {
+        class: 'select',
+        onchange: (e: Event) => {
+          const v = (e.target as HTMLSelectElement).value;
+          equipeFiltre = v === 'toutes' ? 'toutes' : Number(v);
+          rafraichir();
         },
-          h('option', {value: '', selected: place.Benevole == null}, '— place non pourvue —'),
-          ...(place.Benevole != null && !candidats.some((c) => c.benevoleId === place.Benevole)
-            ? [h('option', {value: String(place.Benevole), selected: true}, ix.benevole.get(place.Benevole)?.Nom ?? '?')]
-            : []),
-          ...candidats.map((c) => h(
-            'option', {value: String(c.benevoleId), selected: c.benevoleId === place.Benevole},
-            `${c.nom} (${c.score.toFixed(2)})`,
+      },
+        h('option', {value: 'toutes'}, 'Toutes les équipes'),
+        ...m.equipes.map((eq) => h('option', {value: String(eq.id), selected: equipeFiltre === eq.id}, eq.Nom)),
+      ),
+    );
+  }
+
+  function bandeauCible(): Node {
+    const mode = modeCible!;
+    const groupe = m.groupes.find((g) => g.id === mode.groupeId);
+    const texte = mode.mode === 'deplacer'
+      ? `Choisissez la case où repositionner ${groupe?.Code ?? ''}.`
+      : `Choisissez la case où ajouter une nouvelle position pour ${groupe?.Code ?? ''}.`;
+    return h('div', {class: 'mode-bandeau'},
+      h('span', null, texte),
+      h('button', {class: 'btn btn--ghost btn--sm', type: 'button', onclick: () => { modeCible = null; rafraichir(); }}, 'Annuler'),
+    );
+  }
+
+  // --- Grille : identique dans sa structure à la vue Missions ---------------
+
+  function construireGrille(ix: Index, missions: Mission[], sousCreneaux: SousCreneau[]): Node {
+    const thead = h('thead', null, h('tr', null,
+      h('th', {class: 'mission-cell'}, 'Mission'),
+      ...sousCreneaux.map((sc) => h('th', null, sc.Libelle)),
+    ));
+    const tbody = h('tbody');
+    for (const mission of missions) {
+      const lieu = ix.lieu.get(mission.Lieu);
+      const equipe = ix.equipe.get(mission.Equipe)!;
+      const tr = h('tr', null,
+        h('td', {class: 'mission-cell'},
+          h('span', {class: 'dot', style: {background: equipe.Couleur, marginRight: '6px'}}),
+          h('span', {class: 'nom'}, mission.Nom),
+          h('span', {class: 'lieu'}, lieu?.Nom ?? ''),
+        ),
+      );
+      for (const sc of sousCreneaux) {
+        const besoin = m.besoins.find((b) => b.Mission === mission.id && b.Sous_creneau === sc.id);
+        if (!besoin) {
+          tr.append(h('td', {class: 'besoin-cell besoin-cell--vide'}));
+          continue;
+        }
+        tr.append(h('td', {class: 'besoin-cell'}, celluleIndicatifs(ix, besoin.id)));
+      }
+      tbody.append(tr);
+    }
+    return h('div', {class: 'grille-wrap'}, h('table', {class: 'grille'}, thead, tbody));
+  }
+
+  function celluleIndicatifs(ix: Index, besoinId: Id): HTMLElement {
+    const c = couvertureBesoin(m, ix, besoinId);
+    const sousEffectif = c.pourvues < c.besoin.Effectif_min;
+    const surEffectif = c.pourvues > c.besoin.Effectif_max;
+    const surlignee = groupeSelectionne != null && c.groupesPositionnes.some((g) => g.groupe.id === groupeSelectionne);
+
+    const cellule = h('div', {
+      class: `indicatif-cell${modeCible ? ' indicatif-cell--cible' : ''}${surlignee ? ' indicatif-cell--surlignee' : ''}`,
+    },
+      h('div', {class: `indicatif-cell__eff${sousEffectif ? ' indicatif-cell__eff--sous' : ''}`},
+        h('span', null, `min ${c.besoin.Effectif_min}`),
+        surEffectif ? h('span', {class: 'flag', title: 'Dépasse le maximum — signalé, pas bloquant'}, '⚑') : null,
+      ),
+      ...c.groupesPositionnes.map((g) => puceGroupe(ix, g.groupe, besoinId)),
+    );
+
+    if (c.groupesPositionnes.length === 0) {
+      cellule.append(h('button', {
+        class: 'ajouter-binome', type: 'button', style: {opacity: '1'},
+        onclick: (e: Event) => { e.stopPropagation(); selectionnerNouveauGroupe(besoinId); },
+      }, '+ positionner un binôme'));
+    } else if (c.groupesPositionnes.length < 2) {
+      cellule.append(h('button', {
+        class: 'ajouter-binome', type: 'button', title: 'Ajouter un second binôme sur ce besoin (§6.3)',
+        onclick: (e: Event) => { e.stopPropagation(); selectionnerNouveauGroupe(besoinId); },
+      }, '+ binôme'));
+    }
+
+    cellule.addEventListener('dragover', (e: DragEvent) => {
+      if (groupeDeplace == null || besoinOrigineDeplace === besoinId) { return; }
+      e.preventDefault();
+      cellule.classList.add('indicatif-cell--dropzone');
+    });
+    cellule.addEventListener('dragleave', () => cellule.classList.remove('indicatif-cell--dropzone'));
+    cellule.addEventListener('drop', (e: DragEvent) => {
+      e.preventDefault();
+      cellule.classList.remove('indicatif-cell--dropzone');
+      if (groupeDeplace == null || besoinOrigineDeplace == null || besoinOrigineDeplace === besoinId) { return; }
+      const position = m.positionsGroupe.find((p) => p.Groupe === groupeDeplace && p.Besoin === besoinOrigineDeplace);
+      if (position) { m.deplacerPosition(position.id, besoinId); }
+    });
+
+    if (modeCible) {
+      cellule.addEventListener('click', () => executerCible(besoinId));
+    }
+
+    return cellule;
+  }
+
+  function selectionnerNouveauGroupe(besoinId: Id): void {
+    const id = m.creerGroupeSurBesoin(besoinId);
+    if (id === -1) { return; }
+    groupeSelectionne = id;
+    rafraichir();
+  }
+
+  function puceGroupe(ix: Index, groupe: Groupe, besoinId: Id): HTMLElement {
+    const equipe = ix.equipe.get(groupe.Equipe)!;
+    const places = placesDuGroupe(m, groupe.id);
+    const vide = places.every((p) => p.Benevole == null);
+    const incomplete = places.some((p) => p.Benevole == null);
+    const noms = places.map((p) => (p.Benevole != null ? courtNom(ix.benevole.get(p.Benevole)!.Nom) : '—')).join(' · ');
+
+    let ordre: number | null = null;
+    if (groupeSelectionne === groupe.id) {
+      const positions = positionsDuGroupe(m, ix, groupe.id);
+      if (positions.length > 1) { ordre = positions.findIndex((p) => p.besoin.id === besoinId) + 1; }
+    }
+
+    const chip = h('button', {
+      class: `groupe-chip${vide ? ' groupe-chip--vide' : ''}`
+        + `${groupeSelectionne === groupe.id ? ' groupe-chip--selectionnee' : ''}`
+        + `${groupeSelectionne != null && groupeSelectionne !== groupe.id ? ' groupe-chip--estompee' : ''}`
+        + `${incomplete ? ' groupe-chip--sous-effectif' : ''}`,
+      type: 'button',
+      draggable: 'true',
+      title: `${groupe.Code} · ${equipe.Nom}`,
+    },
+      h('span', {class: 'dot', style: {background: equipe.Couleur}}),
+      h('span', {class: 'groupe-chip__code mono'}, groupe.Code),
+      h('span', {class: 'groupe-chip__noms'}, noms),
+      ordre != null ? h('span', {class: 'groupe-chip__ordre'}, String(ordre)) : null,
+    );
+
+    chip.addEventListener('click', (e: Event) => {
+      e.stopPropagation();
+      if (modeCible) { return; }
+      groupeSelectionne = groupeSelectionne === groupe.id ? null : groupe.id;
+      rafraichir();
+    });
+    chip.addEventListener('dragstart', () => {
+      groupeDeplace = groupe.id;
+      besoinOrigineDeplace = besoinId;
+    });
+    chip.addEventListener('dragend', () => {
+      groupeDeplace = null;
+      besoinOrigineDeplace = null;
+    });
+
+    return chip;
+  }
+
+  // --- Panneau latéral : composition + trajectoire --------------------------
+
+  function panneauIndicatif(ix: Index, groupeId: Id): void {
+    const groupe = ix.groupe.get(groupeId)!;
+    const equipe = ix.equipe.get(groupe.Equipe)!;
+    const places = placesDuGroupe(m, groupeId);
+    const positions = positionsDuGroupe(m, ix, groupeId);
+    const tailleLibelle = groupe.Taille === 2 ? 'binôme' : groupe.Taille === 1 ? 'place seule' : `${groupe.Taille}-uplet`;
+
+    const panneau = h('div', {style: {display: 'flex', flexDirection: 'column', gap: '16px'}},
+      h('div', {class: 'side-panel__head'},
+        h('div', null,
+          h('h3', {class: 'mono'}, groupe.Code),
+          h('p', {class: 'topbar__subtitle'}, `${equipe.Nom} · ${tailleLibelle}`),
+        ),
+        h('button', {
+          class: 'btn btn--ghost btn--sm', type: 'button',
+          onclick: () => { groupeSelectionne = null; rafraichir(); },
+        }, 'Fermer'),
+      ),
+
+      h('div', null,
+        h('div', {class: 'section-title'}, h('h2', null, 'Composition')),
+        h('div', {class: 'card', style: {display: 'flex', flexDirection: 'column', gap: '6px'}},
+          ...places.map((place) => h('div', {class: 'membre'},
+            h('span', {class: 'rang mono'}, `#${place.Rang}`),
+            place.Benevole != null
+              ? h('span', {style: {flex: '1'}}, ix.benevole.get(place.Benevole)!.Nom)
+              : h('span', {style: {flex: '1', color: 'var(--text-faint)'}}, 'Non pourvue'),
+            h('button', {
+              class: 'btn btn--ghost btn--sm', type: 'button',
+              title: place.Verrouillee ? 'Déverrouiller' : 'Verrouiller',
+              onclick: () => m.basculerVerrouillage(place.id),
+            }, place.Verrouillee ? '🔒' : '🔓'),
           )),
         ),
-      ))),
+        h('p', {class: 'view__intro', style: {marginTop: '8px', marginBottom: '0'}},
+          "L'affectation des bénévoles se fait depuis la vue Missions — ici, une place se verrouille mais ne se pourvoit pas.",
+        ),
+      ),
+
+      h('div', null,
+        h('div', {class: 'section-title'},
+          h('h2', null, 'Trajectoire du jour'),
+          h('span', {class: 'count mono'}, String(positions.length)),
+        ),
+        positions.length === 0
+          ? h('p', {class: 'empty'}, "Pas encore positionné sur ce jour.")
+          : h('ol', {class: 'trajectoire-liste'}, ...positions.map(({position, besoin, sousCreneau}, i) => h(
+            'li', {class: 'trajectoire-etape'},
+            positions.length > 1 ? h('span', {class: 'trajectoire-etape__badge'}, String(i + 1)) : null,
+            h('span', {class: 'trajectoire-etape__info'},
+              h('span', {class: 'trajectoire-etape__mission'}, ix.mission.get(besoin.Mission)!.Nom),
+              h('span', {class: 'trajectoire-etape__creneau'}, sousCreneau.Libelle),
+            ),
+            h('button', {
+              class: 'btn btn--ghost btn--sm', type: 'button',
+              onclick: () => { modeCible = {groupeId, positionId: position.id, mode: 'deplacer'}; rafraichir(); },
+            }, 'Déplacer…'),
+          ))),
+        h('button', {
+          class: 'ajouter-binome', type: 'button', style: {opacity: '1', width: '100%', marginTop: '8px'},
+          onclick: () => { modeCible = {groupeId, positionId: null, mode: 'ajouter'}; rafraichir(); },
+        }, '+ Ajouter une position'),
+        h('p', {class: 'view__intro', style: {marginTop: '8px', marginBottom: '0'}},
+          'Glissez une puce vers une autre case du planning pour la repositionner directement.',
+        ),
+      ),
     );
+    ouvrirPanneau(panneau);
   }
 
-  function selecteurBesoinCible(groupeIdActuel: Id, positionId: Id, besoinActuelId: Id): Node {
-    const ix = indexer(m);
-    const groupe = ix.groupe.get(groupeIdActuel)!;
-    const dejaCouverts = new Set(positionsDuGroupe(m, ix, groupeIdActuel).map((p) => p.besoin.id));
-    const autresBesoins = m.besoins
-      .filter((b) => ix.mission.get(b.Mission)?.Equipe === groupe.Equipe && !dejaCouverts.has(b.id))
-      .sort((a, b) => ix.sousCreneau.get(a.Sous_creneau)!.Debut - ix.sousCreneau.get(b.Sous_creneau)!.Debut)
-      .slice(0, 60);
-    return h('select', {
-      class: 'select', style: {width: '100%', fontSize: '10.5px'},
-      onchange: (e: Event) => {
-        const v = Number((e.target as HTMLSelectElement).value);
-        if (v) { m.deplacerPosition(positionId, v); }
-      },
-    },
-      h('option', {value: String(besoinActuelId)}, 'Repositionner…'),
-      ...autresBesoins.map((b) => h('option', {value: String(b.id)},
-        `${ix.mission.get(b.Mission)!.Nom} — ${ix.sousCreneau.get(b.Sous_creneau)!.Libelle}`,
-      )),
-    );
+  function executerCible(besoinId: Id): void {
+    if (!modeCible) { return; }
+    const cible = modeCible;
+    modeCible = null;
+    if (cible.mode === 'deplacer' && cible.positionId != null) {
+      m.deplacerPosition(cible.positionId, besoinId);
+    } else {
+      m.ajouterPosition(cible.groupeId, besoinId);
+    }
+  }
+
+  function courtNom(nomComplet: string): string {
+    const parties = nomComplet.split(' ');
+    return parties.length < 2 ? nomComplet : `${parties[0]} ${parties[1]![0]}.`;
   }
 
   const desabonner = m.subscribe(rafraichir);
   rafraichir();
-  return desabonner;
+  return () => { desabonner(); fermerPanneau(); };
 }

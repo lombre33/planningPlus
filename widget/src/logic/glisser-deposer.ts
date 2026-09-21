@@ -73,6 +73,7 @@ export function verifierDepot(
 function cleAnomalie(a: Anomalie): string {
   switch (a.type) {
     case 'sous-effectif': return `sous-effectif:${a.besoin.id}`;
+    case 'sur-effectif': return `sur-effectif:${a.besoin.id}`;
     case 'souhait-refuse': return `souhait-refuse:${a.place.id}`;
     case 'indisponibilite': return `indisponibilite:${a.place.id}`;
     case 'conflit-artiste': return `conflit-artiste:${a.place.id}`;
