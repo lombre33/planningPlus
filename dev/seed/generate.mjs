@@ -501,6 +501,24 @@ export function genererFestival(options = {}) {
   });
   void partAffectees; // conservé en option publique, non utilisé par ce mécanisme de couverture
 
+  // --- Paramètres --------------------------------------------------------
+  // Une ligne par réglage (§5.4, §7.2) : rien de significatif ne vit hors du
+  // document. Les clés et leur valeur par défaut reprennent
+  // `PARAMETRES_PAR_DEFAUT` de `widget/src/moteur/types.ts` — voir
+  // `widget/src/grist/parametres.ts` pour la sérialisation détaillée.
+  const parametres = [
+    {Cle: 'heure_coupure_jour', Valeur: '6'},
+    {Cle: 'pas_secondes', Valeur: '900'},
+    {Cle: 'poids.conflit_artiste', Valeur: '-0.4'},
+    {Cle: 'poids.equite', Valeur: '0.15'},
+    {Cle: 'poids.affinite_ensemble', Valeur: '0.1'},
+    {Cle: 'poids.affinite_eviter', Valeur: '-0.1'},
+    {Cle: 'poids.equipe_correspond', Valeur: '0.1'},
+    {Cle: 'poids.souhait_mission.Réticent', Valeur: '-0.15'},
+    {Cle: 'poids.souhait_mission.Intéressé', Valeur: '0.2'},
+    {Cle: 'poids.souhait_mission.Souhaite fortement', Valeur: '0.35'},
+  ];
+
   // Les champs techniques préfixés d'un souligné ne partent pas dans Grist.
   const sansChampsInternes = (lignes) => lignes.map((ligne) =>
     Object.fromEntries(Object.entries(ligne).filter(([cle]) => !cle.startsWith('_'))));
@@ -520,6 +538,7 @@ export function genererFestival(options = {}) {
     Disponibilites: disponibilites,
     Souhaits_missions: souhaitsMissions,
     Affinites: affinites,
+    Parametres: parametres,
     Versions: [],
     Journal: [],
   };

@@ -134,6 +134,11 @@ export const TABLES = [
       {id: 'Effectif_min', type: 'Int', libelle: 'Effectif minimum'},
       {id: 'Effectif_max', type: 'Int', libelle: 'Effectif maximum'},
       {id: 'Taille_groupe', type: 'Int', libelle: 'Taille de groupe attendue'},
+      {
+        id: 'Libelle', type: 'Text', libelle: 'Libellé',
+        formule: "$Mission.Nom + ' — ' + $Sous_creneau.Libelle",
+        description: "Texte calculé, uniquement pour servir de visibleCol aux tables qui référencent un besoin (Positions_groupe) : Besoins n'a pas de colonne de nom naturelle (constaté en lecture native, §5.1).",
+      },
     ],
   },
 
@@ -155,7 +160,7 @@ export const TABLES = [
     description: "Positionne un groupe sur un besoin. Un même groupe peut être positionné sur plusieurs besoins, y compris sur des missions différentes d'un sous-créneau à l'autre : ce sont les missions qui tournent, pas les personnes.",
     colonnes: [
       {id: 'Groupe', type: 'Ref:Groupes', libelle: 'Groupe', visibleCol: 'Code'},
-      {id: 'Besoin', type: 'Ref:Besoins', libelle: 'Besoin'},
+      {id: 'Besoin', type: 'Ref:Besoins', libelle: 'Besoin', visibleCol: 'Libelle'},
     ],
   },
 
@@ -220,6 +225,16 @@ export const TABLES = [
       {id: 'Commentaire', type: 'Text', libelle: 'Commentaire'},
       {id: 'Instantane', type: 'Text', libelle: 'Instantané',
        description: "Données sérialisées. Seule donnée du document volontairement non lisible nativement."},
+    ],
+  },
+
+  {
+    id: 'Parametres',
+    libelle: 'Paramètres',
+    description: "Réglage ayant un effet sur le résultat de l'algorithme ou sur l'audit (§5.4, §7.2) : une ligne par clé, jamais dans le code du widget. Voir widget/src/grist/parametres.ts pour la liste des clés utilisées et leur signification.",
+    colonnes: [
+      {id: 'Cle', type: 'Text', libelle: 'Clé'},
+      {id: 'Valeur', type: 'Text', libelle: 'Valeur'},
     ],
   },
 

@@ -11,8 +11,13 @@ vrai document Grist, avec un jeu de données de festival réaliste.
   cahier des charges (§6) : équipes, lieux, bénévoles, missions, artistes,
   macro-créneaux, sous-créneaux, besoins, groupes (indicatifs), positions de
   groupe, places, disponibilités au quart d'heure, souhaits de mission,
-  affinités, plus `Versions`/`Journal` (créées vides — remplies par le widget
-  à l'usage, pas par le générateur).
+  affinités, `Parametres` (réglages ayant valeur d'audit — §5.4, §7.2 —
+  poids de l'algorithme et heure de coupure du jour de festival), plus
+  `Versions`/`Journal` (créées vides — remplies par le widget à l'usage, pas
+  par le générateur). `Besoins.Libelle` est une colonne formule (pas une
+  donnée du générateur) : Besoins n'a pas de nom naturel, elle sert
+  uniquement de `visibleCol` pour les tables qui le référencent
+  (`Positions_groupe.Besoin`) — voir « Pièges » ci-dessous.
 - `generate.mjs` tire un jeu de données déterministe (même graine → mêmes
   données) : festival de plusieurs jours, disponibilités et souhaits
   d'artiste au quart d'heure, des groupes positionnés sur plusieurs besoins
@@ -131,7 +136,72 @@ curl -b cookies.txt http://localhost:8484/api/profile/apikey  # la relit
   refuse un tableau JS brut pour une cellule ChoiceList : il faut le
   préfixer du code d'objet Grist `'L'` (`['L', 'a', 'b']`, pas `['a', 'b']`).
   Voir `listeGrist` dans `generate.mjs` et `GristObjCode.List` dans les
-  sources de grist-core (`app/plugin/GristData.ts`).
+  sources de grist-core (`app/plugin/GristData.ts`). Vérifié empiriquement :
+  cet encodage vaut aussi bien en écriture qu'en lecture (`fetchTable`/`/data`
+  renvoient `['L', ...]`, jamais un tableau nu) — voir `widget/src/grist/valeurs.ts`.
+  Les colonnes `Ref`/`Date`/`DateTime`, elles, se lisent et s'écrivent comme
+  de simples scalaires (identifiant de ligne, timestamp Unix en secondes),
+  sans encodage particulier — une `Ref` vide vaut `0`, jamais `null`.
+- **L'identifiant réel d'une table dérivé du titre casse aussi le widget, pas
+  seulement `seed.mjs`.** Le piège ci-dessus n'est pas qu'une curiosité de
+  `seed.mjs` : n'importe quel code qui parle au document — y compris le
+  widget lui-même, une fois chargé dans une vraie session Grist — ne peut pas
+  coder un identifiant de table en dur. Constaté en pratique sur le document
+  de test : `Positions_groupe` (id du schéma) vaut réellement
+  `Positions_de_groupe`, et `Souhaits_missions` vaut `Souhaits_de_mission`,
+  tous deux dérivés du *titre* de la table. Une action visant l'id du schéma
+  échoue côté sandbox Python (`KeyError '<id>'`) plutôt que d'échouer
+  clairement. `widget/src/grist/tables.ts` résout donc l'identifiant réel de
+  chaque table, une fois par session, par comparaison normalisée avec son
+  libellé plutôt que de faire confiance à l'id du schéma.
+- **Le `retValue` d'une action groupée porte un tableau, pas un id.** Le
+  résultat d'`applyUserActions` a une entrée par *action* envoyée, dans
+  l'ordre — pas une entrée par ligne. Pour un `AddRecord` simple, cette
+  entrée est directement le nouvel id. Pour un `BulkAddRecord` (plusieurs
+  lignes en une seule action), c'est le *tableau* des ids créés : le confondre
+  avec un `AddRecord` et déstructurer directement dessus envoie ensuite ce
+  tableau comme id de ligne à l'action suivante, qui échoue côté sandbox
+  (`TypeError: unhashable type: 'list'`). Voir le commentaire d'`appliquerActions`
+  dans `widget/src/grist/ecriture.ts`.
+
+## Couche d'accès Grist (`widget/src/grist/`)
+
+Lit et écrit `DonneesPlanning` (le modèle du moteur d'affectation,
+`widget/src/moteur/`) dans un vrai document Grist, via l'API du plugin
+(`window.grist.docApi`) :
+
+- `valeurs.ts` : encodage/décodage bas niveau des valeurs de cellule (`Ref`,
+  `ChoiceList`, scalaires), vérifié empiriquement contre une instance réelle.
+- `tables.ts` : résolution de l'identifiant réel de chaque table, voir
+  « Pièges » ci-dessus.
+- `lecture.ts` : tables Grist brutes → `DonneesPlanning` + lignes `Parametres`.
+- `ecriture.ts` : construit les `UserAction` (création de groupe, positions,
+  roster, disponibilités, verrouillage d'une place, réglages) et les envoie.
+  Portée volontairement limitée à ce que le widget doit pouvoir écrire selon
+  le cahier des charges (§5.4) : le reste (bénévoles, missions, structure
+  temporelle, ...) se saisit nativement dans Grist.
+- `parametres.ts` : sérialisation de `ParametresAlgorithme` et de l'heure de
+  coupure vers/depuis la table `Parametres` (une ligne par réglage scalaire,
+  pas un blob JSON — pour rester filtrable/triable nativement).
+
+`scripts/verifier-integration.ts` rejoue un aller-retour complet (écriture
+puis relecture) contre une vraie instance, avec les mêmes fonctions que le
+widget — pas une réimplémentation. À relancer après tout changement dans
+`widget/src/grist/` :
+
+```
+cd widget && npx vite-node scripts/verifier-integration.ts --doc=<id> --cle=<clé> --url=<url>
+# (ou GRIST_DOC_ID/GRIST_API_KEY/GRIST_URL dans l'environnement, comme dev/.env)
+```
+
+Vérification en profondeur (audit lisibilité native §5.1) : le 2026-09-21,
+ce script a été rejoué contre un document local fraîchement seedé, puis le
+résultat inspecté à l'œil dans l'UI Grist (capture d'écran via Playwright) —
+Groupes/Places/Disponibilités/Paramètres se lisent nativement (références en
+libellé, dates formatées, pas de code brut), et le tri comme le filtre natifs
+fonctionnent sur ces données (testé en vrai sur `Places`, colonnes `Score` et
+`Origine`). Voir aussi la colonne `Besoins.Libelle` plus haut, ajoutée après
+ce test.
 
 ## Widget (`widget/`)
 
@@ -145,7 +215,11 @@ comment la mettre à jour.
 
 `widget/src/main.ts` n'est qu'une sonde de connexion pour l'instant (liste
 les tables du document et leur nombre de lignes) : les vues métier viennent
-d'un autre fil, une fois la maquette validée.
+d'un autre fil, une fois la maquette validée. `widget/src/grist/` (couche
+d'accès, ci-dessus) et `widget/src/moteur/` (moteur d'affectation, cahier des
+charges §7) n'ont pas encore de fil qui les branche l'un à l'autre depuis une
+vraie vue : c'est ce branchement, plus les vues elles-mêmes, qui reste à
+faire une fois la maquette validée.
 
 Pour le tester en local : `npm run build` dans `widget/`, servir `dist/` en
 statique (`python3 -m http.server` par exemple), puis dans Grist : Add
