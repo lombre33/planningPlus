@@ -24,6 +24,11 @@ Les réponses seront reportées ici au fil de l'eau, sous chaque question.
 | 1.7 | Y a-t-il une exigence d'accessibilité formelle (RGAA) côté DINUM ? | Bonnes pratiques (contrastes, navigation clavier, libellés) sans audit RGAA formel en v1. |
 | 1.8 | Langue de l'interface : français uniquement, ou faut-il prévoir l'internationalisation ? | Français uniquement, mais textes centralisés pour permettre une traduction ultérieure. |
 
+**Réponse d'Antoine (2026-09-21) :**
+
+- **1.1** — Objectif explicite : rester générique, le cas festival n'est qu'un premier client. Son cas concret : **70 bénévoles, 5 jours de festival, 20 artistes, sous-créneaux d'1h ou 1h30, 3 équipes**. Le nombre de missions, de macro-créneaux et de sous-créneaux par macro n'est pas donné ; hypothèse retenue en attendant : festival de 5 jours avec 2 macro-créneaux par jour (10 au total), ~15 missions, sous-créneaux d'1h à 1h30 (donc 3 à 5 sous-créneaux par macro-créneau). À ajuster dès que le détail arrive, sans impact sur le modèle (ce sont des volumes, pas une structure).
+- **1.2** — Pas de contrainte particulière : Antoine a déjà l'expérience des widgets sur l'instance DINUM. Question retirée du chemin critique.
+
 ## 2. Temps et créneaux
 
 | # | Question | Défaut proposé |
@@ -37,6 +42,11 @@ Les réponses seront reportées ici au fil de l'eau, sous chaque question.
 | 2.7 | Y a-t-il des règles de repos : durée maximale de travail d'affilée, pause repas obligatoire, amplitude maximale par jour ? | Pas de règle dure en v1 ; la charge est traitée comme un objectif d'équité, pas comme une contrainte. |
 | 2.8 | Une mission est-elle ouverte sur tout le festival, ou seulement sur certaines plages (ex. le bar n'ouvre qu'à 18h) ? | Ouverture définie par les besoins créés : pas de besoin, pas de mission à cette heure-là. |
 | 2.9 | Fuseau horaire et changement d'heure : à gérer, ou toujours en heure locale ? | Heure locale, un seul fuseau, pas de bascule heure d'été pendant l'événement. |
+
+**Réponses d'Antoine (2026-09-21, via cartes de décision) :**
+
+- **2.2** — « Tolérée, signalée » : pas de partition stricte imposée, trous et chevauchements listés en anomalie.
+- **2.3** — « Communs, avec exceptions » : sous-créneaux communs par défaut au macro-créneau, une mission peut définir les siens si son rythme diffère.
 
 ## 3. Disponibilités et souhaits
 
@@ -53,6 +63,12 @@ Les réponses seront reportées ici au fil de l'eau, sous chaque question.
 | 3.9 | Faut-il gérer des affinités entre bénévoles (« X veut être avec Y », « ne pas mettre X avec Z ») ? | Oui, table `Affinites` prévue, traitée comme préférence de second rang. |
 | 3.10 | Un bénévole a-t-il un quota d'heures à réaliser (contrepartie d'un pass) ? Minimum, maximum ? | Un minimum et un maximum optionnels par bénévole, vides par défaut. |
 
+**Réponses d'Antoine (2026-09-21, via cartes de décision) :**
+
+- **3.1** — « Par quart d'heure » : stockage d'une ligne par bénévole et par quart d'heure plutôt que par intervalle, malgré le volume de lignes plus élevé (voir §6.4 du cahier des charges pour les conséquences sur le modèle et la volumétrie réelle avec 70 bénévoles).
+- **3.2** — « Indisponible » : confirmé, une case non renseignée vaut indisponible.
+- **3.4** — « Préférence forte » : confirmé, pas une interdiction absolue.
+
 ## 4. Missions et besoins
 
 | # | Question | Défaut proposé |
@@ -65,6 +81,10 @@ Les réponses seront reportées ici au fil de l'eau, sous chaque question.
 | 4.6 | Y a-t-il un rôle à l'intérieur d'une mission (un référent, un chef de poste) ? | Oui, porté par le rang 1 du groupe, avec un libellé de rôle optionnel. |
 | 4.7 | Faut-il gérer un lieu par mission, et la distance ou le temps de trajet entre lieux ? | Lieu oui, temps de trajet non en v1 (couvert par le battement global de 2.6). |
 | 4.8 | Une mission peut-elle être « au fil de l'eau » (effectif non fixe, renfort ponctuel) ? | Traitée comme une mission normale avec un minimum à 0 et un maximum élevé. |
+
+**Réponse d'Antoine (2026-09-21, via carte de décision) :**
+
+- **4.1** — « Par (mission, créneau) » : confirmé, c'était déjà le modèle proposé (table `Besoins`).
 
 ## 5. Équipes, groupes, binômes et dimension *n*
 
@@ -93,6 +113,10 @@ Les réponses seront reportées ici au fil de l'eau, sous chaque question.
 | 6.8 | Quel temps de calcul est acceptable pour un planning complet ? | Moins de 10 secondes dans le navigateur pour la volumétrie de 1.1. |
 | 6.9 | Faut-il pouvoir expliquer chaque affectation (« pourquoi elle ici ? ») et chaque impossibilité ? | Oui : score détaillé par affectation, cause explicite par place non pourvue. |
 | 6.10 | Peut-on lancer l'algorithme sur un périmètre restreint (un macro-créneau, une mission) plutôt que sur tout ? | Oui, le périmètre est un paramètre de lancement. |
+
+**Réponse d'Antoine (2026-09-21, via carte de décision) :**
+
+- **6.2** — « Sous-staffée » : à l'inverse du défaut proposé, on ne force jamais un bénévole sur une mission contre son souhait, même pour atteindre le minimum. Un besoin non couvert par manque de volontaires reste sous-staffé et remonte en anomalie. Reporté dans le cahier des charges §7.2 (l'objectif « missions souhaitées » passe devant l'objectif « couverture » en cas de conflit).
 
 ## 7. Jour J et ajustements
 
@@ -160,3 +184,7 @@ Les réponses seront reportées ici au fil de l'eau, sous chaque question.
 | 12.5 | Pour les tests : lancement en ligne de commande suffisant, ou faut-il aussi des tests de bout en bout dans un navigateur ? | Tests unitaires et d'intégration en ligne de commande, plus quelques tests de bout en bout sur les parcours critiques. |
 | 12.6 | Le document de tests demandé doit-il être un document lisible (markdown, cas par cas) en plus du code de test ? | Oui : un document lisible dans `docs/`, tenu en correspondance avec les tests automatisés. |
 | 12.7 | Faut-il une intégration continue GitHub Actions dès maintenant ? | Oui, dès les premiers développements : tests et analyse statique à chaque poussée. |
+
+**Réponse d'Antoine (2026-09-21) :**
+
+- **12.2** — Tranché : le code sera servi via **GitHub Pages**, référencé par son URL dans la configuration du custom widget Grist. Pas d'hébergement DINUM séparé prévu à ce stade ; la contrainte 12.3 (aucune requête réseau hors API Grist) s'applique telle quelle, GitHub Pages ne servant que des fichiers statiques.

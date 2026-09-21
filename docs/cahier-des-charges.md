@@ -126,12 +126,24 @@ le reste étant verrouillé ».
 | Table | Colonnes principales |
 | --- | --- |
 | `Macro_creneaux` | `Nom`, `Debut`, `Fin` |
-| `Sous_creneaux` | `Nom`, `Macro_creneau` (→), `Debut`, `Fin` |
+| `Sous_creneaux` | `Nom`, `Macro_creneau` (→), `Mission` (→, optionnel), `Debut`, `Fin` |
 
 Les bornes sont des date-heures alignées sur le quart d'heure. Le découpage au
 quart d'heure n'est pas matérialisé en base : il est dérivé des bornes au moment
 du calcul. Cela évite une table de plusieurs dizaines de milliers de lignes et
 garde les vues natives lisibles `[À CONFIRMER Q3.1]`.
+
+Par défaut, les sous-créneaux d'un macro-créneau sont communs à toutes les
+missions (une seule grille de rotation). La colonne `Mission` reste vide dans
+ce cas. Une mission dont le rythme diffère (rotation plus courte ou plus
+longue) peut définir ses propres sous-créneaux en la renseignant : ses
+sous-créneaux communs sont alors ignorés pour elle et remplacés par les
+siens. *(Décision Antoine, 2026-09-21 : « communs, avec exceptions ».)*
+
+Les sous-créneaux d'un même macro-créneau ne sont **pas** tenus de former une
+partition stricte : un trou ou un chevauchement n'est pas bloqué à la saisie,
+il est simplement remonté dans la vue anomalies pour correction. *(Décision
+Antoine, 2026-09-21 : « tolérée, signalée ».)*
 
 ### 6.3 Besoins et places
 
@@ -153,14 +165,23 @@ La généralisation binôme → trinôme → *n*-uplet est portée par la seule 
 
 | Table | Colonnes principales |
 | --- | --- |
-| `Disponibilites` | `Benevole` (→), `Debut`, `Fin`, `Statut` (Indisponible / Disponible / Souhaite voir artiste), `Artiste` (→, si applicable) |
+| `Disponibilites` | `Benevole` (→), `Quart_heure` (date-heure, début du quart), `Statut` (Indisponible / Disponible / Souhaite voir artiste), `Artiste` (→, si applicable) |
 | `Souhaits_missions` | `Benevole` (→), `Mission` (→), `Preference` (échelle, du refus au souhait fort) |
 | `Affinites` | `Benevole_A` (→), `Benevole_B` (→), `Type` (ensemble / éviter) |
 
-Le stockage par intervalles plutôt que par quart d'heure sert la contrainte A :
-une ligne « Marie, samedi 14h–18h, indisponible » est lisible, « Marie, samedi
-14h00–14h15 » × 16 ne l'est pas. La normalisation au quart d'heure est faite en
-mémoire par le widget `[À CONFIRMER Q3.1]`.
+Une ligne par bénévole et par quart d'heure. *(Décision Antoine, 2026-09-21 :
+stockage par quart d'heure plutôt que par intervalle.)* Pour l'ordre de
+grandeur donné (70 bénévoles, 5 jours), cela reste de l'ordre de 15 000 à
+20 000 lignes selon l'amplitude horaire couverte par jour — une table filtrable
+et triable par bénévole ou par date, donc encore raisonnable dans les vues
+natives Grist. Un formulaire ou une vue en grille (bénévole × quart d'heure)
+sera nécessaire côté widget pour que la saisie reste pratique malgré le volume
+de lignes ; c'est un des écrans à prévoir (voir §8, vue disponibilités).
+
+L'absence de ligne pour un bénévole sur un quart d'heure donné vaut
+**indisponible** : on n'affecte jamais quelqu'un par défaut, seule une
+disponibilité explicitement déclarée ouvre la possibilité d'une affectation.
+*(Décision Antoine, 2026-09-21.)*
 
 ### 6.5 Versions et traçabilité
 
@@ -187,11 +208,19 @@ elle sert à revenir à un état antérieur et à comparer deux planifications. 
 ### 7.2 Objectifs (pondérés, dans l'ordre demandé)
 
 1. **Couverture** : atteindre l'effectif minimum de chaque besoin, en pondérant
-   par la priorité de la mission.
+   par la priorité de la mission — **sans jamais y sacrifier l'objectif 3**
+   (voir ci-dessous). Un besoin qui ne peut être couvert qu'en affectant
+   quelqu'un contre son souhait reste sous-staffé plutôt que forcé ; c'est
+   remonté dans la vue anomalies, pas un échec silencieux. *(Décision Antoine,
+   2026-09-21 : « sous-staffée » plutôt que « forcer la mission ».)*
 2. **Disponibilité et artistes souhaités** : ne pas placer un bénévole sur un
-   quart d'heure où il a déclaré vouloir voir un artiste.
-3. **Missions souhaitées** : privilégier les missions que le bénévole souhaite,
-   éviter celles qu'il refuse.
+   quart d'heure où il a déclaré vouloir voir un artiste. Préférence très
+   forte mais non absolue : violable seulement si aucune autre solution
+   n'existe pour couvrir un besoin, et alors signalée. *(Décision Antoine,
+   2026-09-21 : « préférence forte », pas une interdiction absolue.)*
+3. **Missions souhaitées** : privilégier les missions que le bénévole
+   souhaite, ne jamais l'affecter à une mission qu'il a explicitement
+   écartée (voir objectif 1).
 4. **Équité** : répartir la charge et les créneaux ingrats
    `[À CONFIRMER Q6.3]`.
 5. **Continuité** : limiter le nombre de missions différentes par bénévole, et
