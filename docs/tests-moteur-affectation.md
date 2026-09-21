@@ -5,7 +5,8 @@ la détection d'anomalies et les opérations de correction manuelle décrites
 au §7.5 du [cahier des charges](cahier-des-charges.md). Pas les vues (fils
 « Maquette interactive » et « Interface d'affectation des bénévoles »).
 
-**Statut :** 71 tests, tous verts. `npm test` (vitest) et `npm run build`
+**Statut :** 76 tests dans `widget/src/moteur/` (144 pour `widget/` complet,
+UI comprise), tous verts. `npm test` (vitest) et `npm run build`
 (`tsc --noEmit` strict + build Vite) dans `widget/`.
 
 **Politique de mise à jour (NF7, demande d'Antoine 2026-09-21) :** cette
@@ -108,6 +109,7 @@ besoin sans aucun indicatif positionné... ».
 | Immutabilité : aucune fonction ne mute son entrée | `affectation.test.ts` « ne mute pas l'objet donnees d'origine... » (`appliquerPropositions`) |
 | Échelle réelle (70 bénévoles, 5 jours, 3 équipes — cas concret d'Antoine) | `integration-seed.test.ts`, données produites par `dev/seed/generate.mjs` (mêmes données que l'environnement de test Grist) : résolution sans erreur, anomalie volontaire du générateur bien détectée, temps d'exécution (indicatif, Node ≠ navigateur) très en-dessous de NF2 |
 | Planning partiel (parcours de construction incrémental, maquette interactive) : pourvoit ce qui peut l'être, laisse sous-staffé ce qui manque réellement de candidats, ignore une zone jamais positionnée | `affectation.test.ts` « reste utile sur un planning à moitié construit... » |
+| Robustesse sur planning creux ou déséquilibré (demande coordinateur, 2026-09-21, avant le premier vrai lancement par Antoine) : jamais d'exception, jamais de résultat vide sans explication | `affectation.test.ts` « ne plante jamais et ne renvoie jamais un résultat vide sans explication, même sans aucun bénévole » (besoin positionné, zéro bénévole dans tout le jeu de données, à côté de pans entiers du festival sans le moindre besoin créé) et « reste exploitable en pénurie globale... » (cinq besoins simultanés, un seul bénévole pour tous : un seul pourvu, les quatre autres sous-staffés et expliqués en anomalie, jamais de blocage) |
 
 ## Décisions de conception non triviales (pour l'audit, §5.2)
 
