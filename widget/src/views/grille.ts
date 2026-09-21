@@ -12,7 +12,7 @@ import {
 } from '../logic/derive';
 import {apercuEchange, verifierDepot} from '../logic/glisser-deposer';
 import type {Magasin} from '../store';
-import {fermerPanneau, h, ouvrirPanneau, vider} from '../ui/dom';
+import {fermerPanneau, h, icone, ICONES, ouvrirPanneau, vider} from '../ui/dom';
 
 export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
   let jourIndex = 0;
@@ -180,8 +180,12 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
   function ligneMembre(besoinId: Id, place: Place): Node {
     const ix = indexer(m);
     const benevole = place.Benevole != null ? ix.benevole.get(place.Benevole) : null;
+    const refuserVerrouillage = (): void => {
+      dernierMessage = {texte: 'Place verrouillée : déverrouillez-la avant de la modifier.', ton: 'danger'};
+      ouvrirDetailBesoin(besoinId);
+    };
     const ligne: HTMLElement = h('div', {
-      class: 'membre',
+      class: `membre${place.Verrouillee ? ' membre--verrouillee' : ''}`,
       draggable: benevole && !place.Verrouillee ? 'true' : 'false',
       ondragstart: benevole ? (e: Event) => {
         const dt = (e as DragEvent).dataTransfer;
@@ -207,14 +211,26 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
       benevole
         ? h('span', {style: {flex: '1'}}, benevole.Nom)
         : h('span', {style: {flex: '1', color: 'var(--text-faint)'}}, 'Place non pourvue — glissez un occupant ici, ou :'),
+      h('button', {
+        class: 'btn btn--ghost btn--sm', type: 'button',
+        title: place.Verrouillee ? 'Déverrouiller' : 'Verrouiller',
+        onclick: () => { m.basculerVerrouillage(place.id); ouvrirDetailBesoin(besoinId); },
+      }, icone(ICONES.cadenas)),
       benevole
         ? h('button', {
           class: 'btn btn--ghost btn--sm', type: 'button',
-          onclick: () => { m.assignerPlace(place.id, null); ouvrirDetailBesoin(besoinId); },
+          onclick: () => {
+            if (place.Verrouillee) { refuserVerrouillage(); return; }
+            m.assignerPlace(place.id, null);
+            ouvrirDetailBesoin(besoinId);
+          },
         }, 'Vider')
         : h('button', {
           class: 'btn btn--sm', type: 'button',
-          onclick: () => ouvrirChoixCandidat(besoinId, place),
+          onclick: () => {
+            if (place.Verrouillee) { refuserVerrouillage(); return; }
+            ouvrirChoixCandidat(besoinId, place);
+          },
         }, 'Affecter…'),
     );
     return ligne;
