@@ -227,6 +227,44 @@ button {
   height: 20px;
 }
 
+.rail__section {
+  width: calc(100% - 12px);
+  padding: 10px 6px 2px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.rail__section:first-of-type {
+  padding-top: 0;
+}
+
+/* Pastille de rang dans le parcours (§1.1), posée sur l'icône plutôt qu'à
+   côté : la numérotation reste lisible sans élargir la colonne. */
+.rail__icone {
+  position: relative;
+  display: inline-flex;
+}
+
+.rail__etape {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 2px;
+  border-radius: 999px;
+  background: var(--brand);
+  color: var(--brand-contrast);
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  line-height: 13px;
+  text-align: center;
+}
+
 .main {
   flex: 1 1 auto;
   min-width: 0;
@@ -1207,6 +1245,13 @@ table.grille .mission-cell .lieu {
   }
   .rail__brand { display: none; }
   .rail__item { flex-direction: row; width: auto; padding: 8px 10px; }
+  .rail__section {
+    width: auto;
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    white-space: nowrap;
+  }
 }
 
 .benevole-row {
@@ -1558,6 +1603,103 @@ table.grille .mission-cell .lieu {
   writing-mode: vertical-rl;
 }
 
+/* ---------- Tableau générique (bénévole, équipe, artistes) ---------- */
+
+.tableau-simple {
+  border-collapse: collapse;
+  width: 100%;
+  background: var(--surface);
+}
+
+.tableau-simple th, .tableau-simple td {
+  text-align: left;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px;
+}
+
+.tableau-simple thead th {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+/* ---------- Vue bénévole : feuille de route ---------- */
+
+.feuille-benevole__entete {
+  margin-bottom: 12px;
+}
+
+.feuille-benevole__entete h2 {
+  font-size: 18px;
+  margin-bottom: 2px;
+}
+
+.feuille-benevole__entete p {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  margin: 0;
+}
+
+.feuille-benevole__ligne--chevauche td {
+  background: var(--warn-tint);
+}
+
+.feuille-benevole__jour {
+  margin-bottom: 14px;
+  break-inside: avoid;
+}
+
+.feuille-benevole__jour-titre {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  margin: 10px 0 4px;
+}
+
+.benevole-row--actif {
+  border-color: var(--brand);
+}
+
+/* ---------- Impression ---------- */
+
+#zone-impression {
+  display: none;
+}
+
+@media print {
+  body.impression-active > :not(#zone-impression) {
+    display: none !important;
+  }
+
+  body.impression-active #zone-impression {
+    display: block;
+  }
+
+  .feuille-benevole {
+    break-after: page;
+    padding: 12mm 0 0;
+  }
+
+  .feuille-benevole:last-child {
+    break-after: auto;
+  }
+
+  .feuille-benevole .pill {
+    border: 1px solid currentColor;
+    background: none !important;
+  }
+
+  .tableau-simple th, .tableau-simple td {
+    padding: 4px 6px;
+    font-size: 11px;
+  }
+}
+
 /* ---------- Disponibilités (grille bénévoles × quart d'heure) ----------
    Utilise --accent-2 / --accent-2-tint pour l'état « veut voir un artiste »,
    une troisième teinte distincte de brand/ok/warn/danger. */
@@ -1711,6 +1853,23 @@ table.dispos-table td {
 .dispos-cellule--indisponible { background: var(--surface-muted); }
 .dispos-cellule--artiste { background: var(--accent-2-tint); }
 
+.contrainte-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: 5px;
+  border-radius: 50%;
+  font-size: 9px;
+  font-weight: 700;
+  cursor: help;
+  flex: 0 0 auto;
+}
+
+.contrainte-badge--danger { background: var(--danger-tint); color: var(--danger); }
+.contrainte-badge--warn { background: var(--warn-tint); color: var(--warn); }
+
 /* ---------- Terrain (où est chaque bénévole à l'instant t) ---------- */
 
 .terrain-barre {
@@ -1802,101 +1961,4 @@ table.dispos-table td {
 .terrain-effectif-ligne__lieu {
   color: var(--text-muted);
   font-size: 11.5px;
-}
-
-/* ---------- Tableau générique (bénévole, équipe, artistes) ---------- */
-
-.tableau-simple {
-  border-collapse: collapse;
-  width: 100%;
-  background: var(--surface);
-}
-
-.tableau-simple th, .tableau-simple td {
-  text-align: left;
-  padding: 7px 10px;
-  border-bottom: 1px solid var(--border);
-  font-size: 12.5px;
-}
-
-.tableau-simple thead th {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-}
-
-/* ---------- Vue bénévole : feuille de route ---------- */
-
-.feuille-benevole__entete {
-  margin-bottom: 12px;
-}
-
-.feuille-benevole__entete h2 {
-  font-size: 18px;
-  margin-bottom: 2px;
-}
-
-.feuille-benevole__entete p {
-  color: var(--text-muted);
-  font-size: 12.5px;
-  margin: 0;
-}
-
-.feuille-benevole__ligne--chevauche td {
-  background: var(--warn-tint);
-}
-
-.feuille-benevole__jour {
-  margin-bottom: 14px;
-  break-inside: avoid;
-}
-
-.feuille-benevole__jour-titre {
-  font-size: 13px;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  color: var(--text-muted);
-  margin: 10px 0 4px;
-}
-
-.benevole-row--actif {
-  border-color: var(--brand);
-}
-
-/* ---------- Impression ---------- */
-
-#zone-impression {
-  display: none;
-}
-
-@media print {
-  body.impression-active > :not(#zone-impression) {
-    display: none !important;
-  }
-
-  body.impression-active #zone-impression {
-    display: block;
-  }
-
-  .feuille-benevole {
-    break-after: page;
-    padding: 12mm 0 0;
-  }
-
-  .feuille-benevole:last-child {
-    break-after: auto;
-  }
-
-  .feuille-benevole .pill {
-    border: 1px solid currentColor;
-    background: none !important;
-  }
-
-  .tableau-simple th, .tableau-simple td {
-    padding: 4px 6px;
-    font-size: 11px;
-  }
 }
