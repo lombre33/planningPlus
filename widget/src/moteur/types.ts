@@ -140,8 +140,17 @@ export interface DonneesPlanning {
  * sont paramétrables, et le paramétrage est stocké dans le document pour
  * être audité et rejoué »). Toutes les valeurs sont des ajustements fins :
  * l'ORDRE de priorité (couverture > disponibilité/artiste > souhait mission
- * > équité > affinité) est, lui, une propriété structurelle de l'algorithme
- * et n'est pas paramétrable ici — le cahier des charges le fixe.
+ * > équipe > équité) est, lui, une propriété structurelle de l'algorithme et
+ * n'est pas paramétrable ici — le cahier des charges le fixe.
+ *
+ * `affiniteEnsemble`/`affiniteEviter` ne correspondent à AUCUN des six
+ * objectifs numérotés du §7.2 actuel : code écrit tôt en miroir de la table
+ * `Affinites` de `dev/seed/schema.mjs`, jamais confirmé par Antoine ni
+ * ajouté au cahier des charges — repéré et signalé le 2026-09-21 par le fil
+ * « Vues disponibilités et terrain ». À garder à l'esprit tant que la
+ * question posée à Antoine (garder ce score, ou s'en remettre entièrement
+ * au mécanisme des indicatifs comme le fait déjà l'objectif 6 pour la
+ * stabilité des binômes) n'est pas tranchée.
  */
 export interface ParametresAlgorithme {
   /** Granularité du planning, en secondes. 900 = quart d'heure. */
