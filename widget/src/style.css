@@ -298,6 +298,12 @@ button {
   white-space: nowrap;
 }
 
+.btn svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
 .btn:hover {
   border-color: var(--text-faint);
 }
@@ -768,9 +774,37 @@ table.grille .mission-cell .lieu {
 }
 
 .besoin-cell--vide {
+  position: relative;
   background: repeating-linear-gradient(
     45deg, transparent, transparent 6px, var(--bg) 6px, var(--bg) 7px
   );
+}
+
+/* Offre discrète pour créer un besoin sur une case volontairement vide :
+   la case hachurée reste l'état par défaut (aucune obligation, aucune
+   anomalie signalée), ce bouton n'est qu'un geste explicite en plus. */
+.besoin-cell__ajouter {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 30px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+  font-size: 15px;
+  line-height: 1;
+  opacity: 0.4;
+  transition: opacity .1s;
+}
+
+.besoin-cell__ajouter:hover,
+.besoin-cell__ajouter:focus-visible {
+  opacity: 1;
+  outline: 1px dashed var(--border);
+  outline-offset: -1px;
 }
 
 .besoin {
@@ -778,39 +812,94 @@ table.grille .mission-cell .lieu {
   cursor: pointer;
   box-sizing: border-box;
   width: 100%;
+  min-height: 30px;        /* cible de clic confortable même sur une ligne */
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  padding: 5px 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
+  padding: 4px 6px;        /* était 5px 6px : on ne rogne que le vertical */
+  display: flex;           /* était flex-direction: column (empilé) */
+  align-items: center;
+  flex-wrap: wrap;         /* ne s'enroule que si le contenu déborde */
+  gap: 3px 6px;             /* row-gap 3px, column-gap 6px */
+  color: var(--text-muted); /* discret par défaut : rien à signaler */
 }
 
 .besoin:hover { border-color: var(--text-faint); }
 .besoin:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
 
-.besoin--ok { background: var(--ok-tint); border-color: var(--ok); }
-.besoin--sous { background: var(--danger-tint); border-color: var(--danger); }
+/* "ok" : minimum atteint et tout pourvu → cellule neutre, comme le fond de
+   la grille. C'est le cas majoritaire un jour normal ; la garder neutre est
+   ce qui permet aux deux états suivants de sauter aux yeux sur ~9 colonnes
+   au lieu de noyer la grille dans une mer de vert. */
+.besoin--ok {
+  background: var(--surface-muted);
+  border-color: var(--border);
+}
+
+/* "partiel" : minimum atteint MAIS un indicatif déjà positionné a encore
+   une place vide (ex. binôme à 1/2) — statut déjà calculé par
+   couvertureBesoin, jusqu'ici écrasé par le binaire ok/sous. Ambre, même
+   recette que .pill--warn ailleurs dans l'appli : aucun nouveau contraste
+   à valider. */
+.besoin--partiel {
+  background: var(--warn-tint);
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+/* "sous" : seul état qui appelle une vraie action → bordure gauche épaissie
+   (même grammaire que .anomalie, donc cohérente avec le reste de l'appli)
+   et chiffre renforcé (couleur + taille) pour gagner le balayage visuel. */
+.besoin--sous {
+  background: var(--danger-tint);
+  border-color: var(--danger);
+  border-width: 1px 1px 1px 3px;
+  color: var(--danger);
+}
 
 .besoin__effectif {
   font-family: var(--font-mono);
   font-weight: 700;
   font-size: 12.5px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  /* pas de couleur propre : hérite de .besoin--ok/--partiel/--sous, donc le
+     chiffre "2/3" se colore tout seul selon l'état. */
+}
+
+.besoin--sous .besoin__effectif {
+  font-size: 14px; /* seul état où le chiffre grossit en plus de changer de couleur */
 }
 
 .besoin__groupes {
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
   gap: 3px;
+  flex: 1 1 auto;
+  min-width: 0; /* laisse les puces se comprimer/wrapper plutôt que forcer
+                    la cellule à s'élargir */
 }
 
 .chip-groupe {
   font-family: var(--font-mono);
   font-size: 9.5px;
   font-weight: 600;
+  line-height: 1.3;
   padding: 1px 5px;
   border-radius: 4px;
   color: #fff;
+  white-space: nowrap;
+}
+
+/* Cet indicatif précis a encore une place vide (donnée déjà calculée par
+   couvertureBesoin via g.places, jusqu'ici invisible) : liseré pointillé
+   --warn en overlay, qui ne touche pas au fond couleur d'équipe (l'identité
+   du badge reste une donnée, pas un statut). Un outline (et non un border)
+   pour ne jamais entrer en conflit avec le style inline qui pose la
+   couleur d'équipe. */
+.chip-groupe--incomplet {
+  outline: 1.5px dashed var(--warn);
+  outline-offset: 1px;
 }
 
 /* ---------- Anomalies ---------- */
@@ -1081,6 +1170,12 @@ table.grille .mission-cell .lieu {
 
 .membre select {
   flex: 1;
+}
+
+.membre--verrouillee {
+  background: var(--night-tint);
+  border-radius: var(--radius-sm);
+  padding-left: 4px;
 }
 
 /* ---------- Jour J ---------- */

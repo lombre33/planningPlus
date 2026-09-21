@@ -38,12 +38,15 @@ import {
 } from './eligibilite';
 import {detecterAnomalies} from './anomalies';
 import type {
+  Anomalie,
+  CandidatClasse,
   CandidatEligible,
   CauseNonPourvue,
   DonneesPlanning,
   Id,
   ParametresAlgorithme,
   Perimetre,
+  PrevisualisationDeplacement,
   PrioriteMission,
   Proposition,
   ResultatAffectation,
@@ -53,7 +56,7 @@ import {PARAMETRES_PAR_DEFAUT} from './types';
 /** Résout un périmètre en un ensemble de places non verrouillées concrètes. */
 function resoudrePerimetre(ctx: Contexte, perimetre: Perimetre | undefined): Set<Id> {
   const rienDeSpecifie = !perimetre
-    || (!perimetre.placeIds?.length && !perimetre.groupeIds?.length
+    || (!perimetre.placeIds?.length && !perimetre.groupeIds?.length && !perimetre.besoinIds?.length
       && !perimetre.missionIds?.length && !perimetre.macroCreneauIds?.length);
   if (rienDeSpecifie) {
     return new Set(ctx.donnees.places.filter((p) => !p.verrouillee).map((p) => p.id));
@@ -61,6 +64,12 @@ function resoudrePerimetre(ctx: Contexte, perimetre: Perimetre | undefined): Set
 
   const groupeIdsCibles = new Set<Id>(perimetre.groupeIds ?? []);
 
+  if (perimetre.besoinIds?.length) {
+    const besoinIdsCibles = new Set(perimetre.besoinIds);
+    for (const position of ctx.donnees.positionsGroupe) {
+      if (besoinIdsCibles.has(position.besoinId)) { groupeIdsCibles.add(position.groupeId); }
+    }
+  }
   if (perimetre.missionIds?.length) {
     const missionIdsCibles = new Set(perimetre.missionIds);
     for (const position of ctx.donnees.positionsGroupe) {
@@ -314,18 +323,23 @@ export function appliquerPropositions(donnees: DonneesPlanning, propositions: Pr
 }
 
 /**
- * Candidats classés pour la correction manuelle place par place (§7.5.3),
- * avec la même explication que l'algorithme. `placeIdCible`, si fournie et
- * déjà pourvue, libère son occupant actuel le temps du calcul, pour qu'il
- * apparaisse comme un candidat ordinaire plutôt que d'être exclu par sa
- * propre place.
+ * Tous les bénévoles classés pour une place, éligibles ou non (§7.5.3),
+ * avec la même explication que l'algorithme pour les éligibles et la raison
+ * du blocage pour les autres — Antoine veut voir les deux pour pouvoir
+ * forcer un cas impossible en connaissance de cause (`corrigerPlace` ne
+ * vérifie d'ailleurs aucune contrainte, exactement pour permettre ça).
+ * `placeIdCible`, si fournie et déjà pourvue, libère son occupant actuel le
+ * temps du calcul, pour qu'il apparaisse comme un candidat ordinaire plutôt
+ * que d'être exclu par sa propre place. Les éligibles arrivent en tête,
+ * triés par score décroissant ; les inéligibles suivent, triés par
+ * identifiant pour rester déterministes.
  */
-export function candidatsEligibles(
+export function classerCandidats(
   donnees: DonneesPlanning,
   groupeId: Id,
   placeIdCible?: Id,
   parametres: ParametresAlgorithme = PARAMETRES_PAR_DEFAUT,
-): CandidatEligible[] {
+): CandidatClasse[] {
   const ctx = construireContexte(donnees, parametres);
   const etat = construireEtatOccupation(ctx);
   if (placeIdCible != null) {
@@ -333,15 +347,25 @@ export function candidatsEligibles(
     if (place?.benevoleId != null) { liberer(etat, ctx, place.groupeId, place.benevoleId); }
   }
   const decisionsVides = new Map<Id, Id | null>();
-  const resultats: CandidatEligible[] = [];
+  const resultats: CandidatClasse[] = [];
   for (const benevole of donnees.benevoles) {
     const statut = evaluerEligibilite(ctx, etat, groupeId, benevole.id);
-    if (!statut.eligible) { continue; }
-    resultats.push(calculerScore(
-      ctx, etat, parametres, groupeId, benevole.id, statut.conflitArtiste, decisionsVides, placeIdCible ?? null,
-    ));
+    if (statut.eligible) {
+      const candidat = calculerScore(
+        ctx, etat, parametres, groupeId, benevole.id, statut.conflitArtiste, decisionsVides, placeIdCible ?? null,
+      );
+      resultats.push({
+        benevoleId: benevole.id, eligible: true, score: candidat.score, explication: candidat.explication, raison: null,
+      });
+    } else {
+      resultats.push({benevoleId: benevole.id, eligible: false, score: null, explication: null, raison: statut.raison});
+    }
   }
-  return resultats.sort((a, b) => b.score - a.score || a.benevoleId - b.benevoleId);
+  return resultats.sort((a, b) => {
+    if (a.eligible !== b.eligible) { return a.eligible ? -1 : 1; }
+    if (a.eligible) { return (b.score ?? 0) - (a.score ?? 0) || a.benevoleId - b.benevoleId; }
+    return a.benevoleId - b.benevoleId;
+  });
 }
 
 /**
@@ -388,4 +412,64 @@ export function perimetreAbsence(donnees: DonneesPlanning, benevoleId: Id): Peri
     .filter((place) => place.benevoleId === benevoleId && !place.verrouillee)
     .map((place) => place.id);
   return {placeIds};
+}
+
+/** Clé stable d'une anomalie, pour comparer deux listes (mêmes champs ⇒ même clé). */
+function cleAnomalie(a: Anomalie): string {
+  return JSON.stringify(a);
+}
+
+/**
+ * Aperçu, sans mutation, d'un glisser-déposer entre deux places (§7.3, §7.5).
+ * Si `placeCibleId` est déjà pourvue, échange les deux occupants ; sinon
+ * déplace simplement celui de `placeSourceId`. Refuse (`possible: false`) si
+ * l'une des deux places est verrouillée ou introuvable — un verrouillage
+ * protège contre tout mouvement, y compris manuel (§7.1). N'écrit rien :
+ * pour appliquer réellement, l'appelant doit committer chaque place avec
+ * `corrigerPlace` une fois l'aperçu validé.
+ */
+export function previsualiserDeplacement(
+  donnees: DonneesPlanning,
+  placeSourceId: Id,
+  placeCibleId: Id,
+  parametres: ParametresAlgorithme = PARAMETRES_PAR_DEFAUT,
+): PrevisualisationDeplacement {
+  const anomaliesAvant = detecterAnomalies(donnees, parametres);
+  const source = donnees.places.find((p) => p.id === placeSourceId);
+  const cible = donnees.places.find((p) => p.id === placeCibleId);
+
+  if (!source || !cible) {
+    return {
+      possible: false, raisonImpossible: 'place_introuvable', donneesApres: donnees,
+      anomaliesAvant, anomaliesApres: anomaliesAvant, anomaliesCreees: [], anomaliesResolues: [],
+    };
+  }
+  if (source.verrouillee || cible.verrouillee) {
+    return {
+      possible: false, raisonImpossible: 'place_verrouillee', donneesApres: donnees,
+      anomaliesAvant, anomaliesApres: anomaliesAvant, anomaliesCreees: [], anomaliesResolues: [],
+    };
+  }
+
+  const benevoleSource = source.benevoleId;
+  const benevoleCible = cible.benevoleId;
+  const places = donnees.places.map((place) => {
+    if (place.id === placeSourceId) { return {...place, benevoleId: benevoleCible}; }
+    if (place.id === placeCibleId) { return {...place, benevoleId: benevoleSource}; }
+    return place;
+  });
+  const donneesApres = {...donnees, places};
+  const anomaliesApres = detecterAnomalies(donneesApres, parametres);
+
+  const clesAvant = new Set(anomaliesAvant.map(cleAnomalie));
+  const clesApres = new Set(anomaliesApres.map(cleAnomalie));
+
+  return {
+    possible: true,
+    donneesApres,
+    anomaliesAvant,
+    anomaliesApres,
+    anomaliesCreees: anomaliesApres.filter((a) => !clesAvant.has(cleAnomalie(a))),
+    anomaliesResolues: anomaliesAvant.filter((a) => !clesApres.has(cleAnomalie(a))),
+  };
 }

@@ -140,8 +140,17 @@ export interface DonneesPlanning {
  * sont paramétrables, et le paramétrage est stocké dans le document pour
  * être audité et rejoué »). Toutes les valeurs sont des ajustements fins :
  * l'ORDRE de priorité (couverture > disponibilité/artiste > souhait mission
- * > équité > affinité) est, lui, une propriété structurelle de l'algorithme
- * et n'est pas paramétrable ici — le cahier des charges le fixe.
+ * > équipe > équité) est, lui, une propriété structurelle de l'algorithme et
+ * n'est pas paramétrable ici — le cahier des charges le fixe.
+ *
+ * `affiniteEnsemble`/`affiniteEviter` ne correspondent à AUCUN des six
+ * objectifs numérotés du §7.2 actuel : code écrit tôt en miroir de la table
+ * `Affinites` de `dev/seed/schema.mjs`, jamais confirmé par Antoine ni
+ * ajouté au cahier des charges — repéré et signalé le 2026-09-21 par le fil
+ * « Vues disponibilités et terrain ». À garder à l'esprit tant que la
+ * question posée à Antoine (garder ce score, ou s'en remettre entièrement
+ * au mécanisme des indicatifs comme le fait déjà l'objectif 6 pour la
+ * stabilité des binômes) n'est pas tranchée.
  */
 export interface ParametresAlgorithme {
   /** Granularité du planning, en secondes. 900 = quart d'heure. */
@@ -267,12 +276,13 @@ export interface ResultatAffectation {
  * Périmètre d'une résolution partielle (contrainte C, §7.5 point 1 : « tout
  * le planning ou un périmètre choisi — une mission, un macro-créneau »).
  * Tous les critères renseignés se combinent en union ; une place appartient
- * au périmètre dès qu'elle correspond à l'un d'eux. Omettre les quatre
- * revient à un périmètre complet (toutes les places non verrouillées).
+ * au périmètre dès qu'elle correspond à l'un d'eux. Omettre les cinq revient
+ * à un périmètre complet (toutes les places non verrouillées).
  */
 export interface Perimetre {
   placeIds?: Id[];
   groupeIds?: Id[];
+  besoinIds?: Id[];
   missionIds?: Id[];
   macroCreneauIds?: Id[];
 }
@@ -300,4 +310,48 @@ export interface CandidatEligible {
   benevoleId: Id;
   score: number;
   explication: ExplicationScore;
+}
+
+/** Pourquoi un candidat n'est pas éligible (§7.1, une contrainte dure). */
+export type RaisonInEligibilite =
+  | 'statut_absent'
+  | 'competence_manquante'
+  | 'refus_mission'
+  | 'deja_occupe'
+  | 'indisponible';
+
+/**
+ * Un candidat classé pour une place, éligible ou non (§7.5.3 : Antoine veut
+ * voir aussi les inéligibles, avec leur raison, pour pouvoir forcer un cas
+ * impossible en connaissance de cause — `corrigerPlace` ne vérifie
+ * d'ailleurs aucune contrainte, exactement pour permettre ça). Les
+ * candidats éligibles arrivent en tête, triés par score décroissant.
+ */
+export interface CandidatClasse {
+  benevoleId: Id;
+  eligible: boolean;
+  /** Non `null` seulement si `eligible` est vrai. */
+  score: number | null;
+  /** Non `null` seulement si `eligible` est vrai. */
+  explication: ExplicationScore | null;
+  /** Non `null` seulement si `eligible` est faux. */
+  raison: RaisonInEligibilite | null;
+}
+
+/**
+ * Aperçu, sans mutation, d'un déplacement ou d'un échange entre deux places
+ * (glisser-déposer, §7.3 : un aperçu se valide avant application). Si
+ * `placeCibleId` est déjà pourvue, c'est un échange des deux occupants ;
+ * sinon un simple déplacement. Ne fait rien si l'une des deux places est
+ * verrouillée (`possible: false`) — un verrouillage protège toujours contre
+ * n'importe quel mouvement, y compris manuel (§7.1).
+ */
+export interface PrevisualisationDeplacement {
+  possible: boolean;
+  raisonImpossible?: 'place_verrouillee' | 'place_introuvable';
+  donneesApres: DonneesPlanning;
+  anomaliesAvant: Anomalie[];
+  anomaliesApres: Anomalie[];
+  anomaliesCreees: Anomalie[];
+  anomaliesResolues: Anomalie[];
 }

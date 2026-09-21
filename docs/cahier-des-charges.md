@@ -1,10 +1,10 @@
 # PlanningPlus — Cahier des charges
 
-**Version :** v1.1 (intègre les retours sur la première maquette, 2026-09-21)
-**Statut :** structure et règles en grande partie validées ; le mécanisme
-d'indicatifs (§6.3) et le parcours d'affectation/correction (§7.5) restent à
-valider sur une maquette refaite — la première a été jugée inutilisable à
-l'usage
+**Version :** v1.4 (double engagement distingué du chevauchement de créneaux,
+persistance et accès concurrent explicités, 2026-09-21)
+**Statut :** structure et règles validées, y compris le mécanisme
+d'indicatifs (§6.3) et le parcours d'affectation et de correction (§7.5),
+maquettés l'un et l'autre
 **Dernière mise à jour :** 2026-09-21
 
 > Les décisions issues du cadrage sont annotées *(Décision Antoine,
@@ -35,6 +35,29 @@ Le cas d'usage pilote est l'organisation des bénévoles d'un festival :
 
 L'outil doit rester générique : le cas festival est le premier client, pas le
 seul horizon.
+
+### 1.1 Parcours utilisateur de référence
+
+*(Défini par Antoine, 2026-09-21 — la lecture de référence pour comprendre à
+quoi sert l'outil, avant même la liste des vues au §8.)*
+
+1. **Macro-créneaux** — les définir facilement, avec une interface soignée
+   (§6.2, vue Agenda au §8).
+2. **Sous-créneaux et missions** — les définir, y compris en laissant des
+   zones vides : on n'est jamais obligé de couvrir toute la durée d'un
+   macro-créneau, ni de créer un besoin pour chaque mission sur chaque
+   sous-créneau. Une zone laissée vide n'est pas une anomalie (§6.2, §6.3,
+   §7.4).
+3. **Indicatifs** — positionner les binômes (ou plus) sur les besoins créés
+   (§6.3).
+4. **Disponibilités et contraintes** — consulter les disponibilités et les
+   souhaits déclarés par les bénévoles (§6.4).
+5. **Algorithme** — le lancer pour qu'il répartisse les bénévoles sur les
+   indicatifs positionnés (§7).
+
+Toute correction manuelle ultérieure (§7.5) s'inscrit dans ce même parcours,
+sans en sortir : elle ajuste le résultat de l'étape 5 sans revenir sur les
+étapes 1 à 4.
 
 ## 2. Objectifs mesurables
 
@@ -120,9 +143,44 @@ Un changement d'affectation ne doit jamais imposer de recalcul global. Le moteur
 doit savoir résoudre un sous-problème borné : « repourvoir ces *k* places, tout
 le reste étant verrouillé ».
 
-## 6. Modèle de données proposé (v0)
+### 5.4 Persistance et accès concurrent (précision du 2026-09-21)
 
-> Proposition à valider. Les noms de tables et de colonnes sont provisoires.
+Répond à une exigence du message d'ouverture d'Antoine — « il faut pouvoir
+sauvegarder, dans une table/colonne dédiée sur Grist » — qui découlait déjà
+des contraintes A et B mais n'avait pas été rassemblée en un seul endroit.
+
+- **Une seule source de vérité : le document Grist.** Le widget n'a ni base de
+  données ni serveur à lui (cohérent avec la contrainte B : hébergement
+  statique GitHub Pages, aucun appel réseau hors API Grist). Tout ce qui doit
+  survivre à la fermeture du navigateur, ou être visible depuis un autre
+  poste, est écrit dans une table Grist via l'API du plugin — le planning
+  (§6) bien sûr, mais aussi l'état de travail du widget qui a une valeur
+  d'audit ou de reproductibilité : verrouillages (`Places.Verrouillee`, déjà
+  une colonne native, §6.3), paramétrage de l'algorithme (`Parametres`,
+  §7.2), heure de coupure du jour de festival (§3, §6.2).
+- **Ce qui peut rester dans le navigateur.** Seules les préférences
+  d'affichage sans conséquence sur le planning ou sur l'audit (colonnes
+  visibles, onglet ouvert, filtre courant) peuvent vivre en stockage local du
+  navigateur ; leur perte au changement de poste est sans gravité,
+  contrairement à tout ce qui précède.
+- **Accès concurrent.** La coordination est le seul point d'écriture du
+  planning (§4) : les cheffes d'équipe consultent et signalent mais n'écrivent
+  jamais dans les mêmes données, ce qui évite par construction le cas de
+  conflit le plus visible — une cheffe d'équipe qui consulte pendant qu'on
+  réaffecte (§4, décision « consultent, signalent »). Le risque résiduel,
+  propre à la coordination elle-même — une correction manuelle et un recalcul
+  d'algorithme qui se chevauchent dans le temps — est déjà couvert par le
+  mécanisme du §7.3 : le recalcul ne touche jamais une place verrouillée, et
+  toute proposition (y compris une permutation le jour J) est présentée en
+  aperçu avant validation plutôt qu'appliquée directement. Grist gère
+  lui-même la synchronisation des écritures concurrentes au niveau du
+  document ; ce point n'appelle pas de mécanisme supplémentaire pour la v1.
+
+## 6. Modèle de données
+
+> Noms de tables et de colonnes provisoires. La structure a été éprouvée par
+> la maquette (§6.2 et §6.3 notamment) ; ce qui reste ouvert est signalé au
+> fil du texte, section par section, plutôt que par un statut global.
 
 ### 6.1 Référentiel
 
@@ -153,9 +211,27 @@ sous-créneaux communs sont alors ignorés pour elle et remplacés par les
 siens. *(Décision Antoine, 2026-09-21 : « communs, avec exceptions ».)*
 
 Les sous-créneaux d'un même macro-créneau ne sont **pas** tenus de former une
-partition stricte : un trou ou un chevauchement n'est pas bloqué à la saisie,
-il est simplement remonté dans la vue anomalies pour correction. *(Décision
-Antoine, 2026-09-21 : « tolérée, signalée ».)*
+partition stricte. *(Décision Antoine, 2026-09-21 : « tolérée, signalée ».)*
+Cette tolérance recouvre deux cas bien distincts, précisés le 2026-09-21 après
+un premier passage trop large :
+
+- un **trou** (aucun sous-créneau sur une partie du macro-créneau) est un état
+  normal et volontaire — rien ne se passe à 4h du matin — jamais bloqué et
+  jamais signalé ; ce n'est pas une anomalie (voir aussi §7.4) ;
+- un **chevauchement** (deux sous-créneaux qui se recouvrent dans le temps,
+  au sein du même macro-créneau) n'est pas bloqué à la saisie non plus, mais
+  reste, lui, remonté dans la vue anomalies pour correction : le plus souvent
+  une erreur de saisie (bornes mal ajustées), mais possiblement un choix
+  volontaire (deux missions dont les rythmes de rotation diffèrent, §6.2 plus
+  haut), d'où « à surveiller » et non bloquant.
+
+**À ne pas confondre avec un double engagement (§7.1, §7.4).** Un
+chevauchement de sous-créneaux est une propriété de la *structure* du planning
+(deux tranches horaires qui se recouvrent) ; il n'implique pas qu'un bénévole
+soit affecté aux deux à la fois. Le double engagement d'un bénévole — la même
+personne sur deux places dont les quarts d'heure se recouvrent — est une
+question d'*affectation*, traitée comme une contrainte dure de l'algorithme
+(§7.1) et cataloguée séparément (§7.4, anomalie « Double engagement »).
 
 **Franchissement de minuit (règle explicitée le 2026-09-21, suite à un cas
 rencontré sur la maquette).** Une soirée de festival qui va de 22h à 2h le
@@ -193,6 +269,15 @@ jamais scindé entre deux jours d'affichage.
 | `Groupes` | `Code` (indicatif, ex. « Beta12 »), `Taille`, `Equipe` (→) |
 | `Positions_groupe` | `Groupe` (→), `Besoin` (→) |
 | `Places` | `Groupe` (→), `Rang` (1..*n*), `Benevole` (→), `Origine` (algorithme / manuel), `Verrouillee` (booléen), `Score` |
+
+**Zone volontairement vide (précision du 2026-09-21, voir aussi §1.1 et §6.2).**
+Un `Besoin` n'existe que s'il a été créé délibérément pour un couple (mission,
+sous-créneau) : il n'y a pas de ligne « à zéro » générée par défaut. L'absence
+de `Besoin` signifie simplement qu'aucune personne n'est requise à cet endroit
+— ce n'est jamais une anomalie et ça ne doit jamais apparaître dans le
+catalogue du §7.4. Ce n'est qu'une fois un `Besoin` créé que son effectif
+minimum peut, ou non, être atteint (voir « Sous-effectif », juste en dessous,
+et §7.4).
 
 **Dimensionnement par défaut d'un besoin (décision Antoine, 2026-09-21).** À la
 création, un besoin reçoit un seul binôme (un `Groupe` de `Taille` 2, positionné
@@ -235,27 +320,21 @@ dans Grist (par mission, par équipe, par bénévole ou par créneau).
 La généralisation binôme → trinôme → *n*-uplet est portée par la seule colonne
 `Taille` : aucune structure n'est spécifique à la taille 2.
 
-*Point ouvert, toujours en attente de validation (mise à jour du
-2026-09-21).* La première maquette a implémenté ce mécanisme fidèlement (vue
-Indicatifs : un indicatif, sa trajectoire sur plusieurs missions, un
-repositionnement qui ne touche qu'une ligne de `Positions_groupe`). Antoine a
-jugé cette vue catastrophique et inutilisable — un verdict sur l'interface,
-pas sur le modèle : il n'a pas remis en cause la séparation `Groupes` /
-`Positions_groupe` / `Places`. Le §6.3 reste donc non validé, dans l'attente
-d'une maquette refaite qui permette de le tester pour de vrai.
-
-*Éprouvé à la construction (2026-09-21, à confirmer par Antoine).* En
-reconstruisant la vue, le fil maquette rapporte que la séparation tient à
-l'usage : déplacer un indicatif d'une case à une autre ne touche toujours
-qu'une seule ligne de `Positions_groupe`, sans rien recalculer d'autre. Son
-diagnostic sur la première version : le problème venait de l'interface, qui
-exposait les indicatifs dans une liste déconnectée du planning, pas de la
-séparation elle-même. La nouvelle version les montre directement dans la
-grille missions × sous-créneaux et y surligne la trajectoire d'un indicatif.
-C'est une observation de construction, pas le verdict d'Antoine — qui n'a pas
-encore vu cette version — donc le statut « non validé » ci-dessus reste
-inchangé tant qu'il ne s'est pas prononcé sur le lien unique republié par le
-fil maquette.
+**Mécanisme validé (Antoine, 2026-09-21).** La première maquette avait
+implémenté ce mécanisme fidèlement (vue Indicatifs : un indicatif, sa
+trajectoire sur plusieurs missions, un repositionnement qui ne touche qu'une
+ligne de `Positions_groupe`), mais Antoine avait jugé cette première vue
+catastrophique et inutilisable — un verdict sur l'interface, pas sur le
+modèle. En reconstruisant la vue, le fil maquette a rapporté que la
+séparation tenait à l'usage (le déplacement d'un indicatif ne touche
+toujours qu'une ligne) et que le vrai problème était l'interface, qui
+exposait les indicatifs dans une liste déconnectée du planning plutôt que
+dans la grille missions × sous-créneaux. Une fois cette interface refaite,
+Antoine a confirmé explicitement, par carte de décision, que le
+fonctionnement correspond à ce qu'il veut. Le §6.3 est donc validé : la
+séparation `Groupes` / `Positions_groupe` / `Places` et le principe « les
+missions tournent, pas les personnes » sont acquis pour la suite du
+développement.
 
 ### 6.4 Préférences des bénévoles
 
@@ -285,18 +364,23 @@ disponibilité explicitement déclarée ouvre la possibilité d'une affectation.
 | --- | --- |
 | `Versions` | `Nom`, `Date`, `Auteur`, `Commentaire`, `Instantane` (données sérialisées) |
 | `Journal` | `Date`, `Auteur`, `Action`, `Place` (→), `Avant`, `Apres`, `Motif` |
+| `Parametres` | `Cle`, `Valeur` (ordre et poids des objectifs du §7.2, heure de coupure du jour de festival du §6.2, etc. — voir §5.4) |
 
 `Versions.Instantane` est la seule donnée volontairement non lisible nativement ;
 elle sert à revenir à un état antérieur et à comparer deux planifications. Le
 `Journal` reste, lui, parfaitement lisible : une ligne = une modification,
-qui, quand, avant/après et pourquoi.
+qui, quand, avant/après et pourquoi. `Parametres` est la table qui porte tout
+réglage ayant un effet sur le résultat ou sur l'audit ; c'est elle qui rend
+explicite la règle du §5.4 (rien de significatif ne vit hors du document).
 
 ## 7. Principes de l'algorithme d'affectation
 
 ### 7.1 Contraintes dures (jamais violées)
 
 1. Un bénévole n'occupe qu'une place à la fois : pas de recouvrement, au quart
-   d'heure près.
+   d'heure près (anomalie « Double engagement » si violée malgré tout, §7.4 —
+   à distinguer d'un chevauchement de sous-créneaux, qui est une question de
+   structure et non d'affectation, §6.2).
 2. Un bénévole n'est affecté que sur des quarts d'heure où il est disponible.
 3. Les compétences requises par la mission sont détenues par le bénévole.
 4. Une affectation verrouillée n'est jamais déplacée.
@@ -321,14 +405,25 @@ plutôt que d'être bloqué. Décision Antoine, 2026-09-21 ; voir §6.3 et §7.4
 3. **Missions souhaitées** : privilégier les missions que le bénévole
    souhaite, ne jamais l'affecter à une mission qu'il a explicitement
    écartée (voir objectif 1).
-4. **Équité** : équilibrer le nombre d'heures et la répartition des missions
+4. **Équipe** : à égalité sur les critères précédents, préférer un bénévole de
+   la même équipe que le groupe/indicatif à couvrir. Jamais un blocage : un
+   bénévole hors équipe reste éligible, et c'est même souhaitable s'il
+   correspond mieux aux objectifs 1 à 3 ou si personne de l'équipe n'est
+   disponible. *(Décision Antoine, 2026-09-21, question 5.2 : « toléré si
+   besoin » plutôt qu'une contrainte dure. Ce point comblait un trou du
+   document — la règle était appliquée sans être écrite ici ; le fil
+   Algorithme d'affectation en a demandé confirmation à Antoine dans son
+   propre fil, à recouper si sa réponse nuance celle-ci.)*
+5. **Équité** : équilibrer le nombre d'heures et la répartition des missions
    marquées « pénibles » entre bénévoles.
-5. **Continuité** : limiter le nombre de missions différentes par bénévole. Ne
+6. **Continuité** : limiter le nombre de missions différentes par bénévole. Ne
    s'applique plus à la stabilité des binômes, portée nativement par le
    mécanisme des indicatifs (§6.3) plutôt que par un objectif d'algorithme.
 
 L'ordre et les poids relatifs sont paramétrables, et le paramétrage est stocké
-dans le document pour être audité et rejoué.
+dans le document pour être audité et rejoué, dans une table dédiée
+(`Parametres` : `Cle`, `Valeur` — voir aussi §5.4) plutôt que dans le code du
+widget, pour rester visible et modifiable sans déploiement.
 
 ### 7.3 Propriétés attendues
 
@@ -349,32 +444,63 @@ dans le document pour être audité et rejoué.
 
 La première maquette a implémenté cinq types d'anomalies ; le retour
 d'Antoine en ajoute un sixième (sur-effectif) et confirme un septième déjà
-décidé mais pas encore construit (chevauchement, §6.2). Deux niveaux de
-gravité, repris tels quels de la maquette : **à corriger** (une règle a été
-violée, ce qui ne devrait arriver que par une correction manuelle qui l'a
-introduite) et **à surveiller** (un état normal du système, à regarder mais
-jamais bloquant).
+décidé mais pas encore construit (chevauchement, §6.2). Un huitième, le double
+engagement, était déjà une contrainte dure de l'algorithme (§7.1) sans avoir
+son entrée ici — comblé le 2026-09-21 après une divergence entre les fils
+Algorithme et Interface d'affectation sur ce que « chevauchement » recouvrait
+(voir la note sous le tableau). Deux niveaux de gravité, repris tels quels de
+la maquette : **à corriger** (une règle a été violée, ce qui ne devrait
+arriver que par une correction manuelle qui l'a introduite) et **à
+surveiller** (un état normal du système, à regarder mais jamais bloquant).
 
 | Type | Gravité | Déclencheur |
 | --- | --- | --- |
 | Sous-effectif | À corriger | Le besoin n'atteint pas son effectif minimum (§7.2 : jamais forcé contre un souhait). |
 | Souhait refusé | À corriger | Un bénévole occupe une place sur une mission qu'il a explicitement refusée. |
 | Indisponibilité | À corriger | Un bénévole occupe une place sur un quart d'heure où il est indisponible. |
+| Double engagement | À corriger | Un bénévole occupe deux places dont les quarts d'heure se recouvrent (§7.1, règle 1). Ne devrait survenir que par une édition directe des tables Grist, hors du widget — l'interface d'affectation le refuse déjà à la saisie. |
 | Sur-effectif | À surveiller | Le besoin dépasse son effectif maximum. *(Nouveau, décision Antoine, 2026-09-21 : n'est plus bloqué, voir §6.3.)* |
 | Conflit artiste | À surveiller | Un bénévole occupe une place pendant le passage d'un artiste qu'il veut voir (préférence forte violée en dernier recours, §7.2). |
-| Chevauchement de créneaux | À surveiller | Deux sous-créneaux d'un même macro-créneau se chevauchent (§6.2). Décidé, pas encore construit dans la première maquette. |
+| Chevauchement de créneaux | À surveiller | Deux sous-créneaux d'un même macro-créneau se chevauchent dans le temps (§6.2) — indépendamment de qui est affecté dessus. Décidé, pas encore construit dans la première maquette. |
 | Hors quota | À surveiller | Un bénévole dépasse son quota d'heures maximum. |
 
 Cette liste s'enrichira avec le développement, mais le principe reste le même
-pour toute nouvelle anomalie : signaler plutôt que bloquer, sauf les trois
+pour toute nouvelle anomalie : signaler plutôt que bloquer, sauf les quatre
 premières qui signent une vraie violation de règle.
+
+**Chevauchement de créneaux vs double engagement (précision du 2026-09-21,
+demandée par les fils Algorithme et Interface d'affectation).** Ce sont deux
+choses différentes, à garder comme deux entrées distinctes dans ce catalogue
+et dans toute union de types côté code :
+
+- **Chevauchement de créneaux** porte sur la *structure* du planning (deux
+  `Sous_creneaux` qui se recouvrent dans le temps) ; il n'implique rien sur
+  qui est affecté dessus, et peut être volontaire (§6.2).
+- **Double engagement** porte sur l'*affectation* (un bénévole sur deux
+  places qui se recouvrent) ; c'est toujours une erreur, jamais un choix, et
+  c'est pour cela que l'interface d'affectation le refuse en amont plutôt que
+  de le laisser remonter — cette entrée du catalogue est le filet de
+  sécurité pour le cas, résiduel, d'une édition directe des tables.
+
+**Zone vide vs sous-effectif (précision du 2026-09-21, voir §1.1 et §6.3).**
+Ce catalogue ne concerne que les besoins réellement créés. Une zone
+volontairement laissée vide — pas de sous-créneau sur une partie du
+macro-créneau (§6.2), ou pas de `Besoin` pour tel couple mission/sous-créneau
+(§6.3) — n'est *jamais* une anomalie et n'entre dans aucune des lignes
+ci-dessus, en particulier pas « Sous-effectif ». Cette dernière ne se déclenche
+que pour un `Besoin` qui existe et dont l'effectif minimum n'est pas atteint.
+Sans cette distinction, tout planning partiel — le cas normal en cours de
+construction — remonterait une avalanche de faux positifs.
 
 ### 7.5 Parcours d'affectation et de correction
 
-C'est le cœur de l'outil, et le retour d'Antoine sur la première maquette est
-clair sur ce point : ce parcours n'était ni écrit finement ni maquetté. Ce qui
-suit cadre ce qu'une version refaite doit couvrir, indépendamment de
-l'interface retenue.
+C'est le cœur de l'outil. Le fil Interface d'affectation en a livré une
+première version maquettée (glisser un bénévole sur une place vide, glisser
+une place occupée sur une autre pour échanger deux personnes, un retour
+immédiat sur ce que chaque dépôt répare ou casse), sur des fonctions
+provisoires en attendant le branchement du vrai moteur du fil Algorithme. Ce
+qui suit reste la référence sur ce que ce parcours doit couvrir,
+indépendamment de l'interface retenue.
 
 1. **Lancement de l'algorithme**, sur tout le planning ou sur un périmètre
    choisi (une mission, un macro-créneau — §7.3). Il ne crée jamais de
@@ -391,11 +517,25 @@ l'interface retenue.
    place la libère. Une place modifiée à la main passe `Origine = Manuel` et
    `Verrouillee = vrai` : un recalcul ultérieur, global ou partiel, ne la
    touche plus tant qu'elle n'est pas déverrouillée explicitement (cohérent
-   avec §7.1 et la réponse à la question 6.6 du cadrage).
+   avec §7.1 et la réponse à la question 6.6 du cadrage). Ce verrouillage
+   n'a de sens que si on le voit et qu'on peut le défaire :
+   - **Signalement** : une place verrouillée se distingue visuellement,
+     partout où elle apparaît (grille, vue affectation, feuille de route) —
+     un cadenas ou un équivalent, jamais une différence de couleur seule
+     (accessibilité, §9 NF6). Un recalcul qui la traverse sans la toucher
+     doit rester lisible comme volontaire, pas comme un oubli.
+   - **Déverrouillage** : un geste explicite, symétrique de l'affectation
+     manuelle (une action directement sur la place verrouillée), jamais un
+     effet de bord d'une autre opération. Une fois déverrouillée, la place
+     redevient une place normale, éligible au prochain recalcul comme
+     n'importe quelle autre.
+
+   Sans ces deux points, quelqu'un qui corrige à la main ne comprend pas
+   pourquoi un recalcul ignore son travail — c'est le genre de silence qui se
+   paie le jour J.
 4. **Correction manuelle, indicatif par indicatif.** Un indicatif peut être
    repositionné d'un besoin à un autre — une seule ligne de `Positions_groupe`
-   change, rien d'autre (§6.3, mécanisme encore en attente de validation sur
-   son ergonomie) — sans toucher aux personnes qui l'occupent.
+   change, rien d'autre (§6.3) — sans toucher aux personnes qui l'occupent.
 5. **Recalcul partiel** après une correction manuelle ou une absence
    déclarée : relancer l'algorithme sur le seul périmètre affecté reprend les
    places encore vides sans toucher aux places verrouillées (§7.3, §5.3).
@@ -403,8 +543,7 @@ l'interface retenue.
    vue anomalies immédiatement, jamais en différé.
 
 C'est ce parcours, plus que les vues de consultation, qui décide si l'outil
-fait gagner du temps le jour J — il doit être le premier maquetté en détail à
-la prochaine itération.
+fait gagner du temps le jour J.
 
 ## 8. Vues attendues
 
@@ -421,9 +560,9 @@ Liste de travail, à arbitrer (voir le brainstorm dans le fil et la
    conflit artiste, chevauchement, hors quota).
 5. **Vue affectation manuelle** — le parcours décrit au §7.5 : candidats
    classés par pertinence pour chaque place, repositionnement d'un indicatif
-   d'un besoin à un autre. La vue la plus critique de l'outil, et la moins
-   aboutie à ce stade : la première maquette n'en proposait qu'une ébauche,
-   jugée inutilisable.
+   d'un besoin à un autre. La vue la plus critique de l'outil ; maquettée
+   (glisser-déposer pour affecter ou échanger), sur des fonctions
+   provisoires en attendant le branchement du vrai moteur d'affectation.
 6. **Vue bénévole** — la feuille de route individuelle, imprimable.
 7. **Vue équipe** — une équipe sur toute la durée, par groupe.
 8. **Vue artistes** — qui joue quand, et combien de bénévoles veulent le voir.

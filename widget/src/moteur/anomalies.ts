@@ -24,9 +24,22 @@ function couvertureBesoin(ctx: Contexte, besoinId: Id): number {
   return total;
 }
 
+function aUnIndicatifPositionne(ctx: Contexte, besoinId: Id): boolean {
+  return ctx.donnees.positionsGroupe.some((position) => position.besoinId === besoinId);
+}
+
+/**
+ * Un besoin sur lequel aucun indicatif n'a encore été positionné (étape 3,
+ * §6.3, pas encore atteinte pour cette zone) n'est pas un sous-effectif :
+ * c'est une zone que l'utilisateur n'a pas encore construite, pas une
+ * anomalie. (Décision Antoine, 2026-09-21 : le moteur doit rester utile sur
+ * un planning en cours de construction, avec des zones volontairement
+ * vides, plutôt que de se plaindre d'une entrée incomplète.)
+ */
 function detecterEffectifs(ctx: Contexte): Anomalie[] {
   const anomalies: Anomalie[] = [];
   for (const besoin of ctx.donnees.besoins) {
+    if (!aUnIndicatifPositionne(ctx, besoin.id)) { continue; }
     const couverture = couvertureBesoin(ctx, besoin.id);
     if (couverture < besoin.effectifMin) {
       anomalies.push({

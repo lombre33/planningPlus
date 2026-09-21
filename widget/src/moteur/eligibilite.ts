@@ -15,7 +15,7 @@
 
 import type {Contexte} from './contexte';
 import {clePaireBenevoles} from './contexte';
-import type {CandidatEligible, ExplicationScore, Id, ParametresAlgorithme} from './types';
+import type {CandidatEligible, ExplicationScore, Id, ParametresAlgorithme, RaisonInEligibilite} from './types';
 
 export interface EtatOccupation {
   /** Groupes actuellement tenus par un bénévole (au moins une place). */
@@ -70,13 +70,6 @@ export function heuresActuelles(etat: EtatOccupation, ctx: Contexte, benevoleId:
   for (const groupeId of groupes) { total += ctx.heuresParGroupe.get(groupeId) ?? 0; }
   return total;
 }
-
-export type RaisonInEligibilite =
-  | 'statut_absent'
-  | 'competence_manquante'
-  | 'refus_mission'
-  | 'deja_occupe'
-  | 'indisponible';
 
 export type StatutEligibilite =
   | {eligible: true; conflitArtiste: boolean}
@@ -161,8 +154,12 @@ function clamp01(valeur: number): number {
 
 /**
  * Score et explication d'un candidat déjà jugé éligible (§7.2, dans l'ordre :
- * artiste > souhait de mission > équité > affinité — la couverture, premier
+ * artiste > souhait de mission > équipe > équité — la couverture, premier
  * objectif, se joue au niveau du choix du groupe à traiter, pas ici).
+ *
+ * Le terme d'affinité ci-dessous n'est PAS un des six objectifs du §7.2 —
+ * voir la note sur `affiniteEnsemble`/`affiniteEviter` dans `types.ts`,
+ * en attente de confirmation par Antoine.
  */
 export function calculerScore(
   ctx: Contexte,
