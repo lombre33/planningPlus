@@ -75,6 +75,8 @@ export const ICONES = {
   groupe: 'M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM17 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM2 20c.4-3.4 3.2-6 7-6s6.6 2.6 7 6M15.5 14.3c2.9.6 5 2.8 5.3 5.7',
   artiste: 'M9 18V5l10-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM19 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z',
   imprimante: 'M6 9V3h12v6M6 18h12v4H6zM4 9h16v7H4zM8 13h8',
+  disponibilites: 'M4 4h4v4H4zM10 4h4v4h-4zM16 4h4v4h-4zM4 10h4v4H4zM10 10h4v4h-4zM16 10h4v4h-4zM4 16h4v4H4zM10 16h4v4h-4zM16 16h4v4h-4z',
+  terrain: 'M12 21s7-7.5 7-12a7 7 0 1 0-14 0c0 4.5 7 12 7 12ZM12 11a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z',
 } as const;
 
 /** Ouvre une boîte de dialogue modale simple ; `contenu` reçoit une fonction
