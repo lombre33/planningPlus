@@ -1,10 +1,9 @@
 # PlanningPlus — Cahier des charges
 
-**Version :** v1.1 (intègre les retours sur la première maquette, 2026-09-21)
-**Statut :** structure et règles en grande partie validées ; le mécanisme
-d'indicatifs (§6.3) et le parcours d'affectation/correction (§7.5) restent à
-valider sur une maquette refaite — la première a été jugée inutilisable à
-l'usage
+**Version :** v1.2 (§6.3 validé par Antoine sur la maquette reconstruite, 2026-09-21)
+**Statut :** structure et règles validées, y compris le mécanisme d'indicatifs
+(§6.3) ; le parcours d'affectation et de correction (§7.5) reste le point à
+maquetter et à valider en priorité
 **Dernière mise à jour :** 2026-09-21
 
 > Les décisions issues du cadrage sont annotées *(Décision Antoine,
@@ -235,27 +234,21 @@ dans Grist (par mission, par équipe, par bénévole ou par créneau).
 La généralisation binôme → trinôme → *n*-uplet est portée par la seule colonne
 `Taille` : aucune structure n'est spécifique à la taille 2.
 
-*Point ouvert, toujours en attente de validation (mise à jour du
-2026-09-21).* La première maquette a implémenté ce mécanisme fidèlement (vue
-Indicatifs : un indicatif, sa trajectoire sur plusieurs missions, un
-repositionnement qui ne touche qu'une ligne de `Positions_groupe`). Antoine a
-jugé cette vue catastrophique et inutilisable — un verdict sur l'interface,
-pas sur le modèle : il n'a pas remis en cause la séparation `Groupes` /
-`Positions_groupe` / `Places`. Le §6.3 reste donc non validé, dans l'attente
-d'une maquette refaite qui permette de le tester pour de vrai.
-
-*Éprouvé à la construction (2026-09-21, à confirmer par Antoine).* En
-reconstruisant la vue, le fil maquette rapporte que la séparation tient à
-l'usage : déplacer un indicatif d'une case à une autre ne touche toujours
-qu'une seule ligne de `Positions_groupe`, sans rien recalculer d'autre. Son
-diagnostic sur la première version : le problème venait de l'interface, qui
-exposait les indicatifs dans une liste déconnectée du planning, pas de la
-séparation elle-même. La nouvelle version les montre directement dans la
-grille missions × sous-créneaux et y surligne la trajectoire d'un indicatif.
-C'est une observation de construction, pas le verdict d'Antoine — qui n'a pas
-encore vu cette version — donc le statut « non validé » ci-dessus reste
-inchangé tant qu'il ne s'est pas prononcé sur le lien unique republié par le
-fil maquette.
+**Mécanisme validé (Antoine, 2026-09-21).** La première maquette avait
+implémenté ce mécanisme fidèlement (vue Indicatifs : un indicatif, sa
+trajectoire sur plusieurs missions, un repositionnement qui ne touche qu'une
+ligne de `Positions_groupe`), mais Antoine avait jugé cette première vue
+catastrophique et inutilisable — un verdict sur l'interface, pas sur le
+modèle. En reconstruisant la vue, le fil maquette a rapporté que la
+séparation tenait à l'usage (le déplacement d'un indicatif ne touche
+toujours qu'une ligne) et que le vrai problème était l'interface, qui
+exposait les indicatifs dans une liste déconnectée du planning plutôt que
+dans la grille missions × sous-créneaux. Une fois cette interface refaite,
+Antoine a confirmé explicitement, par carte de décision, que le
+fonctionnement correspond à ce qu'il veut. Le §6.3 est donc validé : la
+séparation `Groupes` / `Positions_groupe` / `Places` et le principe « les
+missions tournent, pas les personnes » sont acquis pour la suite du
+développement.
 
 ### 6.4 Préférences des bénévoles
 
@@ -321,9 +314,18 @@ plutôt que d'être bloqué. Décision Antoine, 2026-09-21 ; voir §6.3 et §7.4
 3. **Missions souhaitées** : privilégier les missions que le bénévole
    souhaite, ne jamais l'affecter à une mission qu'il a explicitement
    écartée (voir objectif 1).
-4. **Équité** : équilibrer le nombre d'heures et la répartition des missions
+4. **Équipe** : à égalité sur les critères précédents, préférer un bénévole de
+   la même équipe que le groupe/indicatif à couvrir. Jamais un blocage : un
+   bénévole hors équipe reste éligible, et c'est même souhaitable s'il
+   correspond mieux aux objectifs 1 à 3 ou si personne de l'équipe n'est
+   disponible. *(Décision Antoine, 2026-09-21, question 5.2 : « toléré si
+   besoin » plutôt qu'une contrainte dure. Ce point comblait un trou du
+   document — la règle était appliquée sans être écrite ici ; le fil
+   Algorithme d'affectation en a demandé confirmation à Antoine dans son
+   propre fil, à recouper si sa réponse nuance celle-ci.)*
+5. **Équité** : équilibrer le nombre d'heures et la répartition des missions
    marquées « pénibles » entre bénévoles.
-5. **Continuité** : limiter le nombre de missions différentes par bénévole. Ne
+6. **Continuité** : limiter le nombre de missions différentes par bénévole. Ne
    s'applique plus à la stabilité des binômes, portée nativement par le
    mécanisme des indicatifs (§6.3) plutôt que par un objectif d'algorithme.
 
