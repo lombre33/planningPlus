@@ -12,7 +12,8 @@
 import type {Id} from '../domain/types';
 import {indexer} from '../logic/derive';
 import {
-  blocsDuJour, estHeurePleine, indexerDisponibilitesParBenevole, regrouperParJourFestival, statutCellule,
+  blocsDuJour, contraintesBenevole, estHeurePleine, graviteContraintes, indexerDisponibilitesParBenevole,
+  libelleContraintes, regrouperParJourCourt, statutCellule,
 } from '../logic/dispos-terrain';
 import type {Magasin} from '../store';
 import {libelleHeure} from '../temps';
@@ -31,7 +32,7 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
 
   function rafraichir(): void {
     const ix = indexer(m);
-    const jours = regrouperParJourFestival(m.macroCreneaux);
+    const jours = regrouperParJourCourt(m.macroCreneaux);
     if (jourCle == null || !jours.some((j) => j.cle === jourCle)) {
       jourCle = jours[0]?.cle ?? null;
     }
@@ -66,6 +67,7 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
         h('span', {class: 'dispos-legende__item'}, h('span', {class: 'dispos-cellule dispos-cellule--disponible'}), 'Disponible'),
         h('span', {class: 'dispos-legende__item'}, h('span', {class: 'dispos-cellule dispos-cellule--artiste'}), 'Veut voir un artiste'),
         h('span', {class: 'dispos-legende__item'}, h('span', {class: 'dispos-cellule dispos-cellule--indisponible'}), 'Indisponible'),
+        h('span', {class: 'dispos-legende__item'}, h('span', {class: 'contrainte-badge contrainte-badge--danger'}, '!'), 'Contrainte déclarée (survoler le nom)'),
       ),
     );
     container.append(barre);
@@ -107,6 +109,8 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
 
     const lignes = benevoles.map((b) => {
       const equipe = ix.equipe.get(b.Equipe)!;
+      const contraintes = contraintesBenevole(m, ix, b.id);
+      const gravite = graviteContraintes(contraintes);
       const cellules = blocs.flatMap((bloc, iBloc) => bloc.quarts.map((q, iQuart) => {
         const {statut, artisteId} = statutCellule(indexDispos, b.id, q);
         const artisteNom = artisteId != null ? ix.artiste.get(artisteId)?.Nom : undefined;
@@ -122,6 +126,10 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
         h('th', {class: 'dispos-table__benevole', scope: 'row'},
           h('span', {class: 'dot', style: {background: equipe.Couleur}}),
           b.Nom,
+          gravite ? h('span', {
+            class: `contrainte-badge contrainte-badge--${gravite}`,
+            title: libelleContraintes(contraintes) ?? undefined,
+          }, '!') : null,
         ),
         ...cellules,
       );

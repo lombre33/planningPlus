@@ -1,10 +1,11 @@
 import {describe, expect, it} from 'vitest';
 import type {Modele} from '../domain/types';
-import {indexer} from './derive';
+import {cleJourFestival} from '../temps';
+import {indexer, regrouperParJour} from './derive';
 import {
-  affectationsAInstant, besoinsActifs, blocsDuJour, cleJourFestival, couvertureAInstant, estHeurePleine,
-  indexerDisponibilitesDuQuart, indexerDisponibilitesParBenevole, regrouperParJourFestival, sousCreneauxActifs,
-  statutBenevoleAInstant, statutCellule,
+  affectationsAInstant, besoinsActifs, blocsDuJour, contraintesBenevole, couvertureAInstant, estHeurePleine,
+  graviteContraintes, indexerDisponibilitesDuQuart, indexerDisponibilitesParBenevole, libelleContraintes,
+  sousCreneauxActifs, statutBenevoleAInstant, statutCellule,
 } from './dispos-terrain';
 import {Magasin} from '../store';
 
@@ -47,7 +48,9 @@ function creerModeleDeTest(): Modele {
       // Bob n'a aucune ligne au quart 0 : vaut indisponible (§6.4).
       {Benevole: 2, Quart_heure: 900, Statut: 'Disponible', Artiste: null},
     ],
-    souhaitsMissions: [],
+    // Contraintes (§7.2) pour les tests de `contraintesBenevole` : Bob
+    // refuse la seule mission du fixture.
+    souhaitsMissions: [{id: 1, Benevole: 2, Mission: 1, Preference: 'Refuse'}],
     affinites: [],
   };
 }
@@ -73,14 +76,14 @@ describe('cleJourFestival', () => {
   });
 });
 
-describe('regrouperParJourFestival', () => {
-  it('garde entier un macro-créneau qui franchit minuit', () => {
-    const macros = [
-      {id: 1, Nom: 'Soirée', Debut: Date.UTC(2026, 6, 17, 22, 0, 0) / 1000, Fin: Date.UTC(2026, 6, 18, 2, 0, 0) / 1000},
-    ];
-    const jours = regrouperParJourFestival(macros, 6);
+describe('regrouperParJour (jour de festival, logic/derive.ts)', () => {
+  it('regroupe sous le même jour de festival une soirée et la matinée qui la suit avant la coupure', () => {
+    const soiree = {id: 1, Nom: 'Soirée', Debut: Date.UTC(2026, 6, 17, 20, 0, 0) / 1000, Fin: Date.UTC(2026, 6, 18, 0, 0, 0) / 1000};
+    // 04:00 locale (Europe/Paris, UTC+2 en juillet) le lendemain matin : avant la coupure de 6h, donc même jour de festival.
+    const apresMinuit = {id: 2, Nom: 'Fin de nuit', Debut: Date.UTC(2026, 6, 18, 2, 0, 0) / 1000, Fin: Date.UTC(2026, 6, 18, 3, 0, 0) / 1000};
+    const jours = regrouperParJour([soiree, apresMinuit]);
     expect(jours).toHaveLength(1);
-    expect(jours[0]!.macros).toEqual(macros);
+    expect(jours[0]!.macros.map((m) => m.id)).toEqual([1, 2]);
   });
 });
 
@@ -191,5 +194,39 @@ describe('statutBenevoleAInstant', () => {
     const affectations = affectationsAInstant(m, ix, 450);
     const dispoDuQuart = indexerDisponibilitesDuQuart(m, 450);
     expect(statutBenevoleAInstant(ix, dispoDuQuart, affectations, 3, 'Absent')).toEqual({etat: 'absent'});
+  });
+});
+
+describe('contraintesBenevole', () => {
+  it('rapporte le refus de mission (gravité la plus forte, bloquante pour le moteur)', () => {
+    const modele = creerModeleDeTest();
+    const m = new Magasin(modele);
+    const ix = indexer(m);
+    const c = contraintesBenevole(m, ix, 2); // Bob
+    expect(c.missionsRefusees).toEqual(['Bar central']);
+    expect(graviteContraintes(c)).toBe('danger');
+    expect(libelleContraintes(c)).toBe('Refuse : Bar central');
+  });
+
+  it('une réticence, sans refus, vaut une gravité intermédiaire', () => {
+    const modele = creerModeleDeTest();
+    modele.souhaitsMissions = [{id: 1, Benevole: 1, Mission: 1, Preference: 'Réticent'}];
+    const m = new Magasin(modele);
+    const ix = indexer(m);
+    const c = contraintesBenevole(m, ix, 1); // Alice
+    expect(c.missionsRefusees).toEqual([]);
+    expect(c.missionsReticentes).toEqual(['Bar central']);
+    expect(graviteContraintes(c)).toBe('warn');
+    expect(libelleContraintes(c)).toBe('Réticent·e pour : Bar central');
+  });
+
+  it('aucune contrainte déclarée : pas de gravité, pas de libellé', () => {
+    const modele = creerModeleDeTest();
+    modele.souhaitsMissions = [];
+    const m = new Magasin(modele);
+    const ix = indexer(m);
+    const c = contraintesBenevole(m, ix, 1);
+    expect(graviteContraintes(c)).toBeNull();
+    expect(libelleContraintes(c)).toBeNull();
   });
 });

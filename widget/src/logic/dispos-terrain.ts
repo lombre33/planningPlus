@@ -45,7 +45,7 @@ export const HEURE_COUPURE_PAR_DEFAUT = HEURE_COUPURE_JOUR_FESTIVAL;
 
 /** Regroupe les macro-créneaux par jour de festival, avec un libellé court
  *  adapté aux onglets (variante d'affichage de `regrouperParJour`). */
-export function regrouperParJourFestival(
+export function regrouperParJourCourt(
   macroCreneaux: MacroCreneau[], heureCoupure = HEURE_COUPURE_JOUR_FESTIVAL,
 ): Jour[] {
   return regrouperParJour(macroCreneaux, heureCoupure).map((jour) => ({
@@ -97,6 +97,53 @@ export function statutCellule(
   if (!d) { return {statut: 'Indisponible', artisteId: null}; }
   if (d.Statut === 'Artiste') { return {statut: 'Artiste', artisteId: d.Artiste}; }
   return {statut: d.Statut === 'Disponible' ? 'Disponible' : 'Indisponible', artisteId: null};
+}
+
+export interface ContraintesBenevole {
+  missionsRefusees: string[];
+  missionsReticentes: string[];
+}
+
+/**
+ * Contraintes déclarées d'un bénévole autres que ses disponibilités : refus
+ * ou réticence sur une mission (§7.2, objectif 3 « Missions souhaitées »).
+ * Motivé par l'étape « voir les dispos et contraintes » qui précède le
+ * lancement de l'algorithme — tout ce qui va peser sur la répartition doit
+ * être visible ici, pas seulement la grille dispo/indispo/artiste.
+ *
+ * Les affinités entre bénévoles (table `Affinites`) n'entrent volontairement
+ * pas ici : le moteur les pondère dans le code, mais ce n'est pas un objectif
+ * décidé avec Antoine (absent du §7.2, qui confie déjà la stabilité des
+ * binômes aux indicatifs, §6.3) — l'afficher comme une contrainte réelle
+ * induirait en erreur sur cet écran de vérification pré-algorithme. Question
+ * posée à Antoine par le fil Algorithme d'affectation ; à revoir selon sa
+ * réponse.
+ */
+export function contraintesBenevole(m: Magasin, ix: Index, benevoleId: Id): ContraintesBenevole {
+  const nomsMissions = (preference: string) => m.souhaitsMissions
+    .filter((s) => s.Benevole === benevoleId && s.Preference === preference)
+    .map((s) => ix.mission.get(s.Mission)?.Nom ?? '?');
+  return {
+    missionsRefusees: nomsMissions('Refuse'),
+    missionsReticentes: nomsMissions('Réticent'),
+  };
+}
+
+/** Gravité à afficher (le refus bloque l'algorithme, la réticence ne fait que
+ *  pondérer le score : voir `moteur/eligibilite.ts`). `null` si aucune
+ *  contrainte déclarée. */
+export function graviteContraintes(c: ContraintesBenevole): 'danger' | 'warn' | null {
+  if (c.missionsRefusees.length > 0) { return 'danger'; }
+  if (c.missionsReticentes.length > 0) { return 'warn'; }
+  return null;
+}
+
+/** Résumé textuel des contraintes, pour l'infobulle. `null` si aucune. */
+export function libelleContraintes(c: ContraintesBenevole): string | null {
+  const parties: string[] = [];
+  if (c.missionsRefusees.length > 0) { parties.push(`Refuse : ${c.missionsRefusees.join(', ')}`); }
+  if (c.missionsReticentes.length > 0) { parties.push(`Réticent·e pour : ${c.missionsReticentes.join(', ')}`); }
+  return parties.length > 0 ? parties.join(' · ') : null;
 }
 
 // --- Vue Terrain -------------------------------------------------------------
