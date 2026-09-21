@@ -23,6 +23,15 @@ function texteHeure(champ: HTMLInputElement, apresMinuit: boolean): string {
   return `${Number(heures) + 24}:${minutes}`;
 }
 
+function creerErreur(): {noeud: HTMLElement; afficher: (texte: string) => void; effacer: () => void} {
+  const noeud = h('p', {class: 'field-erreur', hidden: true}) as HTMLElement;
+  return {
+    noeud,
+    afficher: (texte: string) => { noeud.textContent = texte; noeud.hidden = false; },
+    effacer: () => { noeud.hidden = true; },
+  };
+}
+
 function champHoraires(
   labelDebut: string, valeurDebut: string, labelFin: string, valeurFin: string, finApresMinuit: boolean,
 ): {ligne: Node; champDebut: HTMLInputElement; champFin: HTMLInputElement; caseApresMinuit: HTMLInputElement} {
@@ -52,9 +61,12 @@ export function ouvrirModalEditionCreneau(m: Magasin, macro: MacroCreneau): void
     'Début', libelleHeure(macro.Debut), 'Fin', libelleHeure(macro.Fin), finApresMinuitInitial,
   );
 
+  const erreur = creerErreur();
+
   ouvrirModal('Modifier le macro-créneau', (fermer) => h('div', {style: {display: 'flex', flexDirection: 'column', gap: '14px'}},
     h('div', {class: 'field'}, h('label', null, 'Nom'), champNom),
     ligne,
+    erreur.noeud,
     h('div', {class: 'modal__actions'},
       h('button', {class: 'btn btn--ghost', type: 'button', onclick: fermer}, 'Annuler'),
       h('button', {
@@ -62,7 +74,9 @@ export function ouvrirModalEditionCreneau(m: Magasin, macro: MacroCreneau): void
         onclick: () => {
           const debut = epochDepuisDateEtHeure(dateISO, champDebut.value);
           const finBrute = epochDepuisDateEtHeure(dateISO, texteHeure(champFin, caseApresMinuit.checked));
-          if (debut == null || finBrute == null || finBrute <= debut) { return; }
+          if (debut == null || finBrute == null) { erreur.afficher('Merci de renseigner des horaires valides.'); return; }
+          if (finBrute <= debut) { erreur.afficher("L'heure de fin doit être après l'heure de début."); return; }
+          erreur.effacer();
           m.enregistrerMacroCreneau({id: macro.id, Nom: champNom.value.trim() || macro.Nom, Debut: debut, Fin: finBrute});
           fermer();
         },
@@ -82,11 +96,14 @@ export function ouvrirModalCreationCreneau(m: Magasin, jourCle: string | null, d
     h('option', {value: '120'}, '2 h par sous-créneau'),
   ) as HTMLSelectElement;
 
+  const erreur = creerErreur();
+
   ouvrirModal('Nouveau macro-créneau', (fermer) => h('div', {style: {display: 'flex', flexDirection: 'column', gap: '14px'}},
     h('div', {class: 'field'}, h('label', null, 'Jour'), champDate),
     h('div', {class: 'field'}, h('label', null, 'Nom'), champNom),
     ligne,
     h('div', {class: 'field'}, h('label', null, 'Sous-créneaux générés automatiquement'), champDuree),
+    erreur.noeud,
     h('div', {class: 'modal__actions'},
       h('button', {class: 'btn btn--ghost', type: 'button', onclick: fermer}, 'Annuler'),
       h('button', {
@@ -94,7 +111,9 @@ export function ouvrirModalCreationCreneau(m: Magasin, jourCle: string | null, d
         onclick: () => {
           const debut = epochDepuisDateEtHeure(champDate.value, champDebut.value);
           const fin = epochDepuisDateEtHeure(champDate.value, texteHeure(champFin, caseApresMinuit.checked));
-          if (debut == null || fin == null || fin <= debut) { return; }
+          if (debut == null || fin == null) { erreur.afficher('Merci de renseigner un jour et des horaires valides.'); return; }
+          if (fin <= debut) { erreur.afficher("L'heure de fin doit être après l'heure de début."); return; }
+          erreur.effacer();
           const nom = champNom.value.trim() || `Créneau du ${champDate.value}`;
           const idMacro = m.enregistrerMacroCreneau({Nom: nom, Debut: debut, Fin: fin});
           const dureeSec = Number(champDuree.value) * 60;

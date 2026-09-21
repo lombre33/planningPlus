@@ -464,6 +464,15 @@ button {
   cursor: pointer;
 }
 
+.field-erreur {
+  margin: -4px 0 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--danger-tint);
+  color: var(--danger);
+  font-size: 13px;
+}
+
 /* ---------- Panneau latéral (candidats) ---------- */
 
 .side-panel {
