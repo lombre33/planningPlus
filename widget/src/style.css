@@ -1,41 +1,45 @@
-/* PlanningPlus — jetons de design et styles partagés.
-   Palette : nuit de festival (fond indigo profond) + or projecteur (accent),
-   séparée des couleurs d'équipe (issues des données, utilisées en puces).
-   Polices système uniquement (contrainte B : aucune requête réseau hors
-   API Grist, donc pas de police distante ni de CDN). */
+/* PlanningPlus — jetons de design et styles partagés, communs à toutes les
+   vues (chaque fil de vue les importe, aucun n'en invente sa propre
+   variante). Palette sobre et claire (esprit agenda grand public : fond
+   presque blanc, un seul accent bleu, densité et hiérarchie portées par la
+   typographie et l'espacement plutôt que par la couleur), séparée des
+   couleurs d'équipe (issues des données, utilisées en puces). Polices
+   système uniquement (contrainte B : aucune requête réseau hors API Grist,
+   donc pas de police distante ni de CDN). */
 
 :root {
   color-scheme: light;
 
-  --bg: #eef0ee;
+  --bg: #f6f7f9;
   --surface: #ffffff;
   --surface-raised: #ffffff;
-  --border: #d7dad5;
-  --border-strong: #b9bdb5;
-  --text: #191a23;
-  --text-muted: #5b5e68;
-  --text-faint: #8b8e97;
+  --surface-muted: #f1f3f6;
+  --border: #e3e5e9;
+  --border-strong: #c8cbd1;
+  --text: #202124;
+  --text-muted: #5f6368;
+  --text-faint: #8a8f98;
 
-  --brand: #c9862c;
-  --brand-ink: #6b4a12;
-  --brand-tint: #f6e7cd;
-  --brand-contrast: #1d1730;
+  --brand: #3b5fe0;
+  --brand-ink: #2743ad;
+  --brand-tint: #eaefff;
+  --brand-contrast: #ffffff;
 
-  --night: #2c2854;
-  --night-tint: #e7e5f4;
+  --night: #3c4149;
+  --night-tint: #eef0f2;
 
-  --ok: #2f7d5a;
-  --ok-tint: #dcefe4;
-  --warn: #b8751d;
-  --warn-tint: #f7e6cc;
-  --danger: #b23a3a;
-  --danger-tint: #f6dcdc;
+  --ok: #1e8e5a;
+  --ok-tint: #e6f4ec;
+  --warn: #b06000;
+  --warn-tint: #fdf3e3;
+  --danger: #c5221f;
+  --danger-tint: #fce8e6;
 
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
 
-  --shadow-pop: 0 12px 28px -12px rgba(20, 18, 40, 0.35);
+  --shadow-pop: 0 8px 24px -8px rgba(32, 33, 36, 0.18);
 
   --font-display: ui-sans-serif, "Segoe UI Semibold", "Helvetica Neue", Arial, sans-serif;
   --font-body: ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -48,61 +52,63 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --bg: #131320;
-    --surface: #1c1c2e;
-    --surface-raised: #232438;
-    --border: #34344c;
-    --border-strong: #4a4a68;
-    --text: #edecf5;
-    --text-muted: #a8a8bf;
-    --text-faint: #7c7c94;
+    --bg: #14171c;
+    --surface: #1b1f26;
+    --surface-raised: #20242c;
+    --surface-muted: #191d24;
+    --border: #2c313a;
+    --border-strong: #3d434e;
+    --text: #e8eaed;
+    --text-muted: #9aa0a6;
+    --text-faint: #6c7278;
 
-    --brand: #eab157;
-    --brand-ink: #f6d9a3;
-    --brand-tint: #3a2f18;
-    --brand-contrast: #14111f;
+    --brand: #8ba1f7;
+    --brand-ink: #c3d0fb;
+    --brand-tint: #1d2540;
+    --brand-contrast: #10131c;
 
-    --night: #6f68ab;
-    --night-tint: #26243f;
+    --night: #c7cbd1;
+    --night-tint: #262b33;
 
-    --ok: #5cb98a;
-    --ok-tint: #1c3129;
-    --warn: #e0a23d;
-    --warn-tint: #392c15;
-    --danger: #e2726a;
-    --danger-tint: #3a2020;
+    --ok: #6fcf97;
+    --ok-tint: #16261d;
+    --warn: #f0b429;
+    --warn-tint: #2e2410;
+    --danger: #f28b82;
+    --danger-tint: #3a1f1c;
 
-    --shadow-pop: 0 12px 28px -12px rgba(0, 0, 0, 0.6);
+    --shadow-pop: 0 12px 28px -10px rgba(0, 0, 0, 0.55);
   }
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #131320;
-  --surface: #1c1c2e;
-  --surface-raised: #232438;
-  --border: #34344c;
-  --border-strong: #4a4a68;
-  --text: #edecf5;
-  --text-muted: #a8a8bf;
-  --text-faint: #7c7c94;
+  --bg: #14171c;
+  --surface: #1b1f26;
+  --surface-raised: #20242c;
+  --surface-muted: #191d24;
+  --border: #2c313a;
+  --border-strong: #3d434e;
+  --text: #e8eaed;
+  --text-muted: #9aa0a6;
+  --text-faint: #6c7278;
 
-  --brand: #eab157;
-  --brand-ink: #f6d9a3;
-  --brand-tint: #3a2f18;
-  --brand-contrast: #14111f;
+  --brand: #8ba1f7;
+  --brand-ink: #c3d0fb;
+  --brand-tint: #1d2540;
+  --brand-contrast: #10131c;
 
-  --night: #6f68ab;
-  --night-tint: #26243f;
+  --night: #c7cbd1;
+  --night-tint: #262b33;
 
-  --ok: #5cb98a;
-  --ok-tint: #1c3129;
-  --warn: #e0a23d;
-  --warn-tint: #392c15;
-  --danger: #e2726a;
-  --danger-tint: #3a2020;
+  --ok: #6fcf97;
+  --ok-tint: #16261d;
+  --warn: #f0b429;
+  --warn-tint: #2e2410;
+  --danger: #f28b82;
+  --danger-tint: #3a1f1c;
 
-  --shadow-pop: 0 12px 28px -12px rgba(0, 0, 0, 0.6);
+  --shadow-pop: 0 12px 28px -10px rgba(0, 0, 0, 0.55);
 }
 
 * {
@@ -124,15 +130,18 @@ body {
 
 h1, h2, h3, h4 {
   font-family: var(--font-display);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
+  font-weight: 600;
   text-wrap: balance;
   margin: 0;
 }
 
 button {
   font-family: var(--font-body);
+}
+
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
 }
 
 .mono {
@@ -156,8 +165,9 @@ button {
 .rail {
   flex: 0 0 auto;
   width: 84px;
-  background: var(--night);
-  color: var(--night-tint);
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -170,14 +180,13 @@ button {
 
 .rail__brand {
   font-family: var(--font-display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 15px;
-  letter-spacing: 0.03em;
   color: var(--brand);
   text-align: center;
   padding-bottom: 14px;
   margin-bottom: 10px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  border-bottom: 1px solid var(--border);
   width: 100%;
 }
 
@@ -188,34 +197,28 @@ button {
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  width: 100%;
+  width: calc(100% - 12px);
   padding: 8px 4px;
   border-radius: var(--radius-sm);
-  color: rgba(231, 229, 244, 0.72);
+  color: var(--text-muted);
   font-size: 10.5px;
   font-weight: 600;
   text-align: center;
-  letter-spacing: 0.02em;
 }
 
 .rail__item:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  background: var(--border);
+  color: var(--text);
 }
 
 .rail__item[aria-current="true"] {
-  background: var(--brand);
-  color: var(--brand-contrast);
+  background: var(--brand-tint);
+  color: var(--brand-ink);
 }
 
 .rail__item svg {
   width: 20px;
   height: 20px;
-}
-
-.rail__item:focus-visible {
-  outline: 2px solid var(--brand);
-  outline-offset: 2px;
 }
 
 .main {
