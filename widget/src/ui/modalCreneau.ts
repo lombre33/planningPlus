@@ -23,7 +23,7 @@ function texteHeure(champ: HTMLInputElement, apresMinuit: boolean): string {
   return `${Number(heures) + 24}:${minutes}`;
 }
 
-function creerErreur(): {noeud: HTMLElement; afficher: (texte: string) => void; effacer: () => void} {
+export function creerErreur(): {noeud: HTMLElement; afficher: (texte: string) => void; effacer: () => void} {
   const noeud = h('p', {class: 'field-erreur', hidden: true}) as HTMLElement;
   return {
     noeud,

@@ -11,7 +11,6 @@ import type {Magasin} from './store';
 import {h, ICONES, icone, vider} from './ui/dom';
 import {montrerAffectation} from './views/affectation';
 import {montrerAgenda} from './views/agenda';
-import {montrerComparatifAgenda} from './views/agenda-comparatif';
 import {montrerAnomalies} from './views/anomalies';
 import {montrerArtistes} from './views/artistes';
 import {montrerBenevole} from './views/benevole';
@@ -23,7 +22,7 @@ import {montrerJourJ} from './views/jourJ';
 import {montrerTerrain} from './views/terrain';
 
 type IdOnglet =
-  | 'agenda' | 'agenda-comparatif' | 'grille' | 'affectation' | 'anomalies' | 'indicatifs'
+  | 'agenda' | 'grille' | 'affectation' | 'anomalies' | 'indicatifs'
   | 'disponibilites' | 'terrain' | 'jourj'
   | 'benevole' | 'equipe' | 'artistes';
 
@@ -42,12 +41,6 @@ const ONGLETS: DefinitionOnglet[] = [
     titre: 'Agenda du festival',
     sousTitre: 'Macro-créneaux et sous-créneaux. Glissez pour déplacer, redimensionnez par les bords, ou ajoutez un macro-créneau.',
     montrer: montrerAgenda,
-  },
-  {
-    id: 'agenda-comparatif', libelle: 'Agenda (comparatif)', icone: ICONES.agenda,
-    titre: 'Comparatif agenda : vertical ou horizontal',
-    sousTitre: 'Même journée, deux dispositions, pour trancher laquelle garder — pas d’édition ici. Onglet temporaire, à retirer une fois la disposition choisie.',
-    montrer: montrerComparatifAgenda,
   },
   {
     id: 'grille', libelle: 'Missions', icone: ICONES.grille,

@@ -12,7 +12,8 @@ import {
 } from '../logic/derive';
 import {apercuEchange, verifierDepot} from '../logic/glisser-deposer';
 import type {Magasin} from '../store';
-import {fermerPanneau, h, ouvrirPanneau, vider} from '../ui/dom';
+import {fermerPanneau, h, ouvrirModal, ouvrirPanneau, vider} from '../ui/dom';
+import {creerErreur} from '../ui/modalCreneau';
 
 export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
   let jourIndex = 0;
@@ -79,21 +80,29 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
       for (const sc of sousCreneaux) {
         const besoin = m.besoins.find((b) => b.Mission === mission.id && b.Sous_creneau === sc.id);
         if (!besoin) {
-          tr.append(h('td', {class: 'besoin-cell besoin-cell--vide'}));
+          tr.append(h('td', {class: 'besoin-cell besoin-cell--vide'},
+            h('button', {
+              class: 'besoin-cell__ajouter', type: 'button',
+              title: 'Créer un besoin ici — facultatif, laissez vide pour une zone volontairement non couverte',
+              onclick: () => ouvrirCreationBesoin(mission, sc),
+            }, '+'),
+          ));
           continue;
         }
         const c = couvertureBesoin(m, ix, besoin.id);
-        const etatCase = c.statut === 'sous' ? 'sous' : 'ok';
         tr.append(h('td', {class: 'besoin-cell'},
           h('button', {
-            class: `besoin besoin--${etatCase}`, type: 'button',
+            class: `besoin besoin--${c.statut}`, type: 'button',
             onclick: () => { dernierMessage = null; ouvrirDetailBesoin(besoin.id); },
           },
             h('span', {class: 'besoin__effectif mono'}, `${c.pourvues}/${besoin.Effectif_min}`),
-            h('div', {class: 'besoin__groupes'}, ...c.groupesPositionnes.map((g) => h(
-              'span', {class: 'chip-groupe', style: {background: ix.equipe.get(g.groupe.Equipe)?.Couleur ?? '#888'}},
-              g.groupe.Code,
-            ))),
+            h('div', {class: 'besoin__groupes'}, ...c.groupesPositionnes.map((g) => {
+              const incomplet = g.places.some((p) => p.Benevole == null);
+              return h('span', {
+                class: `chip-groupe${incomplet ? ' chip-groupe--incomplet' : ''}`,
+                style: {background: ix.equipe.get(g.groupe.Equipe)?.Couleur ?? '#888'},
+              }, g.groupe.Code);
+            })),
           ),
         ));
       }
@@ -101,6 +110,44 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
     }
     const table = h('table', {class: 'grille'}, thead, tbody);
     return h('div', {class: 'grille-wrap'}, table);
+  }
+
+  /** Crée un besoin sur une case volontairement vide jusque-là (étape 2 du
+   *  parcours). Ne rien faire ici — fermer la fenêtre sans valider — est le
+   *  geste normal pour une zone qu'on laisse sans couverture : la case
+   *  hachurée reste l'état par défaut, ce bouton n'est qu'une offre. */
+  function ouvrirCreationBesoin(mission: Mission, sc: SousCreneau): void {
+    const champTaille = h('input', {class: 'input', type: 'number', min: '1', value: '2'}) as HTMLInputElement;
+    const champMin = h('input', {class: 'input', type: 'number', min: '1', value: '2'}) as HTMLInputElement;
+    const erreur = creerErreur();
+
+    ouvrirModal(mission.Nom, (fermer) => h('div', {style: {display: 'flex', flexDirection: 'column', gap: '14px'}},
+      h('p', {class: 'topbar__subtitle'}, sc.Libelle),
+      h('div', {class: 'modal__row'},
+        h('div', {class: 'field'}, h('label', null, 'Taille du binôme'), champTaille),
+        h('div', {class: 'field'}, h('label', null, 'Effectif minimum'), champMin),
+      ),
+      erreur.noeud,
+      h('p', {class: 'topbar__subtitle'},
+        'Un premier binôme est positionné aussitôt (§6.3) : vous pourrez ensuite le repositionner ou en ajouter un second.',
+      ),
+      h('div', {class: 'modal__actions'},
+        h('button', {class: 'btn btn--ghost', type: 'button', onclick: fermer}, 'Annuler'),
+        h('button', {
+          class: 'btn btn--primary', type: 'button',
+          onclick: () => {
+            const taille = Number(champTaille.value);
+            const min = Number(champMin.value);
+            if (!Number.isFinite(taille) || taille < 1 || !Number.isFinite(min) || min < 1) {
+              erreur.afficher('Merci de renseigner des effectifs valides (au moins 1).');
+              return;
+            }
+            m.creerBesoin(mission.id, sc.id, {tailleGroupe: Math.round(taille), effectifMin: Math.round(min)});
+            fermer();
+          },
+        }, 'Créer'),
+      ),
+    ));
   }
 
   function ouvrirDetailBesoin(besoinId: Id): void {
@@ -120,7 +167,7 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
         h('button', {class: 'btn btn--ghost btn--sm', type: 'button', onclick: () => fermerPanneau()}, 'Fermer'),
       ),
       dernierMessage ? h('span', {class: `pill pill--${dernierMessage.ton}`}, dernierMessage.texte) : null,
-      h('span', {class: `pill pill--${c.statut === 'sous' ? 'danger' : 'ok'}`},
+      h('span', {class: `pill pill--${c.statut === 'sous' ? 'danger' : c.statut === 'partiel' ? 'warn' : 'ok'}`},
         `${c.pourvues} affecté${c.pourvues > 1 ? 's' : ''} sur un minimum de ${besoin.Effectif_min}`,
       ),
       c.groupesPositionnes.length === 0

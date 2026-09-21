@@ -148,6 +148,32 @@ export class Magasin {
     return id;
   }
 
+  /** Crée un nouveau besoin (mission × sous-créneau) et lui positionne
+   *  aussitôt un premier binôme (§6.3 : un besoin ne naît jamais sans son
+   *  indicatif de base — sans ça, arrivé à l'étape « placer les indicatifs »
+   *  du parcours, il faudrait poser un binôme à la main sur chaque case
+   *  créée, exactement la corvée que le mécanisme des indicatifs épargne).
+   *  Les places du binôme restent vides (Benevole: null) : seul le
+   *  positionnement est automatique, pas l'affectation d'un bénévole précis.
+   *  Effectif_max reprend la taille du binôme par défaut ; un second binôme
+   *  (donc un effectif plus large) s'ajoute ensuite explicitement via
+   *  `creerGroupeSurBesoin`, comme aujourd'hui. Ne rien créer sur une case
+   *  reste le geste pour une zone volontairement non couverte : cette
+   *  méthode n'est jamais appelée automatiquement. */
+  creerBesoin(
+    missionId: Id, sousCreneauId: Id, params: {effectifMin?: number; tailleGroupe?: number} = {},
+  ): Id {
+    const tailleGroupe = params.tailleGroupe ?? 2;
+    const effectifMin = params.effectifMin ?? tailleGroupe;
+    const id = prochainId(this.data.besoins);
+    this.data.besoins.push({
+      id, Mission: missionId, Sous_creneau: sousCreneauId,
+      Effectif_min: effectifMin, Effectif_max: Math.max(tailleGroupe, effectifMin), Taille_groupe: tailleGroupe,
+    });
+    this.creerGroupeSurBesoin(id, tailleGroupe);
+    return id;
+  }
+
   /** Crée un nouvel indicatif (un `Groupe` de `taille` places vides) et le
    *  positionne sur `besoinId` : c'est le « + binôme » d'un besoin qui a
    *  déjà son binôme par défaut (§6.3, dimensionnement — un second binôme
