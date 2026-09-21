@@ -16,13 +16,14 @@
  */
 
 import type {MacroCreneau, SousCreneau} from '../domain/types';
+import type {Jour} from '../logic/derive';
+import {regrouperParJour} from '../logic/derive';
 import type {Magasin} from '../store';
 import {epochMinuitLocal} from '../temps';
 import {h, vider} from '../ui/dom';
-import type {JourFestival, PlageJournaliere, PositionSurAxe} from './agenda-comparatif-disposition';
+import type {PlageJournaliere, PositionSurAxe} from './agenda-comparatif-disposition';
 import {
   construirePlageJournaliere, graduationsHoraires, graduationsMinuit, longueurAxePx, positionCreneau,
-  regrouperParJourFestival,
 } from './agenda-comparatif-disposition';
 
 /** Même densité que la vue Agenda existante (`views/agenda.ts`), pour que le comparatif se lise à la même échelle. */
@@ -38,7 +39,7 @@ export function montrerComparatifAgenda(container: HTMLElement, m: Magasin): () 
   function rafraichir(): void {
     vider(container);
 
-    const jours = regrouperParJourFestival(m.macroCreneaux);
+    const jours = regrouperParJour(m.macroCreneaux);
     const plage = construirePlageJournaliere(jours.map((jour) => jour.macros));
 
     container.append(
@@ -69,7 +70,7 @@ export function montrerComparatifAgenda(container: HTMLElement, m: Magasin): () 
   return m.subscribe(rafraichir);
 }
 
-function construireDispositionVerticale(jours: JourFestival[], m: Magasin, plage: PlageJournaliere): HTMLElement {
+function construireDispositionVerticale(jours: Jour[], m: Magasin, plage: PlageJournaliere): HTMLElement {
   const hauteurTotale = longueurAxePx(plage, PX_PAR_MINUTE);
 
   const axe = h('div', {class: 'agenda__axis'}, h('div', {style: {height: '38px'}}));
@@ -105,7 +106,7 @@ function construireDispositionVerticale(jours: JourFestival[], m: Magasin, plage
   return grille;
 }
 
-function construireDispositionHorizontale(jours: JourFestival[], m: Magasin, plage: PlageJournaliere): HTMLElement {
+function construireDispositionHorizontale(jours: Jour[], m: Magasin, plage: PlageJournaliere): HTMLElement {
   const largeurTotale = longueurAxePx(plage, PX_PAR_MINUTE);
 
   const ligneAxe = h('div', {class: 'agenda-cmp__h-row agenda-cmp__h-row--axe'},
