@@ -1,35 +1,30 @@
 /**
- * Calcul de géométrie partagé par les deux dispositions du comparatif
- * agenda vertical/horizontal (`agenda-comparatif.ts`). Une seule fonction de
- * position sert les deux axes (`positionCreneau`) : c'est ce qui garantit
- * qu'elles montrent exactement les mêmes données, juste projetées
- * différemment.
+ * Calcul de géométrie de la vue Agenda (`agenda.ts`) : position d'un
+ * macro-créneau sur l'axe du temps, une fois les jours groupés par
+ * `regrouperParJour` (`logic/derive.ts` — jour de festival, coupure à 6h
+ * plutôt qu'à minuit civil, cahier des charges §6.2 ; c'est la version
+ * canonique, partagée avec la grille missions, pas recalculée ici).
  *
  * Les positions se calculent en minutes depuis minuit local de CHAQUE jour,
  * pas sur une frise en temps absolu : deux jours affichés côte à côte n'ont
  * pas besoin d'être consécutifs (samedi peut être absent entre vendredi et
  * dimanche, §8 vue 1 — jours ajoutés librement, sans continuité). Une frise
  * en temps absolu créerait un vide énorme entre deux jours espacés ; aligner
- * sur l'heure du jour, comme le fait déjà `views/agenda.ts`, est ce qui
- * permet de comparer des jours quelconques.
+ * sur l'heure du jour est ce qui permet de comparer des jours quelconques
+ * à la même échelle.
  */
 
 import type {MacroCreneau} from '../domain/types';
 import {epochMinuitLocal} from '../temps';
-
-/**
- * Le regroupement par jour affiché (jour de festival, coupure à 6h plutôt
- * qu'à minuit civil — cahier des charges §6.2) vient de `logic/derive.ts`
- * (`regrouperParJour`), pas d'ici : c'est la version canonique, partagée
- * avec la vue Agenda et la grille missions. Ce module ne calcule que la
- * géométrie (position sur l'axe du temps), une fois les jours déjà groupés.
- */
 
 /** Plage commune (en minutes depuis minuit local) couvrant tous les jours affichés. */
 export interface PlageJournaliere {
   minMinute: number;
   maxMinute: number;
 }
+
+/** Plage affichée quand aucun macro-créneau n'existe encore (document neuf, ou tous les jours vidés) — un cadre pour accueillir le premier, plutôt qu'une grille vide ou dégénérée. */
+const PLAGE_PAR_DEFAUT: PlageJournaliere = {minMinute: 9 * 60, maxMinute: 18 * 60};
 
 /** Construit la plage horaire commune à partir des macro-créneaux de chaque jour, arrondie à l'heure. */
 export function construirePlageJournaliere(joursMacros: MacroCreneau[][]): PlageJournaliere {
@@ -43,6 +38,9 @@ export function construirePlageJournaliere(joursMacros: MacroCreneau[][]): Plage
       minMinute = Math.min(minMinute, (macro.Debut - minuit) / 60);
       maxMinute = Math.max(maxMinute, (macro.Fin - minuit) / 60);
     }
+  }
+  if (!Number.isFinite(minMinute) || !Number.isFinite(maxMinute)) {
+    return PLAGE_PAR_DEFAUT;
   }
   return {
     minMinute: Math.floor(minMinute / 60) * 60,
@@ -103,7 +101,7 @@ const MINUTES_PAR_JOUR = 24 * 60;
  * début sans repli à 0h (`positionCreneau` le laisse dépasser 24h) : il se
  * lit donc comme un seul bloc continu, jamais coupé en deux morceaux
  * orphelins. Ces marqueurs se contentent de signaler visuellement où
- * tombe minuit à l'intérieur d'un tel bloc, dans les deux dispositions.
+ * tombe minuit à l'intérieur d'un tel bloc.
  */
 export function graduationsMinuit(plage: PlageJournaliere, pxParMinute: number): number[] {
   const marqueurs: number[] = [];
