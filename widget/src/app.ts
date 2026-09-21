@@ -33,6 +33,13 @@ interface DefinitionOnglet {
   titre: string;
   sousTitre: string;
   montrer: (container: HTMLElement, m: Magasin) => () => void;
+  /** Rang dans le parcours utilisateur de référence (§1.1 du cahier des
+   *  charges, cf. Antoine, 2026-09-21) : 1 créneaux, 2 sous-créneaux/
+   *  missions, 3 indicatifs, 4 disponibilités, 5 algorithme. Les vues de
+   *  consultation ou de correction (Affectation, Anomalies, Terrain, Jour J,
+   *  Bénévole, Équipe, Artistes) n'en font pas partie et restent groupées à
+   *  part, sans numéro. */
+  etape?: number;
 }
 
 const ONGLETS: DefinitionOnglet[] = [
@@ -41,12 +48,28 @@ const ONGLETS: DefinitionOnglet[] = [
     titre: 'Agenda du festival',
     sousTitre: 'Macro-créneaux et sous-créneaux. Glissez pour déplacer, redimensionnez par les bords, ou ajoutez un macro-créneau.',
     montrer: montrerAgenda,
+    etape: 1,
   },
   {
     id: 'grille', libelle: 'Missions', icone: ICONES.grille,
     titre: 'Missions × sous-créneaux',
     sousTitre: 'Qui est où. Cliquez une case pour voir la couverture et affecter un candidat classé.',
     montrer: montrerGrille,
+    etape: 2,
+  },
+  {
+    id: 'indicatifs', libelle: 'Indicatifs', icone: ICONES.equipes,
+    titre: 'Indicatifs et équipes',
+    sousTitre: 'Un indicatif est positionné à l’avance sur plusieurs missions : c’est la mission qui tourne, pas le binôme (§6.3).',
+    montrer: montrerIndicatifs,
+    etape: 3,
+  },
+  {
+    id: 'disponibilites', libelle: 'Disponibilités', icone: ICONES.disponibilites,
+    titre: 'Disponibilités des bénévoles',
+    sousTitre: 'Qui est disponible, indisponible ou veut voir un artiste, au quart d’heure, un jour de festival à la fois.',
+    montrer: montrerDisponibilites,
+    etape: 4,
   },
   {
     id: 'affectation', libelle: 'Affectation', icone: ICONES.affectation,
@@ -59,18 +82,6 @@ const ONGLETS: DefinitionOnglet[] = [
     titre: 'Anomalies',
     sousTitre: 'Places vides, souhaits contrariés, quotas dépassés — rien de tout ça n’est masqué (objectif O3).',
     montrer: montrerAnomalies,
-  },
-  {
-    id: 'indicatifs', libelle: 'Indicatifs', icone: ICONES.equipes,
-    titre: 'Indicatifs et équipes',
-    sousTitre: 'Un indicatif est positionné à l’avance sur plusieurs missions : c’est la mission qui tourne, pas le binôme (§6.3).',
-    montrer: montrerIndicatifs,
-  },
-  {
-    id: 'disponibilites', libelle: 'Disponibilités', icone: ICONES.disponibilites,
-    titre: 'Disponibilités des bénévoles',
-    sousTitre: 'Qui est disponible, indisponible ou veut voir un artiste, au quart d’heure, un jour de festival à la fois.',
-    montrer: montrerDisponibilites,
   },
   {
     id: 'terrain', libelle: 'Terrain', icone: ICONES.terrain,
@@ -112,14 +123,34 @@ export function demarrerApp(racine: HTMLElement, magasin: Magasin, sourceLibelle
   const rail = h('nav', {class: 'rail', 'aria-label': 'Vues du planning'},
     h('div', {class: 'rail__brand'}, 'Planning+'),
   );
-  for (const def of ONGLETS) {
+
+  function creerBouton(def: DefinitionOnglet): HTMLButtonElement {
     const bouton = h('button', {
       class: 'rail__item', type: 'button',
       onclick: () => activer(def.id),
-    }, icone(def.icone), def.libelle) as HTMLButtonElement;
+    },
+      h('span', {class: 'rail__icone'},
+        icone(def.icone),
+        def.etape != null ? h('span', {class: 'rail__etape'}, String(def.etape)) : null,
+      ),
+      def.libelle,
+    ) as HTMLButtonElement;
     boutons.set(def.id, bouton);
-    rail.append(bouton);
+    return bouton;
   }
+
+  // Le parcours de référence (§1.1) d'abord, dans son ordre, numéroté ; puis
+  // les vues de consultation et de correction qui n'en font pas partie,
+  // séparées par un intitulé — pas un onglet de plus parmi d'autres, un
+  // chemin à suivre.
+  const etapes = ONGLETS.filter((o) => o.etape != null).sort((a, b) => a.etape! - b.etape!);
+  const autres = ONGLETS.filter((o) => o.etape == null);
+  rail.append(
+    h('div', {class: 'rail__section'}, 'Parcours'),
+    ...etapes.map(creerBouton),
+    h('div', {class: 'rail__section'}, 'Autres vues'),
+    ...autres.map(creerBouton),
+  );
 
   const topbar = h('header', {class: 'topbar'});
   const vue = h('div', {class: 'view'});

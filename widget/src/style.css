@@ -227,6 +227,44 @@ button {
   height: 20px;
 }
 
+.rail__section {
+  width: calc(100% - 12px);
+  padding: 10px 6px 2px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.rail__section:first-of-type {
+  padding-top: 0;
+}
+
+/* Pastille de rang dans le parcours (§1.1), posée sur l'icône plutôt qu'à
+   côté : la numérotation reste lisible sans élargir la colonne. */
+.rail__icone {
+  position: relative;
+  display: inline-flex;
+}
+
+.rail__etape {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 2px;
+  border-radius: 999px;
+  background: var(--brand);
+  color: var(--brand-contrast);
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  line-height: 13px;
+  text-align: center;
+}
+
 .main {
   flex: 1 1 auto;
   min-width: 0;
@@ -1201,6 +1239,13 @@ table.grille .mission-cell .lieu {
   }
   .rail__brand { display: none; }
   .rail__item { flex-direction: row; width: auto; padding: 8px 10px; }
+  .rail__section {
+    width: auto;
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    white-space: nowrap;
+  }
 }
 
 .benevole-row {
