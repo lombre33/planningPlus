@@ -455,6 +455,15 @@ button {
   margin-top: 4px;
 }
 
+.horaire-apres-minuit {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
 /* ---------- Panneau latéral (candidats) ---------- */
 
 .side-panel {
@@ -767,7 +776,6 @@ table.grille .mission-cell .lieu {
 
 .besoin--ok { background: var(--ok-tint); border-color: var(--ok); }
 .besoin--sous { background: var(--danger-tint); border-color: var(--danger); }
-.besoin--partiel { background: var(--warn-tint); border-color: var(--warn); }
 
 .besoin__effectif {
   font-family: var(--font-mono);

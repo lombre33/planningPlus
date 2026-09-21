@@ -235,6 +235,7 @@ export function classerCandidats(
 
 export type Anomalie =
   | {type: 'sous-effectif'; gravite: 'danger'; besoin: Besoin; missionNom: string; sousCreneauLibelle: string; manque: number}
+  | {type: 'sur-effectif'; gravite: 'warn'; besoin: Besoin; missionNom: string; sousCreneauLibelle: string; surplus: number}
   | {type: 'souhait-refuse'; gravite: 'danger'; place: Place; benevoleNom: string; missionNom: string; groupeCode: string}
   | {type: 'indisponibilite'; gravite: 'danger'; place: Place; benevoleNom: string; groupeCode: string; sousCreneauLibelle: string}
   | {type: 'conflit-artiste'; gravite: 'warn'; place: Place; benevoleNom: string; artisteNom: string; groupeCode: string}
@@ -251,6 +252,13 @@ export function calculerAnomalies(m: Magasin, ix: Index): Anomalie[] {
         missionNom: ix.mission.get(besoin.Mission)!.Nom,
         sousCreneauLibelle: ix.sousCreneau.get(besoin.Sous_creneau)!.Libelle,
         manque: besoin.Effectif_min - c.pourvues,
+      });
+    } else if (c.pourvues > besoin.Effectif_max) {
+      anomalies.push({
+        type: 'sur-effectif', gravite: 'warn', besoin,
+        missionNom: ix.mission.get(besoin.Mission)!.Nom,
+        sousCreneauLibelle: ix.sousCreneau.get(besoin.Sous_creneau)!.Libelle,
+        surplus: c.pourvues - besoin.Effectif_max,
       });
     }
   }
