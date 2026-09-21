@@ -16,7 +16,7 @@
  */
 
 import {TIMEZONE, PAS_MINUTES} from './schema.mjs';
-import {epochDepuisHeureLocale, libelleCourt, libelleHeure} from './temps.mjs';
+import {epochDepuisHeureLocale, libelleHeure} from './temps.mjs';
 
 /** Générateur pseudo-aléatoire déterministe (mulberry32). */
 function generateurAleatoire(graine) {
@@ -241,7 +241,7 @@ export function genererFestival(options = {}) {
         sousCreneaux.push({
           Macro_creneau: {_ref: refMacro},
           Mission: 0, // vide : sous-créneaux communs à toutes les missions (§6.2)
-          Libelle: `${libelleCourt(t, TIMEZONE)}–${libelleHeure(fin, TIMEZONE)}`,
+          Libelle: `${libelleHeure(t, TIMEZONE)}–${libelleHeure(fin, TIMEZONE)}`,
           Debut: t,
           Fin: fin,
           _moment: plage.moment,
