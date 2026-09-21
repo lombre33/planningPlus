@@ -244,6 +244,19 @@ pas sur le modèle : il n'a pas remis en cause la séparation `Groupes` /
 `Positions_groupe` / `Places`. Le §6.3 reste donc non validé, dans l'attente
 d'une maquette refaite qui permette de le tester pour de vrai.
 
+*Éprouvé à la construction (2026-09-21, à confirmer par Antoine).* En
+reconstruisant la vue, le fil maquette rapporte que la séparation tient à
+l'usage : déplacer un indicatif d'une case à une autre ne touche toujours
+qu'une seule ligne de `Positions_groupe`, sans rien recalculer d'autre. Son
+diagnostic sur la première version : le problème venait de l'interface, qui
+exposait les indicatifs dans une liste déconnectée du planning, pas de la
+séparation elle-même. La nouvelle version les montre directement dans la
+grille missions × sous-créneaux et y surligne la trajectoire d'un indicatif.
+C'est une observation de construction, pas le verdict d'Antoine — qui n'a pas
+encore vu cette version — donc le statut « non validé » ci-dessus reste
+inchangé tant qu'il ne s'est pas prononcé sur le lien unique republié par le
+fil maquette.
+
 ### 6.4 Préférences des bénévoles
 
 | Table | Colonnes principales |
