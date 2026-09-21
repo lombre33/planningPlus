@@ -139,6 +139,62 @@ describe('detecterAnomalies — catalogue exact du §7.4', () => {
     })]);
   });
 
+  it("détecte un double engagement (à corriger) — un bénévole sur deux places qui se recouvrent, hors du solveur (§7.1 règle 1, cas résiduel d'édition directe)", () => {
+    const missionA = creerMission();
+    const missionB = creerMission();
+    // Deux macro-créneaux distincts : isole le double engagement du chevauchement
+    // de créneaux (§7.4), qui, lui, porte sur deux sous-créneaux du même macro.
+    const sousCreneauA = creerSousCreneau(h(0, 10), h(0, 11), {macroCreneauId: 1});
+    const sousCreneauB = creerSousCreneau(h(0, 10, 30), h(0, 11, 30), {macroCreneauId: 2}); // chevauche A dans le temps
+    const besoinA = creerBesoin(missionA.id, sousCreneauA.id, {effectifMin: 1, effectifMax: 1});
+    const besoinB = creerBesoin(missionB.id, sousCreneauB.id, {effectifMin: 1, effectifMax: 1});
+    const groupeA = creerGroupe();
+    const groupeB = creerGroupe();
+    const positionA = creerPositionGroupe(groupeA.id, besoinA.id);
+    const positionB = creerPositionGroupe(groupeB.id, besoinB.id);
+    const benevole = creerBenevole();
+    // Impossible à produire via calculerAffectation/corrigerPlace (contrainte dure) :
+    // ce jeu de données simule une édition directe des tables Grist, hors du widget.
+    const placeA = creerPlace(groupeA.id, 1, {benevoleId: benevole.id, origine: 'Manuel', verrouillee: true});
+    const placeB = creerPlace(groupeB.id, 1, {benevoleId: benevole.id, origine: 'Manuel', verrouillee: true});
+
+    const anomalies = detecterAnomalies(donnees({
+      benevoles: [benevole], missions: [missionA, missionB], sousCreneaux: [sousCreneauA, sousCreneauB],
+      besoins: [besoinA, besoinB], groupes: [groupeA, groupeB], positionsGroupe: [positionA, positionB],
+      places: [placeA, placeB],
+      disponibilites: disponibilitesIntervalle(benevole.id, h(0, 10), h(0, 11, 30)),
+    }));
+
+    expect(anomalies).toEqual([expect.objectContaining({
+      code: 'double_engagement', gravite: 'a_corriger', benevoleId: benevole.id,
+    })]);
+  });
+
+  it('ne signale pas de double engagement entre deux places du même bénévole sur des créneaux disjoints', () => {
+    const missionA = creerMission();
+    const missionB = creerMission();
+    const sousCreneauA = creerSousCreneau(h(0, 10), h(0, 11));
+    const sousCreneauB = creerSousCreneau(h(0, 12), h(0, 13)); // disjoint de A
+    const besoinA = creerBesoin(missionA.id, sousCreneauA.id, {effectifMin: 1, effectifMax: 1});
+    const besoinB = creerBesoin(missionB.id, sousCreneauB.id, {effectifMin: 1, effectifMax: 1});
+    const groupeA = creerGroupe();
+    const groupeB = creerGroupe();
+    const positionA = creerPositionGroupe(groupeA.id, besoinA.id);
+    const positionB = creerPositionGroupe(groupeB.id, besoinB.id);
+    const benevole = creerBenevole();
+    const placeA = creerPlace(groupeA.id, 1, {benevoleId: benevole.id});
+    const placeB = creerPlace(groupeB.id, 1, {benevoleId: benevole.id});
+
+    const anomalies = detecterAnomalies(donnees({
+      benevoles: [benevole], missions: [missionA, missionB], sousCreneaux: [sousCreneauA, sousCreneauB],
+      besoins: [besoinA, besoinB], groupes: [groupeA, groupeB], positionsGroupe: [positionA, positionB],
+      places: [placeA, placeB],
+      disponibilites: disponibilitesIntervalle(benevole.id, h(0, 10), h(0, 13)),
+    }));
+
+    expect(anomalies.some((a) => a.code === 'double_engagement')).toBe(false);
+  });
+
   it('détecte un conflit artiste (à surveiller)', () => {
     const mission = creerMission();
     const sousCreneau = creerSousCreneau(h(0, 10), h(0, 11));

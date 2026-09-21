@@ -158,6 +158,9 @@ describe('calculerAffectation — jamais de double réservation', () => {
     const affectes = resultat.propositions.filter((p) => p.benevoleIdApres != null);
     expect(affectes.length).toBeLessThanOrEqual(1); // jamais les deux à la fois
     expect(resultat.anomalies.some((a) => a.code === 'sous_effectif')).toBe(true); // l'autre place reste ouverte
+    // La contrainte dure §7.1 règle 1 reste une exclusion, jamais un objectif pondéré :
+    // le solveur ne produit donc jamais l'anomalie « double engagement » (§7.4).
+    expect(resultat.anomalies.some((a) => a.code === 'double_engagement')).toBe(false);
   });
 });
 

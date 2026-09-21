@@ -202,15 +202,19 @@ export type CauseNonPourvue =
   | 'hors_perimetre';
 
 /**
- * Catalogue des anomalies (§7.4 du cahier des charges) : exactement sept
- * types, fixés avec Antoine sur retour de la première maquette. Toute
- * nouvelle anomalie doit être ajoutée au cahier des charges avant de l'être
- * ici — ce n'est pas un type ouvert.
+ * Catalogue des anomalies (§7.4 du cahier des charges) : exactement huit
+ * types, fixés avec Antoine sur retour de la première maquette (le 8e,
+ * `double_engagement`, comble le 2026-09-21 un trou du catalogue — c'était
+ * déjà la contrainte dure §7.1 règle 1, mais sans entrée ici, ce qui avait
+ * fait diverger les fils Algorithme et Interface d'affectation sur ce que
+ * « chevauchement » recouvrait). Toute nouvelle anomalie doit être ajoutée
+ * au cahier des charges avant de l'être ici — ce n'est pas un type ouvert.
  */
 export type CodeAnomalie =
   | 'sous_effectif'
   | 'souhait_refuse'
   | 'indisponibilite'
+  | 'double_engagement'
   | 'sur_effectif'
   | 'conflit_artiste'
   | 'chevauchement_creneaux'
@@ -228,6 +232,7 @@ export const GRAVITE_PAR_CODE: Record<CodeAnomalie, GraviteAnomalie> = {
   sous_effectif: 'a_corriger',
   souhait_refuse: 'a_corriger',
   indisponibilite: 'a_corriger',
+  double_engagement: 'a_corriger',
   sur_effectif: 'a_surveiller',
   conflit_artiste: 'a_surveiller',
   chevauchement_creneaux: 'a_surveiller',

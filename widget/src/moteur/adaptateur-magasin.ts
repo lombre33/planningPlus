@@ -22,21 +22,25 @@
  *    §7.5.3) mais ce n'est pas dans la forme `Candidat[]` actuelle. Si une
  *    vue veut cette liste enrichie, il faut appeler le moteur directement
  *    plutôt que passer par cet adaptateur.
- * 2. `calculerAnomalies` ne peut pas représenter le 7e type du moteur,
- *    `chevauchement_creneaux` (deux sous-créneaux d'un même macro-créneau
- *    qui se recouvrent dans le temps — indépendant de tout bénévole ou
- *    place). Le type `Anomalie` de `derive.ts` n'a que six cas : tant qu'un
- *    septième cas n'y est pas ajouté (leur fichier, leur décision), cette
- *    anomalie est calculée par le moteur mais n'atteint jamais l'affichage.
- *    Elle n'est pas perdue : `moteurDetecterAnomalies` la retourne toujours,
- *    seule la conversion vers `Anomalie` (UI) l'ignore explicitement
- *    ci-dessous plutôt que de planter.
+ * 2. `calculerAnomalies` ne peut pas représenter deux des huit types du
+ *    moteur : `chevauchement_creneaux` (deux sous-créneaux d'un même
+ *    macro-créneau qui se recouvrent dans le temps — indépendant de tout
+ *    bénévole ou place) et `double_engagement` (un bénévole sur deux places
+ *    qui se recouvrent — la contrainte dure §7.1 règle 1 ; ne devrait
+ *    survenir que par une édition directe des tables Grist). Le type
+ *    `Anomalie` de `derive.ts` n'a que six cas : tant qu'un 7e et 8e cas n'y
+ *    sont pas ajoutés (leur fichier, leur décision), ces deux anomalies sont
+ *    calculées par le moteur mais n'atteignent jamais l'affichage. Rien
+ *    n'est perdu : `moteurDetecterAnomalies` les retourne toujours, seule la
+ *    conversion vers `Anomalie` (UI) les ignore explicitement ci-dessous
+ *    plutôt que de planter.
  * 3. `Magasin` ne modélise pas encore les affinités (`get affinites()`
  *    absent de `../store.ts`, alors que `Modele.affinites` existe) :
  *    `versDonneesPlanning` retourne toujours `affinites: []`, donc le bonus
- *    d'affinité du moteur (§7.2, préférence de second rang) est neutre pour
- *    l'instant à travers cet adaptateur. Pas un bug de ce fichier — à
- *    corriger le jour où `Magasin` porte cette table.
+ *    d'affinité du moteur est neutre pour l'instant à travers cet
+ *    adaptateur — de toute façon en attente d'une décision d'Antoine
+ *    (2026-09-21) : ce score ne correspond à aucun des six objectifs
+ *    actuels du §7.2, voir la note dans `./types.ts`.
  * 4. Ce fichier ne couvre PAS le sens écriture (poser une affectation). Le
  *    fil UI a dit vouloir appeler `corrigerPlace` du moteur directement sur
  *    un `DonneesPlanning` obtenu via `versDonneesPlanning`, puis reporter le
@@ -191,9 +195,10 @@ export function classerCandidats(m: Magasin, ix: Index, groupeId: Id, options: {
  * Remplace `derive.ts` `calculerAnomalies` : même signature, même forme de
  * retour (six cas), mais détecté par le vrai moteur (`./anomalies`
  * `detecterAnomalies`) plutôt que par une réimplémentation indépendante.
- * Voir l'écart n°2 en tête de fichier : le 7e type du moteur
- * (`chevauchement_creneaux`) n'a pas d'équivalent dans le type `Anomalie`
- * ci-contre et est donc ignoré ici, pas perdu côté moteur.
+ * Voir l'écart n°2 en tête de fichier : deux des huit types du moteur
+ * (`chevauchement_creneaux`, `double_engagement`) n'ont pas d'équivalent
+ * dans le type `Anomalie` ci-contre et sont donc ignorés ici, pas perdus
+ * côté moteur.
  */
 export function calculerAnomalies(m: Magasin, ix: Index): AnomalieUI[] {
   const donnees = versDonneesPlanning(m);
@@ -261,6 +266,7 @@ export function calculerAnomalies(m: Magasin, ix: Index): AnomalieUI[] {
         break;
       }
       case 'chevauchement_creneaux':
+      case 'double_engagement':
         // Pas de cas correspondant dans le type `Anomalie` de `derive.ts` — voir l'écart n°2.
         break;
       case 'hors_quota': {

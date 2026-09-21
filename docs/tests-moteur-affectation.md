@@ -5,7 +5,7 @@ la détection d'anomalies et les opérations de correction manuelle décrites
 au §7.5 du [cahier des charges](cahier-des-charges.md). Pas les vues (fils
 « Maquette interactive » et « Interface d'affectation des bénévoles »).
 
-**Statut :** 69 tests, tous verts. `npm test` (vitest) et `npm run build`
+**Statut :** 71 tests, tous verts. `npm test` (vitest) et `npm run build`
 (`tsc --noEmit` strict + build Vite) dans `widget/`.
 
 **Politique de mise à jour (NF7, demande d'Antoine 2026-09-21) :** cette
@@ -57,13 +57,29 @@ objectifs ci-dessus — voir la décision non tranchée listée plus bas.
 | Résolution partielle : un périmètre restreint, le reste figé | `affectation.test.ts` « ne touche que les places du périmètre demandé », « un périmètre par mission résout les groupes de cette mission uniquement », « un périmètre par besoin résout uniquement les groupes positionnés sur ce besoin » |
 | Permutations autorisées dans le périmètre si ça donne une meilleure solution, jamais hors périmètre | `affectation.test.ts` « libère un bénévole d'une place pour en pourvoir une autre du même périmètre... » — voir le commentaire d'en-tête de `affectation.ts` : ce n'est pas un mécanisme séparé, il émerge du fait que tout le périmètre non verrouillé est libéré puis reréparti ensemble |
 
-## §7.4 — Catalogue des anomalies (sept types exacts)
+## §7.4 — Catalogue des anomalies (huit types exacts)
 
 Chaque type, sa gravité (`a_corriger` / `a_surveiller`) et l'absence de faux
 positif sur un planning cohérent : `anomalies.test.ts`, un test par ligne du
 tableau du §7.4, plus « ne signale rien sur un planning cohérent ».
 Franchissement de minuit sans fausse détection de chevauchement :
 « franchit minuit sans anomalie fausse... ».
+
+**Double engagement vs chevauchement de créneaux (précision 2026-09-21, v1.4
+du cahier des charges).** Deux entrées distinctes, testées séparément :
+chevauchement de créneaux porte sur la structure (deux sous-créneaux du même
+macro-créneau qui se recouvrent, indépendamment de qui est affecté),
+`anomalies.test.ts` « détecte un chevauchement de créneaux... ». Double
+engagement porte sur l'affectation (un bénévole sur deux places qui se
+recouvrent) — c'est la contrainte dure §7.1 règle 1, donc ne devrait
+survenir que par une édition directe des tables Grist hors du widget :
+`anomalies.test.ts` « détecte un double engagement... » et « ne signale pas
+de double engagement entre deux places du même bénévole sur des créneaux
+disjoints ». Le solveur ne le produit jamais : `affectation.test.ts`
+« n'affecte jamais le même bénévole à deux groupes dont les créneaux se
+chevauchent » vérifie maintenant explicitement `resultat.anomalies` pour
+confirmer que la contrainte dure reste une exclusion et non un objectif
+pondéré.
 
 Un besoin sans aucun indicatif positionné n'est jamais un sous-effectif : une
 zone que l'utilisateur n'a pas encore construite est un choix, pas une
