@@ -7,9 +7,10 @@
  */
 
 import type {Id, Lieu, Mission} from '../domain/types';
-import {indexer, regrouperParJour} from '../logic/derive';
+import {indexer} from '../logic/derive';
 import {
-  affectationsAInstant, blocsDuJour, couvertureAInstant, indexerDisponibilitesDuQuart, statutBenevoleAInstant,
+  affectationsAInstant, blocsDuJour, couvertureAInstant, indexerDisponibilitesDuQuart,
+  regrouperParJourFestival, statutBenevoleAInstant,
 } from '../logic/dispos-terrain';
 import type {Magasin} from '../store';
 import {libelleHeure} from '../temps';
@@ -33,13 +34,13 @@ export function montrerTerrain(container: HTMLElement, m: Magasin): () => void {
   let instant: number | null = null;
 
   function quartsDuJour(cle: string): number[] {
-    const jour = regrouperParJour(m.macroCreneaux).find((j) => j.cle === cle);
+    const jour = regrouperParJourFestival(m.macroCreneaux).find((j) => j.cle === cle);
     return jour ? blocsDuJour(jour).flatMap((b) => b.quarts) : [];
   }
 
   function rafraichir(): void {
     const ix = indexer(m);
-    const jours = regrouperParJour(m.macroCreneaux);
+    const jours = regrouperParJourFestival(m.macroCreneaux);
     if (jourCle == null || !jours.some((j) => j.cle === jourCle)) {
       jourCle = jours[0]?.cle ?? null;
     }

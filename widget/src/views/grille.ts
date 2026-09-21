@@ -6,15 +6,18 @@
  */
 
 import type {Groupe, Id, Mission, Place, SousCreneau} from '../domain/types';
+import {TYPE_PLACE_DRAG} from '../logic/dnd-types';
 import {
   type Candidat, type Index, classerCandidats, couvertureBesoin, indexer, regrouperParJour,
 } from '../logic/derive';
+import {apercuEchange, verifierDepot} from '../logic/glisser-deposer';
 import type {Magasin} from '../store';
 import {fermerPanneau, h, ouvrirPanneau, vider} from '../ui/dom';
 
 export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
   let jourIndex = 0;
   let equipeFiltre: Id | 'toutes' = 'toutes';
+  let dernierMessage: {texte: string; ton: 'ok' | 'danger'} | null = null;
 
   function rafraichir(): void {
     const ix = indexer(m);
@@ -82,7 +85,10 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
         const c = couvertureBesoin(m, ix, besoin.id);
         const etatCase = c.statut === 'sous' ? 'sous' : 'ok';
         tr.append(h('td', {class: 'besoin-cell'},
-          h('button', {class: `besoin besoin--${etatCase}`, type: 'button', onclick: () => ouvrirDetailBesoin(besoin.id)},
+          h('button', {
+            class: `besoin besoin--${etatCase}`, type: 'button',
+            onclick: () => { dernierMessage = null; ouvrirDetailBesoin(besoin.id); },
+          },
             h('span', {class: 'besoin__effectif mono'}, `${c.pourvues}/${besoin.Effectif_min}`),
             h('div', {class: 'besoin__groupes'}, ...c.groupesPositionnes.map((g) => h(
               'span', {class: 'chip-groupe', style: {background: ix.equipe.get(g.groupe.Equipe)?.Couleur ?? '#888'}},
@@ -113,6 +119,7 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
         ),
         h('button', {class: 'btn btn--ghost btn--sm', type: 'button', onclick: () => fermerPanneau()}, 'Fermer'),
       ),
+      dernierMessage ? h('span', {class: `pill pill--${dernierMessage.ton}`}, dernierMessage.texte) : null,
       h('span', {class: `pill pill--${c.statut === 'sous' ? 'danger' : 'ok'}`},
         `${c.pourvues} affecté${c.pourvues > 1 ? 's' : ''} sur un minimum de ${besoin.Effectif_min}`,
       ),
@@ -136,14 +143,70 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
     );
   }
 
+  /** Échange (ou déplace, si l'une des deux places est vide) les occupants
+   *  de deux places — le même geste que la vue Affectation manuelle
+   *  (`views/affectation.ts`), disponible ici aussi (§7.5 : le parcours
+   *  d'affectation vaut où qu'il s'affiche, y compris dans cette grille). */
+  function deposerEchange(besoinId: Id, placeSourceId: Id, placeCibleId: Id): void {
+    const source = m.places.find((p) => p.id === placeSourceId);
+    const cible = m.places.find((p) => p.id === placeCibleId);
+    if (!source || !cible || source.Benevole == null) { return; }
+    if (source.Verrouillee || cible.Verrouillee) {
+      dernierMessage = {texte: 'Place verrouillée : déverrouillez-la avant de la modifier.', ton: 'danger'};
+      ouvrirDetailBesoin(besoinId);
+      return;
+    }
+    if (source.Benevole != null) {
+      const verdict = verifierDepot(m, source.Benevole, placeCibleId, [placeSourceId]);
+      if (!verdict.ok) { dernierMessage = {texte: verdict.motif, ton: 'danger'}; ouvrirDetailBesoin(besoinId); return; }
+    }
+    if (cible.Benevole != null) {
+      const verdict = verifierDepot(m, cible.Benevole, placeSourceId, [placeCibleId]);
+      if (!verdict.ok) { dernierMessage = {texte: verdict.motif, ton: 'danger'}; ouvrirDetailBesoin(besoinId); return; }
+    }
+
+    const diff = apercuEchange(m, placeSourceId, placeCibleId);
+    const benevoleSource = source.Benevole;
+    const benevoleCible = cible.Benevole;
+    m.assignerPlace(placeSourceId, benevoleCible, 'Manuel');
+    m.assignerPlace(placeCibleId, benevoleSource, 'Manuel');
+    const base = benevoleCible != null ? 'Échange effectué.' : 'Déplacé.';
+    dernierMessage = diff.creees.length > 0
+      ? {texte: `${base} ${diff.creees.length} anomalie${diff.creees.length > 1 ? 's' : ''} créée${diff.creees.length > 1 ? 's' : ''}.`, ton: 'danger'}
+      : {texte: base, ton: 'ok'};
+    ouvrirDetailBesoin(besoinId);
+  }
+
   function ligneMembre(besoinId: Id, place: Place): Node {
     const ix = indexer(m);
     const benevole = place.Benevole != null ? ix.benevole.get(place.Benevole) : null;
-    return h('div', {class: 'membre'},
+    const ligne: HTMLElement = h('div', {
+      class: 'membre',
+      draggable: benevole && !place.Verrouillee ? 'true' : 'false',
+      ondragstart: benevole ? (e: Event) => {
+        const dt = (e as DragEvent).dataTransfer;
+        dt?.setData(TYPE_PLACE_DRAG, String(place.id));
+        if (dt) { dt.effectAllowed = 'move'; }
+      } : undefined,
+      ondragover: (e: Event) => {
+        const de = e as DragEvent;
+        if (!(de.dataTransfer?.types ?? []).includes(TYPE_PLACE_DRAG)) { return; }
+        de.preventDefault();
+        ligne.style.background = 'var(--brand-tint)';
+      },
+      ondragleave: () => { ligne.style.background = ''; },
+      ondrop: (e: Event) => {
+        const de = e as DragEvent;
+        de.preventDefault();
+        ligne.style.background = '';
+        const placeRaw = de.dataTransfer?.getData(TYPE_PLACE_DRAG);
+        if (placeRaw && Number(placeRaw) !== place.id) { deposerEchange(besoinId, Number(placeRaw), place.id); }
+      },
+    },
       h('span', {class: 'rang mono'}, `#${place.Rang}`),
       benevole
         ? h('span', {style: {flex: '1'}}, benevole.Nom)
-        : h('span', {style: {flex: '1', color: 'var(--text-faint)'}}, 'Place non pourvue'),
+        : h('span', {style: {flex: '1', color: 'var(--text-faint)'}}, 'Place non pourvue — glissez un occupant ici, ou :'),
       benevole
         ? h('button', {
           class: 'btn btn--ghost btn--sm', type: 'button',
@@ -154,6 +217,7 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
           onclick: () => ouvrirChoixCandidat(besoinId, place),
         }, 'Affecter…'),
     );
+    return ligne;
   }
 
   function ouvrirChoixCandidat(besoinId: Id, place: Place): void {

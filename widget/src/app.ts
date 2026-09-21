@@ -9,18 +9,22 @@
 
 import type {Magasin} from './store';
 import {h, ICONES, icone, vider} from './ui/dom';
+import {montrerAffectation} from './views/affectation';
 import {montrerAgenda} from './views/agenda';
 import {montrerComparatifAgenda} from './views/agenda-comparatif';
 import {montrerAnomalies} from './views/anomalies';
 import {montrerArtistes} from './views/artistes';
 import {montrerBenevole} from './views/benevole';
+import {montrerDisponibilites} from './views/disponibilites';
 import {montrerEquipe} from './views/equipe';
 import {montrerGrille} from './views/grille';
 import {montrerIndicatifs} from './views/indicatifs';
 import {montrerJourJ} from './views/jourJ';
+import {montrerTerrain} from './views/terrain';
 
 type IdOnglet =
-  | 'agenda' | 'agenda-comparatif' | 'grille' | 'anomalies' | 'indicatifs' | 'jourj'
+  | 'agenda' | 'agenda-comparatif' | 'grille' | 'affectation' | 'anomalies' | 'indicatifs'
+  | 'disponibilites' | 'terrain' | 'jourj'
   | 'benevole' | 'equipe' | 'artistes';
 
 interface DefinitionOnglet {
@@ -52,6 +56,12 @@ const ONGLETS: DefinitionOnglet[] = [
     montrer: montrerGrille,
   },
   {
+    id: 'affectation', libelle: 'Affectation', icone: ICONES.affectation,
+    titre: 'Affectation manuelle',
+    sousTitre: 'Glissez un bénévole vers une place, ou une place vers une autre pour l’échanger. Chaque dépôt montre aussitôt ce qu’il répare ou casse (§7.5).',
+    montrer: montrerAffectation,
+  },
+  {
     id: 'anomalies', libelle: 'Anomalies', icone: ICONES.anomalies,
     titre: 'Anomalies',
     sousTitre: 'Places vides, souhaits contrariés, quotas dépassés — rien de tout ça n’est masqué (objectif O3).',
@@ -62,6 +72,18 @@ const ONGLETS: DefinitionOnglet[] = [
     titre: 'Indicatifs et équipes',
     sousTitre: 'Un indicatif est positionné à l’avance sur plusieurs missions : c’est la mission qui tourne, pas le binôme (§6.3).',
     montrer: montrerIndicatifs,
+  },
+  {
+    id: 'disponibilites', libelle: 'Disponibilités', icone: ICONES.disponibilites,
+    titre: 'Disponibilités des bénévoles',
+    sousTitre: 'Qui est disponible, indisponible ou veut voir un artiste, au quart d’heure, un jour de festival à la fois.',
+    montrer: montrerDisponibilites,
+  },
+  {
+    id: 'terrain', libelle: 'Terrain', icone: ICONES.terrain,
+    titre: 'Terrain',
+    sousTitre: 'Qui doit être où à un instant donné, et les effectifs attendus par mission face à leur minimum.',
+    montrer: montrerTerrain,
   },
   {
     id: 'jourj', libelle: 'Jour J', icone: ICONES.jourj,

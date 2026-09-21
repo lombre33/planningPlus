@@ -11,9 +11,11 @@
 import type {
   Besoin, Disponibilite, Epoch, Id, Lieu, MacroCreneau, Mission, SousCreneau,
 } from '../domain/types';
-import {type Couverture, type Index, type Jour, couvertureBesoin} from './derive';
+import {type Couverture, type Index, type Jour, couvertureBesoin, regrouperParJour} from './derive';
 import type {Magasin} from '../store';
-import {PAS_SECONDES} from '../temps';
+import {epochDebutJourFestival, HEURE_COUPURE_JOUR_FESTIVAL, libelleJourCourt, PAS_SECONDES} from '../temps';
+
+export {cleJourFestival} from '../temps';
 
 function quartsEntre(debut: Epoch, fin: Epoch): Epoch[] {
   const quarts: Epoch[] = [];
@@ -28,10 +30,29 @@ export function estHeurePleine(epoch: Epoch): boolean {
   return new Date(epoch * 1000).getUTCMinutes() === 0;
 }
 
-// Le regroupement par jour de festival (heure de coupure paramétrable plutôt
-// que minuit civil, §6.2) vit dans `regrouperParJour` de `logic/derive.ts` et
-// `cleJourFestival`/`epochDebutJourFestival` de `temps.ts` — pas ici : ce
-// module s'appuie dessus plutôt que de dupliquer sa propre variante.
+// --- Jour de festival (cahier des charges §6.2) -----------------------------
+//
+// Le regroupement par jour de festival (bascule à heure de coupure
+// paramétrable, pas à minuit civil) est défini une seule fois, dans
+// `logic/derive.ts` (`regrouperParJour`) et `temps.ts` (`cleJourFestival`),
+// et réutilisé aussi bien par l'Agenda/la grille Missions que par les deux
+// vues de ce module — pour ne jamais avoir deux définitions du jour de
+// festival qui divergent silencieusement. Seul le libellé court diffère ici
+// (« ven. 17/07 » plutôt que « Vendredi 17 juillet »), pour tenir dans un
+// onglet.
+
+export const HEURE_COUPURE_PAR_DEFAUT = HEURE_COUPURE_JOUR_FESTIVAL;
+
+/** Regroupe les macro-créneaux par jour de festival, avec un libellé court
+ *  adapté aux onglets (variante d'affichage de `regrouperParJour`). */
+export function regrouperParJourFestival(
+  macroCreneaux: MacroCreneau[], heureCoupure = HEURE_COUPURE_JOUR_FESTIVAL,
+): Jour[] {
+  return regrouperParJour(macroCreneaux, heureCoupure).map((jour) => ({
+    ...jour,
+    libelle: libelleJourCourt(epochDebutJourFestival(jour.macros[0]!.Debut, heureCoupure)),
+  }));
+}
 
 export interface BlocMacro {
   macro: MacroCreneau;

@@ -34,6 +34,8 @@
   --warn-tint: #fdf3e3;
   --danger: #c5221f;
   --danger-tint: #fce8e6;
+  --accent-2: #7c3aed;
+  --accent-2-tint: #f1eafd;
 
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -76,6 +78,8 @@
     --warn-tint: #2e2410;
     --danger: #f28b82;
     --danger-tint: #3a1f1c;
+    --accent-2: #c4a6f7;
+    --accent-2-tint: #2c2140;
 
     --shadow-pop: 0 12px 28px -10px rgba(0, 0, 0, 0.55);
   }
@@ -107,6 +111,8 @@
   --warn-tint: #2e2410;
   --danger: #f28b82;
   --danger-tint: #3a1f1c;
+  --accent-2: #c4a6f7;
+  --accent-2-tint: #2c2140;
 
   --shadow-pop: 0 12px 28px -10px rgba(0, 0, 0, 0.55);
 }
@@ -1146,6 +1152,180 @@ table.grille .mission-cell .lieu {
   font-size: 11px;
 }
 
+/* ---------- Affectation manuelle (glisser-déposer) ---------- */
+
+.affectation__layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) 1fr;
+  gap: 18px;
+  align-items: start;
+}
+
+.affectation__banniere {
+  margin-bottom: 12px;
+}
+
+.affectation__roster {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: sticky;
+  top: 0;
+}
+
+.affectation__roster-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.affectation__roster-liste {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: calc(100dvh - 220px);
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.roster-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 7px 10px;
+  background: var(--surface);
+  cursor: grab;
+}
+
+.roster-card:active { cursor: grabbing; }
+
+.roster-card--absent {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.roster-card__nom {
+  flex: 1;
+  font-weight: 600;
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.roster-card__meta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.affectation__board {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.besoin-carte {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  background: var(--surface);
+}
+
+.besoin-carte__tete {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.besoin-carte__mission { font-weight: 700; font-size: 13.5px; }
+.besoin-carte__sous-creneau { font-size: 11.5px; color: var(--text-muted); }
+
+.besoin-carte__groupes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.groupe-carte {
+  flex: 0 0 200px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  background: var(--bg);
+}
+
+.groupe-carte__code {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 11.5px;
+  margin-bottom: 6px;
+  display: block;
+}
+
+.place-slot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 5px 6px;
+  margin-bottom: 5px;
+  background: var(--surface);
+}
+
+.place-slot--occupee {
+  border-style: solid;
+  cursor: grab;
+}
+
+.place-slot--occupee:active { cursor: grabbing; }
+
+.place-slot--verrouillee {
+  border-color: var(--night);
+  background: var(--night-tint);
+}
+
+.place-slot--survol {
+  border-color: var(--brand);
+  background: var(--brand-tint);
+}
+
+.place-slot__rang {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  width: 16px;
+}
+
+.place-slot__nom {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.place-slot__vide-texte {
+  flex: 1;
+  font-size: 11px;
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.place-slot__actions {
+  display: flex;
+  gap: 2px;
+}
+
+@media (max-width: 860px) {
+  .affectation__layout { grid-template-columns: 1fr; }
+  .affectation__roster { position: static; }
+  .affectation__roster-liste { max-height: none; }
+}
+
 /* ---------- Comparatif agenda (vertical/horizontal) ----------
    La disposition verticale réutilise .agenda__grid/.macro-bloc/.sous-bloc
    ci-dessus telles quelles (mêmes jetons, même densité) : seule la
@@ -1376,9 +1556,7 @@ table.grille .mission-cell .lieu {
 
 /* ---------- Disponibilités (grille bénévoles × quart d'heure) ----------
    Utilise --accent-2 / --accent-2-tint pour l'état « veut voir un artiste »,
-   demandés au fil Maquette interactive (troisième teinte, distincte de
-   brand/ok/warn/danger) ; repli sur --warn en attendant qu'ils soient
-   publiés dans les jetons partagés. */
+   une troisième teinte distincte de brand/ok/warn/danger. */
 
 .dispos-barre {
   display: flex;
@@ -1527,7 +1705,7 @@ table.dispos-table td {
 
 .dispos-cellule--disponible { background: var(--brand-tint); }
 .dispos-cellule--indisponible { background: var(--surface-muted); }
-.dispos-cellule--artiste { background: var(--accent-2-tint, var(--warn-tint)); }
+.dispos-cellule--artiste { background: var(--accent-2-tint); }
 
 /* ---------- Terrain (où est chaque bénévole à l'instant t) ---------- */
 

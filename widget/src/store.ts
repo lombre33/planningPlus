@@ -182,4 +182,13 @@ export class Magasin {
     this.data.positionsGroupe = this.data.positionsGroupe.filter((p) => p.id !== positionId);
     this.notifier();
   }
+
+  // --- Simulation ------------------------------------------------------------
+
+  /** Clone profond et indépendant, pour simuler une modification (aperçu
+   *  avant validation, §7.3) sans jamais toucher au magasin réel : les
+   *  mutations faites sur le clone n'appellent pas ses abonnés. */
+  cloner(): Magasin {
+    return new Magasin(structuredClone(this.data));
+  }
 }

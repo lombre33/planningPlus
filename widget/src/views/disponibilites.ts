@@ -10,9 +10,9 @@
  */
 
 import type {Id} from '../domain/types';
-import {indexer, regrouperParJour} from '../logic/derive';
+import {indexer} from '../logic/derive';
 import {
-  blocsDuJour, estHeurePleine, indexerDisponibilitesParBenevole, statutCellule,
+  blocsDuJour, estHeurePleine, indexerDisponibilitesParBenevole, regrouperParJourFestival, statutCellule,
 } from '../logic/dispos-terrain';
 import type {Magasin} from '../store';
 import {libelleHeure} from '../temps';
@@ -31,7 +31,7 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
 
   function rafraichir(): void {
     const ix = indexer(m);
-    const jours = regrouperParJour(m.macroCreneaux);
+    const jours = regrouperParJourFestival(m.macroCreneaux);
     if (jourCle == null || !jours.some((j) => j.cle === jourCle)) {
       jourCle = jours[0]?.cle ?? null;
     }
