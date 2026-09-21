@@ -518,6 +518,56 @@ describe('previsualiserDeplacement', () => {
   });
 });
 
+describe('calculerAffectation — planning partiel (parcours de construction incrémental)', () => {
+  it("reste utile sur un planning à moitié construit : pourvoit ce qui peut l'être, laisse sous-staffé ce qui manque de candidats, et ne signale rien sur une zone jamais positionnée", () => {
+    // Bar : positionné, un candidat disponible sur ce créneau → doit être pourvu.
+    const missionBar = creerMission();
+    const sousCreneauBar = creerSousCreneau(h(0, 10), h(0, 11));
+    const besoinBar = creerBesoin(missionBar.id, sousCreneauBar.id, {effectifMin: 1, effectifMax: 1});
+    const groupeBar = creerGroupe();
+    const positionBar = creerPositionGroupe(groupeBar.id, besoinBar.id);
+    const placeBar = creerPlace(groupeBar.id, 1);
+    const benevoleDispo = creerBenevole();
+
+    // Sécu : positionné, sur un créneau différent où personne n'est disponible
+    // → doit rester sous-staffé, en anomalie.
+    const missionSecu = creerMission();
+    const sousCreneauSecu = creerSousCreneau(h(0, 14), h(0, 15));
+    const besoinSecu = creerBesoin(missionSecu.id, sousCreneauSecu.id, {effectifMin: 1, effectifMax: 1});
+    const groupeSecu = creerGroupe();
+    const positionSecu = creerPositionGroupe(groupeSecu.id, besoinSecu.id);
+    const placeSecu = creerPlace(groupeSecu.id, 1);
+
+    // Accueil : le besoin existe (créé à l'étape 2) mais personne n'a encore positionné
+    // d'indicatif dessus (étape 3 pas atteinte) — un choix de l'utilisateur, pas une anomalie.
+    const missionAccueil = creerMission();
+    const sousCreneauAccueil = creerSousCreneau(h(0, 18), h(0, 19));
+    const besoinAccueil = creerBesoin(missionAccueil.id, sousCreneauAccueil.id, {effectifMin: 2, effectifMax: 2});
+
+    const d = donnees({
+      benevoles: [benevoleDispo],
+      missions: [missionBar, missionSecu, missionAccueil],
+      sousCreneaux: [sousCreneauBar, sousCreneauSecu, sousCreneauAccueil],
+      besoins: [besoinBar, besoinSecu, besoinAccueil],
+      groupes: [groupeBar, groupeSecu],
+      positionsGroupe: [positionBar, positionSecu],
+      places: [placeBar, placeSecu],
+      disponibilites: disponibilitesIntervalle(benevoleDispo.id, h(0, 10), h(0, 11)),
+    });
+
+    const resultat = calculerAffectation(d);
+
+    expect(resultat.propositions.find((p) => p.placeId === placeBar.id)?.benevoleIdApres).toBe(benevoleDispo.id);
+    expect(resultat.propositions.some((p) => p.placeId === placeSecu.id && p.benevoleIdApres != null)).toBe(false);
+
+    expect(resultat.anomalies).toEqual([
+      expect.objectContaining({code: 'sous_effectif', besoinId: besoinSecu.id}),
+    ]);
+    // Aucune anomalie côté Accueil : le besoin n'a encore aucun indicatif positionné.
+    expect(resultat.anomalies.some((a) => a.besoinId === besoinAccueil.id)).toBe(false);
+  });
+});
+
 describe('calculerAffectation — franchissement de minuit', () => {
   it("couvre correctement un groupe positionné sur une soirée qui franchit minuit", () => {
     const mission = creerMission();

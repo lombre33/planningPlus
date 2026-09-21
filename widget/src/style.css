@@ -298,6 +298,12 @@ button {
   white-space: nowrap;
 }
 
+.btn svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
 .btn:hover {
   border-color: var(--text-faint);
 }
@@ -1164,6 +1170,12 @@ table.grille .mission-cell .lieu {
 
 .membre select {
   flex: 1;
+}
+
+.membre--verrouillee {
+  background: var(--night-tint);
+  border-radius: var(--radius-sm);
+  padding-left: 4px;
 }
 
 /* ---------- Jour J ---------- */

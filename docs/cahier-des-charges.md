@@ -373,10 +373,13 @@ premières qui signent une vraie violation de règle.
 
 ### 7.5 Parcours d'affectation et de correction
 
-C'est le cœur de l'outil, et le retour d'Antoine sur la première maquette est
-clair sur ce point : ce parcours n'était ni écrit finement ni maquetté. Ce qui
-suit cadre ce qu'une version refaite doit couvrir, indépendamment de
-l'interface retenue.
+C'est le cœur de l'outil. Le fil Interface d'affectation en a livré une
+première version maquettée (glisser un bénévole sur une place vide, glisser
+une place occupée sur une autre pour échanger deux personnes, un retour
+immédiat sur ce que chaque dépôt répare ou casse), sur des fonctions
+provisoires en attendant le branchement du vrai moteur du fil Algorithme. Ce
+qui suit reste la référence sur ce que ce parcours doit couvrir,
+indépendamment de l'interface retenue.
 
 1. **Lancement de l'algorithme**, sur tout le planning ou sur un périmètre
    choisi (une mission, un macro-créneau — §7.3). Il ne crée jamais de
@@ -393,11 +396,25 @@ l'interface retenue.
    place la libère. Une place modifiée à la main passe `Origine = Manuel` et
    `Verrouillee = vrai` : un recalcul ultérieur, global ou partiel, ne la
    touche plus tant qu'elle n'est pas déverrouillée explicitement (cohérent
-   avec §7.1 et la réponse à la question 6.6 du cadrage).
+   avec §7.1 et la réponse à la question 6.6 du cadrage). Ce verrouillage
+   n'a de sens que si on le voit et qu'on peut le défaire :
+   - **Signalement** : une place verrouillée se distingue visuellement,
+     partout où elle apparaît (grille, vue affectation, feuille de route) —
+     un cadenas ou un équivalent, jamais une différence de couleur seule
+     (accessibilité, §9 NF6). Un recalcul qui la traverse sans la toucher
+     doit rester lisible comme volontaire, pas comme un oubli.
+   - **Déverrouillage** : un geste explicite, symétrique de l'affectation
+     manuelle (une action directement sur la place verrouillée), jamais un
+     effet de bord d'une autre opération. Une fois déverrouillée, la place
+     redevient une place normale, éligible au prochain recalcul comme
+     n'importe quelle autre.
+
+   Sans ces deux points, quelqu'un qui corrige à la main ne comprend pas
+   pourquoi un recalcul ignore son travail — c'est le genre de silence qui se
+   paie le jour J.
 4. **Correction manuelle, indicatif par indicatif.** Un indicatif peut être
    repositionné d'un besoin à un autre — une seule ligne de `Positions_groupe`
-   change, rien d'autre (§6.3, mécanisme encore en attente de validation sur
-   son ergonomie) — sans toucher aux personnes qui l'occupent.
+   change, rien d'autre (§6.3) — sans toucher aux personnes qui l'occupent.
 5. **Recalcul partiel** après une correction manuelle ou une absence
    déclarée : relancer l'algorithme sur le seul périmètre affecté reprend les
    places encore vides sans toucher aux places verrouillées (§7.3, §5.3).
@@ -405,8 +422,7 @@ l'interface retenue.
    vue anomalies immédiatement, jamais en différé.
 
 C'est ce parcours, plus que les vues de consultation, qui décide si l'outil
-fait gagner du temps le jour J — il doit être le premier maquetté en détail à
-la prochaine itération.
+fait gagner du temps le jour J.
 
 ## 8. Vues attendues
 
@@ -423,9 +439,9 @@ Liste de travail, à arbitrer (voir le brainstorm dans le fil et la
    conflit artiste, chevauchement, hors quota).
 5. **Vue affectation manuelle** — le parcours décrit au §7.5 : candidats
    classés par pertinence pour chaque place, repositionnement d'un indicatif
-   d'un besoin à un autre. La vue la plus critique de l'outil, et la moins
-   aboutie à ce stade : la première maquette n'en proposait qu'une ébauche,
-   jugée inutilisable.
+   d'un besoin à un autre. La vue la plus critique de l'outil ; maquettée
+   (glisser-déposer pour affecter ou échanger), sur des fonctions
+   provisoires en attendant le branchement du vrai moteur d'affectation.
 6. **Vue bénévole** — la feuille de route individuelle, imprimable.
 7. **Vue équipe** — une équipe sur toute la durée, par groupe.
 8. **Vue artistes** — qui joue quand, et combien de bénévoles veulent le voir.
