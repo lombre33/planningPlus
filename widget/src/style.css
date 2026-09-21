@@ -766,32 +766,41 @@ button {
   flex: 1;
   position: relative;
   margin: 4px 6px 6px;
-  border-radius: 6px;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-wrap: wrap;
-  gap: 1px;
+  align-content: flex-start;
+  gap: 3px;
 }
 
+/* Puce compacte plutôt qu'un pavé pleine largeur (retour d'Antoine,
+   2026-09-21) : une journée de festival a souvent plus de cinq
+   sous-créneaux dans le même macro-créneau (quart d'heure à l'heure et
+   demie), donc chaque puce ne prend que la largeur de son libellé et les
+   puces s'enchaînent en ligne plutôt que de s'étirer en tableau. */
 .sous-bloc {
-  flex: 1 1 64px;
+  flex: 0 0 auto;
   background: var(--surface);
   border: 1px solid rgba(44, 40, 84, 0.18);
-  border-radius: 4px;
-  padding: 3px 5px;
-  font-size: 10px;
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 9px;
+  line-height: 15px;
   color: var(--text-muted);
-  min-width: 0;
+  max-width: 100%;
 }
 
 .sous-bloc .lib {
   font-family: var(--font-mono);
   font-weight: 600;
   color: var(--text);
-  display: block;
+  display: inline-block;
+  max-width: 84px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  vertical-align: bottom;
 }
 
 /* ---------- Grille mission x sous-créneau ---------- */
