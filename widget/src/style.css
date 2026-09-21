@@ -1723,7 +1723,6 @@ table.dispos-table td {
 
 .contrainte-badge--danger { background: var(--danger-tint); color: var(--danger); }
 .contrainte-badge--warn { background: var(--warn-tint); color: var(--warn); }
-.contrainte-badge--neutral { background: var(--night-tint); color: var(--night); }
 
 /* ---------- Terrain (où est chaque bénévole à l'instant t) ---------- */
 

@@ -48,14 +48,10 @@ function creerModeleDeTest(): Modele {
       // Bob n'a aucune ligne au quart 0 : vaut indisponible (§6.4).
       {Benevole: 2, Quart_heure: 900, Statut: 'Disponible', Artiste: null},
     ],
-    // Contraintes (§6) pour les tests de `contraintesBenevole` : Bob refuse
-    // la seule mission du fixture, Alice et Bob s'évitent, Bob et Chloé
-    // doivent être rapprochés.
+    // Contraintes (§7.2) pour les tests de `contraintesBenevole` : Bob
+    // refuse la seule mission du fixture.
     souhaitsMissions: [{id: 1, Benevole: 2, Mission: 1, Preference: 'Refuse'}],
-    affinites: [
-      {id: 1, Benevole_A: 1, Benevole_B: 2, Type: 'Éviter'},
-      {id: 2, Benevole_A: 2, Benevole_B: 3, Type: 'Ensemble'},
-    ],
+    affinites: [],
   };
 }
 
@@ -208,35 +204,25 @@ describe('contraintesBenevole', () => {
     const ix = indexer(m);
     const c = contraintesBenevole(m, ix, 2); // Bob
     expect(c.missionsRefusees).toEqual(['Bar central']);
-    expect(c.affinitesEviter).toEqual(['Alice']);
-    expect(c.affinitesEnsemble).toEqual(['Chloé']);
     expect(graviteContraintes(c)).toBe('danger');
-    expect(libelleContraintes(c)).toBe('Refuse : Bar central · À éviter avec : Alice · À rapprocher de : Chloé');
+    expect(libelleContraintes(c)).toBe('Refuse : Bar central');
   });
 
-  it('une affinité à éviter, sans refus, vaut une gravité intermédiaire', () => {
+  it('une réticence, sans refus, vaut une gravité intermédiaire', () => {
     const modele = creerModeleDeTest();
+    modele.souhaitsMissions = [{id: 1, Benevole: 1, Mission: 1, Preference: 'Réticent'}];
     const m = new Magasin(modele);
     const ix = indexer(m);
     const c = contraintesBenevole(m, ix, 1); // Alice
     expect(c.missionsRefusees).toEqual([]);
-    expect(c.affinitesEviter).toEqual(['Bob']);
+    expect(c.missionsReticentes).toEqual(['Bar central']);
     expect(graviteContraintes(c)).toBe('warn');
-  });
-
-  it('une affinité à rapprocher seule vaut une gravité informative', () => {
-    const modele = creerModeleDeTest();
-    const m = new Magasin(modele);
-    const ix = indexer(m);
-    const c = contraintesBenevole(m, ix, 3); // Chloé
-    expect(c.affinitesEnsemble).toEqual(['Bob']);
-    expect(graviteContraintes(c)).toBe('neutral');
+    expect(libelleContraintes(c)).toBe('Réticent·e pour : Bar central');
   });
 
   it('aucune contrainte déclarée : pas de gravité, pas de libellé', () => {
     const modele = creerModeleDeTest();
     modele.souhaitsMissions = [];
-    modele.affinites = [];
     const m = new Magasin(modele);
     const ix = indexer(m);
     const c = contraintesBenevole(m, ix, 1);

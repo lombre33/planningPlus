@@ -7,7 +7,7 @@
  */
 
 import type {
-  Affinite, Artiste, Benevole, Besoin, Disponibilite, Equipe, Groupe, Id, Lieu, MacroCreneau,
+  Artiste, Benevole, Besoin, Disponibilite, Equipe, Groupe, Id, Lieu, MacroCreneau,
   Mission, Modele, OriginePlace, Place, PositionGroupe, SouhaitMission, SousCreneau,
 } from './domain/types';
 
@@ -49,7 +49,6 @@ export class Magasin {
   get places(): Place[] { return this.data.places; }
   get disponibilites(): Disponibilite[] { return this.data.disponibilites; }
   get souhaitsMissions(): SouhaitMission[] { return this.data.souhaitsMissions; }
-  get affinites(): Affinite[] { return this.data.affinites; }
 
   // --- Écriture : agenda -----------------------------------------------------
 
