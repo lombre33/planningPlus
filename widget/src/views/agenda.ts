@@ -1,9 +1,8 @@
 /**
  * Vue agenda : création et édition des macro-créneaux et sous-créneaux, par
  * jours ajoutés librement (§8, vue 1). Un macro-créneau se déplace en le
- * glissant ; son horaire et son nom se corrigent par un formulaire, comme
- * la création — le glisser-déposer pour redimensionner n'est pas encore
- * couvert par cette maquette (voir la réponse qui l'accompagne).
+ * glissant par son en-tête, et se redimensionne en tirant son bord haut ou
+ * bas (comme un agenda classique) ; son nom se corrige par le formulaire.
  */
 
 import type {MacroCreneau, SousCreneau} from '../domain/types';
@@ -68,7 +67,7 @@ export function montrerAgenda(container: HTMLElement, m: Magasin): () => void {
       h('div', {class: 'agenda'},
         h('div', {class: 'agenda__toolbar'},
           h('button', {class: 'btn btn--primary btn--sm', type: 'button', onclick: () => ouvrirModalCreation(null)}, '+ Nouveau jour'),
-          h('span', {class: 'view__intro', style: {margin: '0'}}, "Glissez l'en-tête d'un macro-créneau pour le déplacer dans le temps ; l'icône ✎ ouvre le détail."),
+          h('span', {class: 'view__intro', style: {margin: '0'}}, "Glissez l'en-tête d'un macro-créneau pour le déplacer, ses bords haut/bas pour le redimensionner ; l'icône ✎ ouvre le détail."),
         ),
         grille,
       ),
@@ -95,15 +94,20 @@ export function montrerAgenda(container: HTMLElement, m: Magasin): () => void {
         onclick: (e: Event) => { e.stopPropagation(); ouvrirModalEdition(macro); },
       }, '✎'),
     );
+    const poigneeHaut = h('div', {class: 'macro-bloc__resize macro-bloc__resize--haut', title: 'Glisser pour changer le début'});
+    const poigneeBas = h('div', {class: 'macro-bloc__resize macro-bloc__resize--bas', title: 'Glisser pour changer la fin'});
 
     const bloc = h('div', {
       class: 'macro-bloc', style: {top: `${top}px`, height: `${hauteur}px`},
     },
+      poigneeHaut,
       entete,
       h('div', {class: 'macro-bloc__sous'}, ...sousCreneaux.map((sc) => construireChipSousCreneau(sc))),
+      poigneeBas,
     );
 
     rendreDeplacable(bloc, entete, macro, jourDebutEpoch, minMinute);
+    rendreRedimensionnable(bloc, poigneeHaut, poigneeBas, macro, jourDebutEpoch, minMinute);
     return bloc;
   }
 
@@ -144,6 +148,60 @@ export function montrerAgenda(container: HTMLElement, m: Magasin): () => void {
       document.addEventListener('mouseup', onMouseUp);
       e.preventDefault();
     });
+  }
+
+  const DUREE_MIN_MINUTES = 15;
+
+  function rendreRedimensionnable(
+    bloc: HTMLElement, poigneeHaut: HTMLElement, poigneeBas: HTMLElement,
+    macro: MacroCreneau, jourDebutEpoch: number, minMinute: number,
+  ): void {
+    const hauteurMin = Math.max(28, DUREE_MIN_MINUTES * PX_PAR_MINUTE);
+
+    function demarrer(depuisHaut: boolean): (e: MouseEvent) => void {
+      return (e: MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const yDepart = e.clientY;
+        const topDepart = parseFloat(bloc.style.top || '0');
+        const hauteurDepart = parseFloat(bloc.style.height || '0');
+
+        const onMouseMove = (ev: MouseEvent) => {
+          const delta = ev.clientY - yDepart;
+          if (depuisHaut) {
+            const nouvelleHauteur = Math.max(hauteurMin, hauteurDepart - delta);
+            bloc.style.top = `${topDepart + (hauteurDepart - nouvelleHauteur)}px`;
+            bloc.style.height = `${nouvelleHauteur}px`;
+          } else {
+            bloc.style.height = `${Math.max(hauteurMin, hauteurDepart + delta)}px`;
+          }
+        };
+        const onMouseUp = () => {
+          document.removeEventListener('mousemove', onMouseMove);
+          document.removeEventListener('mouseup', onMouseUp);
+          const topFinal = parseFloat(bloc.style.top || '0');
+          const hauteurFinale = parseFloat(bloc.style.height || '0');
+          if (depuisHaut) {
+            const debutBrut = topFinal / PX_PAR_MINUTE + minMinute;
+            const debutAjuste = Math.round(debutBrut / DUREE_MIN_MINUTES) * DUREE_MIN_MINUTES;
+            const nouveauDebut = jourDebutEpoch + debutAjuste * 60;
+            if (macro.Fin - nouveauDebut < DUREE_MIN_MINUTES * 60) { return; }
+            m.enregistrerMacroCreneau({...macro, Debut: nouveauDebut});
+          } else {
+            const finBrute = (topFinal + hauteurFinale) / PX_PAR_MINUTE + minMinute;
+            const finAjustee = Math.round(finBrute / DUREE_MIN_MINUTES) * DUREE_MIN_MINUTES;
+            const nouveauFin = jourDebutEpoch + finAjustee * 60;
+            if (nouveauFin - macro.Debut < DUREE_MIN_MINUTES * 60) { return; }
+            m.enregistrerMacroCreneau({...macro, Fin: nouveauFin});
+          }
+        };
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+      };
+    }
+
+    poigneeHaut.addEventListener('mousedown', demarrer(true));
+    poigneeBas.addEventListener('mousedown', demarrer(false));
   }
 
   function ouvrirModalEdition(macro: MacroCreneau): void {

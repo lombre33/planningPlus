@@ -618,6 +618,22 @@ button {
   flex-direction: column;
 }
 
+.macro-bloc__resize {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 7px;
+  cursor: ns-resize;
+  z-index: 2;
+}
+
+.macro-bloc__resize--haut { top: 0; }
+.macro-bloc__resize--bas { bottom: 0; }
+
+.macro-bloc__resize:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+
 .macro-bloc__head {
   display: flex;
   justify-content: space-between;
