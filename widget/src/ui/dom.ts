@@ -71,6 +71,7 @@ export const ICONES = {
   jourj: 'M12 3v9l6 3M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z',
   fermer: 'M6 6l12 12M18 6 6 18',
   cadenas: 'M6 11V8a6 6 0 1 1 12 0v3M5 11h14v9H5z',
+  affectation: 'M4 9l4-4 4 4M8 5v14M20 15l-4 4-4-4M16 19V5',
 } as const;
 
 /** Ouvre une boîte de dialogue modale simple ; `contenu` reçoit une fonction

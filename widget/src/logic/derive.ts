@@ -7,7 +7,7 @@
 import type {
   Besoin, Groupe, Id, MacroCreneau, Place, SousCreneau, StatutDisponibilite,
 } from '../domain/types';
-import {cleJour, libelleJourLong, PAS_SECONDES} from '../temps';
+import {cleJourFestival, libelleJourFestival, PAS_SECONDES} from '../temps';
 import type {Magasin} from '../store';
 
 // --- Index -------------------------------------------------------------
@@ -35,19 +35,21 @@ export interface Jour {
   macros: MacroCreneau[];
 }
 
-/** Regroupe les macro-créneaux par jour civil (heure locale) de leur début.
- *  Une soirée qui franchit minuit reste rattachée à son jour de début. */
-export function regrouperParJour(macroCreneaux: MacroCreneau[]): Jour[] {
+/** Regroupe les macro-créneaux par jour « de festival » (§6.2 : la journée
+ *  bascule à `heureCoupure`, 6 h par défaut, plutôt qu'à minuit, pour qu'une
+ *  soirée qui franchit minuit reste affichée avec son jour de début). Ce
+ *  regroupement est purement visuel ; rien n'est stocké sous cette forme. */
+export function regrouperParJour(macroCreneaux: MacroCreneau[], heureCoupure = 6): Jour[] {
   const parCle = new Map<string, MacroCreneau[]>();
   for (const macro of macroCreneaux) {
-    const cle = cleJour(macro.Debut);
+    const cle = cleJourFestival(macro.Debut, heureCoupure);
     const liste = parCle.get(cle) ?? [];
     liste.push(macro);
     parCle.set(cle, liste);
   }
   return [...parCle.entries()]
     .map(([cle, macros]) => ({
-      cle, libelle: libelleJourLong(macros[0]!.Debut),
+      cle, libelle: libelleJourFestival(macros[0]!.Debut, heureCoupure),
       macros: macros.sort((a, b) => a.Debut - b.Debut),
     }))
     .sort((a, b) => a.macros[0]!.Debut - b.macros[0]!.Debut);

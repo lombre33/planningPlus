@@ -69,6 +69,19 @@ export function cleJour(epochSecondes: number, fuseau = TIMEZONE): string {
   }).format(new Date(epochSecondes * 1000));
 }
 
+/** Jour « de festival » d'un horodatage : comme `cleJour`, mais la journée
+ *  bascule à `heureCoupure` (6 h par défaut) plutôt qu'à minuit, pour qu'une
+ *  soirée finissant après minuit reste affichée avec son jour de début.
+ *  Purement visuel, jamais stocké (cahier des charges §6.2, décision du
+ *  2026-09-21 : les bornes elles-mêmes restent des date-heures absolues). */
+export function cleJourFestival(epochSecondes: number, heureCoupure = 6, fuseau = TIMEZONE): string {
+  return cleJour(epochSecondes - heureCoupure * 3600, fuseau);
+}
+
+export function libelleJourFestival(epochSecondes: number, heureCoupure = 6, fuseau = TIMEZONE): string {
+  return libelleJourLong(epochSecondes - heureCoupure * 3600, fuseau);
+}
+
 /** Minuit local du jour civil d'un horodatage. */
 export function epochMinuitLocal(epochSecondes: number, fuseau = TIMEZONE): number {
   const cle = cleJour(epochSecondes, fuseau);

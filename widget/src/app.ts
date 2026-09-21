@@ -9,13 +9,14 @@
 
 import type {Magasin} from './store';
 import {h, ICONES, icone, vider} from './ui/dom';
+import {montrerAffectation} from './views/affectation';
 import {montrerAgenda} from './views/agenda';
 import {montrerAnomalies} from './views/anomalies';
 import {montrerGrille} from './views/grille';
 import {montrerIndicatifs} from './views/indicatifs';
 import {montrerJourJ} from './views/jourJ';
 
-type IdOnglet = 'agenda' | 'grille' | 'anomalies' | 'indicatifs' | 'jourj';
+type IdOnglet = 'agenda' | 'grille' | 'affectation' | 'anomalies' | 'indicatifs' | 'jourj';
 
 interface DefinitionOnglet {
   id: IdOnglet;
@@ -38,6 +39,12 @@ const ONGLETS: DefinitionOnglet[] = [
     titre: 'Missions × sous-créneaux',
     sousTitre: 'Qui est où. Cliquez une case pour voir la couverture et affecter un candidat classé.',
     montrer: montrerGrille,
+  },
+  {
+    id: 'affectation', libelle: 'Affectation', icone: ICONES.affectation,
+    titre: 'Affectation manuelle',
+    sousTitre: 'Glissez un bénévole vers une place, ou une place vers une autre pour l’échanger. Chaque dépôt montre aussitôt ce qu’il répare ou casse (§7.5).',
+    montrer: montrerAffectation,
   },
   {
     id: 'anomalies', libelle: 'Anomalies', icone: ICONES.anomalies,
