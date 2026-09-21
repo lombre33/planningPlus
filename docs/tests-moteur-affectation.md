@@ -5,7 +5,7 @@ la détection d'anomalies et les opérations de correction manuelle décrites
 au §7.5 du [cahier des charges](cahier-des-charges.md). Pas les vues (fils
 « Maquette interactive » et « Interface d'affectation des bénévoles »).
 
-**Statut :** 67 tests, tous verts. `npm test` (vitest) et `npm run build`
+**Statut :** 69 tests, tous verts. `npm test` (vitest) et `npm run build`
 (`tsc --noEmit` strict + build Vite) dans `widget/`.
 
 **Politique de mise à jour (NF7, demande d'Antoine 2026-09-21) :** cette
@@ -62,6 +62,13 @@ tableau du §7.4, plus « ne signale rien sur un planning cohérent ».
 Franchissement de minuit sans fausse détection de chevauchement :
 « franchit minuit sans anomalie fausse... ».
 
+Un besoin sans aucun indicatif positionné n'est jamais un sous-effectif : une
+zone que l'utilisateur n'a pas encore construite est un choix, pas une
+anomalie (Décision Antoine, 2026-09-21, parcours de construction en cinq
+étapes — macro-créneaux, sous-créneaux/missions, indicatifs, disponibilités,
+algorithme). `anomalies.test.ts` « ne signale aucun sous-effectif sur un
+besoin sans aucun indicatif positionné... ».
+
 ## §7.5 — Parcours d'affectation et de correction
 
 | Étape | Test |
@@ -81,6 +88,7 @@ Franchissement de minuit sans fausse détection de chevauchement :
 | Un macro-créneau ou un sous-créneau qui franchit minuit reste un intervalle continu, jamais découpé par jour calendaire | `temps.test.ts` (`quartsDIntervalle`, `heuresDIntervalle`, `seChevauchent` « ... franchit minuit ») ; `eligibilite.test.ts` « gère correctement un créneau qui franchit minuit... » ; `affectation.test.ts` « couvre correctement un groupe positionné sur une soirée qui franchit minuit » ; `anomalies.test.ts` « franchit minuit sans anomalie fausse... » |
 | Immutabilité : aucune fonction ne mute son entrée | `affectation.test.ts` « ne mute pas l'objet donnees d'origine... » (`appliquerPropositions`) |
 | Échelle réelle (70 bénévoles, 5 jours, 3 équipes — cas concret d'Antoine) | `integration-seed.test.ts`, données produites par `dev/seed/generate.mjs` (mêmes données que l'environnement de test Grist) : résolution sans erreur, anomalie volontaire du générateur bien détectée, temps d'exécution (indicatif, Node ≠ navigateur) très en-dessous de NF2 |
+| Planning partiel (parcours de construction incrémental, maquette interactive) : pourvoit ce qui peut l'être, laisse sous-staffé ce qui manque réellement de candidats, ignore une zone jamais positionnée | `affectation.test.ts` « reste utile sur un planning à moitié construit... » |
 
 ## Décisions de conception non triviales (pour l'audit, §5.2)
 

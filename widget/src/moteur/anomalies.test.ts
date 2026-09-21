@@ -60,6 +60,19 @@ describe('detecterAnomalies — catalogue exact du §7.4', () => {
     expect(anomalies).toEqual([expect.objectContaining({code: 'sous_effectif', gravite: 'a_corriger', besoinId: besoin.id})]);
   });
 
+  it("ne signale aucun sous-effectif sur un besoin sans aucun indicatif positionné (zone pas encore construite, pas une anomalie)", () => {
+    const mission = creerMission();
+    const sousCreneau = creerSousCreneau(h(0, 10), h(0, 11));
+    const besoin = creerBesoin(mission.id, sousCreneau.id, {effectifMin: 2, effectifMax: 2});
+
+    const anomalies = detecterAnomalies(donnees({
+      missions: [mission], sousCreneaux: [sousCreneau], besoins: [besoin],
+      // Aucun groupe, aucune position : le besoin existe mais personne ne l'a encore staffé.
+    }));
+
+    expect(anomalies).toEqual([]);
+  });
+
   it('détecte un sur-effectif (à surveiller)', () => {
     const mission = creerMission();
     const sousCreneau = creerSousCreneau(h(0, 10), h(0, 11));
