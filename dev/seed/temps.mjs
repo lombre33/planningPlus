@@ -44,14 +44,6 @@ export function epochDeJour({annee, mois, jour}, fuseau) {
   return epochDepuisHeureLocale({annee, mois, jour}, fuseau);
 }
 
-/** Libellé « ven. 14:00 » d'un horodatage, en heure locale. */
-export function libelleCourt(epochSecondes, fuseau) {
-  const format = new Intl.DateTimeFormat('fr-FR', {
-    timeZone: fuseau, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
-  });
-  return format.format(new Date(epochSecondes * 1000)).replace(/ /g, ' ');
-}
-
 /** Heure « 14:00 » d'un horodatage, en heure locale. */
 export function libelleHeure(epochSecondes, fuseau) {
   const format = new Intl.DateTimeFormat('fr-FR', {

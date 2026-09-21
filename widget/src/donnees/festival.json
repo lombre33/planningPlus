@@ -486,7 +486,7 @@
         "_ref": 0
       },
       "Mission": 0,
-      "Libelle": "ven. 10:00–11:30",
+      "Libelle": "10:00–11:30",
       "Debut": 1784275200,
       "Fin": 1784280600
     },
@@ -495,7 +495,7 @@
         "_ref": 0
       },
       "Mission": 0,
-      "Libelle": "ven. 11:30–13:00",
+      "Libelle": "11:30–13:00",
       "Debut": 1784280600,
       "Fin": 1784286000
     },
@@ -504,7 +504,7 @@
         "_ref": 0
       },
       "Mission": 0,
-      "Libelle": "ven. 13:00–14:30",
+      "Libelle": "13:00–14:30",
       "Debut": 1784286000,
       "Fin": 1784291400
     },
@@ -513,7 +513,7 @@
         "_ref": 0
       },
       "Mission": 0,
-      "Libelle": "ven. 14:30–16:00",
+      "Libelle": "14:30–16:00",
       "Debut": 1784291400,
       "Fin": 1784296800
     },
@@ -522,7 +522,7 @@
         "_ref": 0
       },
       "Mission": 0,
-      "Libelle": "ven. 16:00–17:30",
+      "Libelle": "16:00–17:30",
       "Debut": 1784296800,
       "Fin": 1784302200
     },
@@ -531,7 +531,7 @@
         "_ref": 0
       },
       "Mission": 0,
-      "Libelle": "ven. 17:30–18:00",
+      "Libelle": "17:30–18:00",
       "Debut": 1784302200,
       "Fin": 1784304000
     },
@@ -540,7 +540,7 @@
         "_ref": 1
       },
       "Mission": 0,
-      "Libelle": "ven. 18:00–19:30",
+      "Libelle": "18:00–19:30",
       "Debut": 1784304000,
       "Fin": 1784309400
     },
@@ -549,7 +549,7 @@
         "_ref": 1
       },
       "Mission": 0,
-      "Libelle": "ven. 19:30–21:00",
+      "Libelle": "19:30–21:00",
       "Debut": 1784309400,
       "Fin": 1784314800
     },
@@ -558,7 +558,7 @@
         "_ref": 1
       },
       "Mission": 0,
-      "Libelle": "ven. 21:00–22:30",
+      "Libelle": "21:00–22:30",
       "Debut": 1784314800,
       "Fin": 1784320200
     },
@@ -567,7 +567,7 @@
         "_ref": 1
       },
       "Mission": 0,
-      "Libelle": "ven. 22:30–00:00",
+      "Libelle": "22:30–00:00",
       "Debut": 1784320200,
       "Fin": 1784325600
     },
@@ -576,7 +576,7 @@
         "_ref": 1
       },
       "Mission": 0,
-      "Libelle": "sam. 00:00–01:30",
+      "Libelle": "00:00–01:30",
       "Debut": 1784325600,
       "Fin": 1784331000
     },
@@ -585,7 +585,7 @@
         "_ref": 1
       },
       "Mission": 0,
-      "Libelle": "sam. 01:30–02:00",
+      "Libelle": "01:30–02:00",
       "Debut": 1784331000,
       "Fin": 1784332800
     }
@@ -8685,6 +8685,48 @@
         "_ref": 7
       },
       "Type": "Ensemble"
+    }
+  ],
+  "Parametres": [
+    {
+      "Cle": "heure_coupure_jour",
+      "Valeur": "6"
+    },
+    {
+      "Cle": "pas_secondes",
+      "Valeur": "900"
+    },
+    {
+      "Cle": "poids.conflit_artiste",
+      "Valeur": "-0.4"
+    },
+    {
+      "Cle": "poids.equite",
+      "Valeur": "0.15"
+    },
+    {
+      "Cle": "poids.affinite_ensemble",
+      "Valeur": "0.1"
+    },
+    {
+      "Cle": "poids.affinite_eviter",
+      "Valeur": "-0.1"
+    },
+    {
+      "Cle": "poids.equipe_correspond",
+      "Valeur": "0.1"
+    },
+    {
+      "Cle": "poids.souhait_mission.Réticent",
+      "Valeur": "-0.15"
+    },
+    {
+      "Cle": "poids.souhait_mission.Intéressé",
+      "Valeur": "0.2"
+    },
+    {
+      "Cle": "poids.souhait_mission.Souhaite fortement",
+      "Valeur": "0.35"
     }
   ],
   "Versions": [],
