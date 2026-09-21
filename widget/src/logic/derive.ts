@@ -5,7 +5,7 @@
  */
 
 import type {
-  Besoin, Groupe, Id, MacroCreneau, Place, SousCreneau, StatutDisponibilite,
+  Artiste, Benevole, Besoin, Groupe, Id, MacroCreneau, Place, SousCreneau, StatutDisponibilite,
 } from '../domain/types';
 import {
   cleJourFestival, epochDebutJourFestival, HEURE_COUPURE_JOUR_FESTIVAL, libelleJourLong, PAS_SECONDES,
@@ -404,4 +404,210 @@ export function proposerPermutation(m: Magasin, ix: Index, placeVacanteId: Id): 
     ];
   }
   return null;
+}
+
+// --- Regroupement par jour de festival ---------------------------------
+
+export interface GroupeJourFestival<T> {
+  cle: string;
+  libelle: string;
+  items: T[];
+}
+
+/**
+ * Regroupe des éléments par jour de festival plutôt que par jour civil
+ * (§6.2 : bascule à une heure de coupure paramétrable, 6h par défaut, jamais
+ * à minuit — une soirée 22h-2h reste un seul jour). Purement pour
+ * l'affichage (feuille bénévole, vue équipe, vue artistes) : aucun calcul
+ * métier ne doit dépendre de ce regroupement.
+ */
+export function regrouperParJourFestival<T>(
+  items: T[], epochDe: (item: T) => number, heureCoupure = HEURE_COUPURE_JOUR_FESTIVAL,
+): GroupeJourFestival<T>[] {
+  const parCle = new Map<string, T[]>();
+  for (const item of items) {
+    const cle = cleJourFestival(epochDe(item), heureCoupure);
+    const liste = parCle.get(cle) ?? [];
+    liste.push(item);
+    parCle.set(cle, liste);
+  }
+  return [...parCle.entries()]
+    .map(([cle, liste]) => ({
+      cle, libelle: libelleJourLong(epochDebutJourFestival(epochDe(liste[0]!), heureCoupure)), items: liste,
+    }))
+    .sort((a, b) => epochDe(a.items[0]!) - epochDe(b.items[0]!));
+}
+
+// --- Vue bénévole : feuille de route individuelle --------------------------
+
+export interface EtapeBenevole {
+  sousCreneauId: Id;
+  debut: number;
+  fin: number;
+  libelle: string;
+  missionNom: string;
+  lieuNom: string;
+  groupeCode: string;
+  coequipiers: string[];
+  /** Chevauche l'étape précédente une fois triées par heure de début : signale
+   *  un double-positionnement (anomalie de chevauchement, §6.2) directement
+   *  sur la feuille de la personne concernée plutôt que de le lui laisser
+   *  découvrir sur place. */
+  chevaucheLaPrecedente: boolean;
+}
+
+export interface FeuilleBenevole {
+  benevole: Benevole;
+  equipeNom: string;
+  etapes: EtapeBenevole[];
+  totalHeures: number;
+}
+
+/** La feuille de route d'un bénévole : toutes ses étapes (via tous les
+ *  indicatifs où il tient une place), triées chronologiquement, avec ses
+ *  coéquipiers de chaque indicatif (§8.6, feuille imprimable). */
+export function feuilleBenevole(m: Magasin, ix: Index, benevoleId: Id): FeuilleBenevole | null {
+  const benevole = ix.benevole.get(benevoleId);
+  if (!benevole) { return null; }
+
+  const groupeIds = new Set(
+    m.places.filter((p) => p.Benevole === benevoleId).map((p) => p.Groupe),
+  );
+
+  const brutes = [...groupeIds].flatMap((groupeId) => {
+    const groupe = ix.groupe.get(groupeId)!;
+    const coequipiers = placesDuGroupe(m, groupeId)
+      .filter((p) => p.Benevole != null && p.Benevole !== benevoleId)
+      .map((p) => ix.benevole.get(p.Benevole!)?.Nom)
+      .filter((nom): nom is string => nom != null);
+
+    return positionsDuGroupe(m, ix, groupeId).map(({besoin, sousCreneau}) => {
+      const mission = ix.mission.get(besoin.Mission)!;
+      const lieu = ix.lieu.get(mission.Lieu);
+      return {
+        sousCreneauId: sousCreneau.id, debut: sousCreneau.Debut, fin: sousCreneau.Fin,
+        libelle: sousCreneau.Libelle, missionNom: mission.Nom, lieuNom: lieu?.Nom ?? '',
+        groupeCode: groupe.Code, coequipiers,
+      };
+    });
+  }).sort((a, b) => a.debut - b.debut);
+
+  const etapes: EtapeBenevole[] = brutes.map((etape, i) => ({
+    ...etape, chevaucheLaPrecedente: i > 0 && etape.debut < brutes[i - 1]!.fin,
+  }));
+
+  const totalHeures = etapes.reduce((somme, e) => somme + (e.fin - e.debut) / 3600, 0);
+  const equipe = ix.equipe.get(benevole.Equipe)!;
+
+  return {benevole, equipeNom: equipe.Nom, etapes, totalHeures};
+}
+
+// --- Vue équipe : indicatifs d'une équipe sur toute la durée ----------------
+
+export interface MembreIndicatif {
+  rang: number;
+  /** `null` = place non pourvue : c'est exactement ce qu'une cheffe d'équipe
+   *  doit pouvoir repérer d'un coup d'œil pour le signaler (§4, « consultent,
+   *  signalent »), sans pouvoir la modifier elle-même depuis cette vue. */
+  nom: string | null;
+}
+
+export interface PositionIndicatifEquipe {
+  besoinId: Id;
+  sousCreneauId: Id;
+  debut: number;
+  fin: number;
+  libelle: string;
+  missionNom: string;
+  lieuNom: string;
+  couverture: Couverture;
+}
+
+export interface IndicatifEquipe {
+  groupe: Groupe;
+  membres: MembreIndicatif[];
+  positions: PositionIndicatifEquipe[];
+}
+
+/** Les indicatifs d'une équipe, chacun avec son roster et sa trajectoire
+ *  chronologique complète (§8.7 : « une équipe sur toute la durée, par
+ *  groupe »). La couverture de chaque position compte toutes les places de
+ *  tous les indicatifs positionnés sur le même besoin, pas seulement celles
+ *  de cette équipe : une cheffe doit voir le sous-effectif réel. */
+export function indicatifsDeLEquipe(m: Magasin, ix: Index, equipeId: Id): IndicatifEquipe[] {
+  return m.groupes
+    .filter((g) => g.Equipe === equipeId)
+    .map((groupe) => {
+      const membres: MembreIndicatif[] = placesDuGroupe(m, groupe.id).map((p) => ({
+        rang: p.Rang, nom: p.Benevole != null ? ix.benevole.get(p.Benevole)?.Nom ?? null : null,
+      }));
+
+      const positions: PositionIndicatifEquipe[] = positionsDuGroupe(m, ix, groupe.id).map(
+        ({besoin, sousCreneau}) => {
+          const mission = ix.mission.get(besoin.Mission)!;
+          const lieu = ix.lieu.get(mission.Lieu);
+          return {
+            besoinId: besoin.id, sousCreneauId: sousCreneau.id,
+            debut: sousCreneau.Debut, fin: sousCreneau.Fin, libelle: sousCreneau.Libelle,
+            missionNom: mission.Nom, lieuNom: lieu?.Nom ?? '',
+            couverture: couvertureBesoin(m, ix, besoin.id),
+          };
+        },
+      );
+
+      return {groupe, membres, positions};
+    })
+    .sort((a, b) => a.groupe.Code.localeCompare(b.groupe.Code, 'fr'));
+}
+
+// --- Vue artistes : pression de demande -------------------------------------
+
+export interface LigneArtiste {
+  artiste: Artiste;
+  lieuNom: string;
+  /** Bénévoles distincts ayant déclaré vouloir voir cet artiste. */
+  demande: number;
+  /** Parmi eux, ceux déjà affectés sur une place qui chevauche son passage
+   *  (préférence forte non respectée, §7.2 — même critère que l'anomalie
+   *  « conflit artiste », mais agrégé par artiste plutôt que par place). */
+  conflits: number;
+}
+
+/** Qui joue quand, et combien de bénévoles veulent voir chacun (§8.8). Aide à
+ *  comprendre pourquoi une mission ne se remplit pas : une forte demande sur
+ *  un artiste réduit d'autant le vivier disponible sur ce créneau. */
+export function ligneArtistes(m: Magasin, ix: Index): LigneArtiste[] {
+  const souhaitantsParArtiste = new Map<Id, Set<Id>>();
+  for (const d of m.disponibilites) {
+    if (d.Statut !== 'Artiste' || d.Artiste == null) { continue; }
+    const ensemble = souhaitantsParArtiste.get(d.Artiste) ?? new Set<Id>();
+    ensemble.add(d.Benevole);
+    souhaitantsParArtiste.set(d.Artiste, ensemble);
+  }
+
+  const quartsOccupesParBenevole = new Map<Id, Set<number>>();
+  function quartsOccupes(benevoleId: Id): Set<number> {
+    const dejaCalcule = quartsOccupesParBenevole.get(benevoleId);
+    if (dejaCalcule) { return dejaCalcule; }
+    const quarts = new Set<number>();
+    for (const place of m.places) {
+      if (place.Benevole !== benevoleId) { continue; }
+      for (const q of quartsCouvertsParGroupe(m, ix, place.Groupe)) { quarts.add(q); }
+    }
+    quartsOccupesParBenevole.set(benevoleId, quarts);
+    return quarts;
+  }
+
+  return m.artistes.map((artiste) => {
+    const souhaitants = souhaitantsParArtiste.get(artiste.id) ?? new Set<Id>();
+    let conflits = 0;
+    for (const benevoleId of souhaitants) {
+      const enConflit = [...quartsOccupes(benevoleId)].some((q) => q >= artiste.Debut && q < artiste.Fin);
+      if (enConflit) { conflits++; }
+    }
+    return {
+      artiste, lieuNom: ix.lieu.get(artiste.Lieu)?.Nom ?? '',
+      demande: souhaitants.size, conflits,
+    };
+  }).sort((a, b) => a.artiste.Debut - b.artiste.Debut);
 }

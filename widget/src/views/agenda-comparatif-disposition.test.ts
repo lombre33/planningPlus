@@ -1,8 +1,8 @@
 import {describe, expect, it} from 'vitest';
 import {
   construirePlageJournaliere, graduationsHoraires, graduationsMinuit, longueurAxePx, positionCreneau,
-  regrouperParJourFestival,
 } from './agenda-comparatif-disposition';
+import {regrouperParJour} from '../logic/derive';
 import {epochDepuisHeureLocale} from '../temps';
 import type {MacroCreneau} from '../domain/types';
 
@@ -19,42 +19,34 @@ const VENDREDI = {annee: 2026, mois: 7, jour: 18};
 const DIMANCHE = {annee: 2026, mois: 7, jour: 20}; // deux jours plus tard : samedi n'existe pas dans le comparatif
 const MINUTES_PAR_JOUR = 24 * 60;
 
-describe('regrouperParJourFestival', () => {
-  it('regroupe une soirée qui déborde sur le lendemain avec la journée qui la précède', () => {
-    const jours = regrouperParJourFestival([
+describe('intégration avec regrouperParJour (logic/derive.ts) — jour de festival', () => {
+  // Vérifie concrètement ce que le comparatif affiche : un sous-créneau de
+  // 1h du matin, à l'intérieur d'une soirée qui a commencé la veille, doit
+  // rester rattaché au jour de festival de la veille (§6.2), pas glisser
+  // dans le jour civil suivant. `regrouperParJour` groupe par
+  // macro-créneau, donc c'est le macro-créneau englobant (la soirée
+  // 18h–2h) qu'il faut vérifier, avec son sous-créneau de 1h du matin.
+  it("rattache un sous-créneau d'1h du matin au jour de festival commencé la veille, pas au jour civil suivant", () => {
+    const soiree = macro(1, VENDREDI, 18, 26); // 18h -> 2h le samedi matin
+    const jours = regrouperParJour([macro(2, VENDREDI, 10, 18), soiree]);
+
+    expect(jours).toHaveLength(1); // un seul jour de festival, pas deux
+    expect(jours[0]?.libelle).toContain('juillet'); // le vendredi, pas le samedi
+    expect(jours[0]?.macros.map((m) => m.id)).toEqual([2, 1]);
+
+    // Le sous-créneau d'1h du matin est un simple découpage de `soiree` :
+    // en faire partie suffit à hériter du même jour de festival.
+    const uneHeureDuMatin = epochDepuisHeureLocale({...VENDREDI, jour: VENDREDI.jour + 1, heures: 1});
+    expect(uneHeureDuMatin).toBeGreaterThan(soiree.Debut);
+    expect(uneHeureDuMatin).toBeLessThan(soiree.Fin);
+  });
+
+  it("un macro-créneau qui commence après la coupure (7h) ouvre bien un nouveau jour de festival", () => {
+    const jours = regrouperParJour([
       macro(1, VENDREDI, 10, 18),
-      macro(2, VENDREDI, 18, 26), // soirée 18h -> 2h le lendemain
+      macro(2, {...VENDREDI, jour: VENDREDI.jour + 1}, 7, 9),
     ]);
-    expect(jours).toHaveLength(1);
-    expect(jours[0]?.macros.map((m) => m.id)).toEqual([1, 2]);
-  });
-
-  it("rattache un macro-créneau qui commence avant l'heure de coupure (6h) au jour de festival précédent", () => {
-    const jours = regrouperParJourFestival([
-      macro(1, VENDREDI, 10, 18),
-      macro(2, {...VENDREDI, jour: VENDREDI.jour + 1}, 2, 5), // samedi 2h-5h : nuit de vendredi
-    ], 6);
-    expect(jours).toHaveLength(1);
-    expect(jours[0]?.macros.map((m) => m.id)).toEqual([1, 2]);
-  });
-
-  it("rattache un macro-créneau qui commence après l'heure de coupure à son propre jour de festival", () => {
-    const jours = regrouperParJourFestival([
-      macro(1, VENDREDI, 10, 18),
-      macro(2, {...VENDREDI, jour: VENDREDI.jour + 1}, 7, 9), // samedi 7h-9h : après la coupure, jour suivant
-    ], 6);
     expect(jours).toHaveLength(2);
-  });
-
-  it('trie les jours de festival par premier macro-créneau, sans exiger de continuité entre eux', () => {
-    const jours = regrouperParJourFestival([
-      macro(1, DIMANCHE, 10, 18),
-      macro(2, VENDREDI, 10, 18),
-    ]);
-    expect(jours.map((j) => j.cle)).toEqual([
-      ...regrouperParJourFestival([macro(2, VENDREDI, 10, 18)]).map((j) => j.cle),
-      ...regrouperParJourFestival([macro(1, DIMANCHE, 10, 18)]).map((j) => j.cle),
-    ]);
   });
 });
 

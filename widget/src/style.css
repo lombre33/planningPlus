@@ -1277,6 +1277,103 @@ table.grille .mission-cell .lieu {
   writing-mode: vertical-rl;
 }
 
+/* ---------- Tableau générique (bénévole, équipe, artistes) ---------- */
+
+.tableau-simple {
+  border-collapse: collapse;
+  width: 100%;
+  background: var(--surface);
+}
+
+.tableau-simple th, .tableau-simple td {
+  text-align: left;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px;
+}
+
+.tableau-simple thead th {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+/* ---------- Vue bénévole : feuille de route ---------- */
+
+.feuille-benevole__entete {
+  margin-bottom: 12px;
+}
+
+.feuille-benevole__entete h2 {
+  font-size: 18px;
+  margin-bottom: 2px;
+}
+
+.feuille-benevole__entete p {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  margin: 0;
+}
+
+.feuille-benevole__ligne--chevauche td {
+  background: var(--warn-tint);
+}
+
+.feuille-benevole__jour {
+  margin-bottom: 14px;
+  break-inside: avoid;
+}
+
+.feuille-benevole__jour-titre {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  margin: 10px 0 4px;
+}
+
+.benevole-row--actif {
+  border-color: var(--brand);
+}
+
+/* ---------- Impression ---------- */
+
+#zone-impression {
+  display: none;
+}
+
+@media print {
+  body.impression-active > :not(#zone-impression) {
+    display: none !important;
+  }
+
+  body.impression-active #zone-impression {
+    display: block;
+  }
+
+  .feuille-benevole {
+    break-after: page;
+    padding: 12mm 0 0;
+  }
+
+  .feuille-benevole:last-child {
+    break-after: auto;
+  }
+
+  .feuille-benevole .pill {
+    border: 1px solid currentColor;
+    background: none !important;
+  }
+
+  .tableau-simple th, .tableau-simple td {
+    padding: 4px 6px;
+    font-size: 11px;
+  }
+}
+
 /* ---------- Disponibilités (grille bénévoles × quart d'heure) ----------
    Utilise --accent-2 / --accent-2-tint pour l'état « veut voir un artiste »,
    demandés au fil Maquette interactive (troisième teinte, distincte de
