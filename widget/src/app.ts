@@ -35,10 +35,11 @@ interface DefinitionOnglet {
   montrer: (container: HTMLElement, m: Magasin) => () => void;
   /** Rang dans le parcours utilisateur de référence (§1.1 du cahier des
    *  charges, cf. Antoine, 2026-09-21) : 1 créneaux, 2 sous-créneaux/
-   *  missions, 3 indicatifs, 4 disponibilités, 5 algorithme. Les vues de
-   *  consultation ou de correction (Affectation, Anomalies, Terrain, Jour J,
-   *  Bénévole, Équipe, Artistes) n'en font pas partie et restent groupées à
-   *  part, sans numéro. */
+   *  missions, 3 indicatifs, 4 disponibilités, 5 lancer l'algorithme et
+   *  corriger (onglet Affectation — lancement et correction manuelle sur le
+   *  même écran, décision du fil Interface d'affectation). Les vues de
+   *  consultation qui n'en font pas partie (Anomalies, Terrain, Jour J,
+   *  Bénévole, Équipe, Artistes) restent groupées à part, sans numéro. */
   etape?: number;
 }
 
@@ -73,9 +74,10 @@ const ONGLETS: DefinitionOnglet[] = [
   },
   {
     id: 'affectation', libelle: 'Affectation', icone: ICONES.affectation,
-    titre: 'Affectation manuelle',
-    sousTitre: 'Glissez un bénévole vers une place, ou une place vers une autre pour l’échanger. Chaque dépôt montre aussitôt ce qu’il répare ou casse (§7.5).',
+    titre: 'Lancer l’algorithme et affecter',
+    sousTitre: 'Lancez l’algorithme sur tout ce qui n’est pas verrouillé, puis corrigez à la main juste en dessous : glissez un bénévole vers une place, ou une place vers une autre pour l’échanger (§7.5).',
     montrer: montrerAffectation,
+    etape: 5,
   },
   {
     id: 'anomalies', libelle: 'Anomalies', icone: ICONES.anomalies,
