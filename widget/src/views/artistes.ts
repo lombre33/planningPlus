@@ -12,10 +12,17 @@ import {type LigneArtiste, indexer, ligneArtistes, regrouperParJourFestival} fro
 import type {Magasin} from '../store';
 import {libelleHeurePlage} from '../temps';
 import {h, vider} from '../ui/dom';
+import {ouvrirModalCreationArtiste, ouvrirModalEditionArtiste} from '../ui/modalArtiste';
 
-function ligne(l: LigneArtiste): Node {
+function ligne(l: LigneArtiste, m: Magasin): Node {
   return h('tr', null,
-    h('td', null, l.artiste.Nom),
+    h('td', null,
+      l.artiste.Nom,
+      h('button', {
+        class: 'btn btn--ghost btn--sm', type: 'button', style: {padding: '0 2px', marginLeft: '6px'}, title: 'Modifier',
+        onclick: () => ouvrirModalEditionArtiste(m, l.artiste),
+      }, '✎'),
+    ),
     h('td', {class: 'mono'}, libelleHeurePlage(l.artiste.Debut, l.artiste.Fin)),
     h('td', null, l.lieuNom),
     h('td', null, h('span', {class: 'pill pill--neutral'}, `${l.demande} intéressé${l.demande > 1 ? 's' : ''}`)),
@@ -31,12 +38,21 @@ export function montrerArtistes(container: HTMLElement, m: Magasin): () => void 
     const lignes = ligneArtistes(m, ix);
     vider(container);
 
+    const boutonNouveau = h('button', {
+      class: 'btn btn--primary btn--sm', type: 'button',
+      onclick: () => ouvrirModalCreationArtiste(m),
+    }, '+ Nouveau passage');
+
     if (lignes.length === 0) {
-      container.append(h('p', {class: 'empty'}, 'Aucun artiste dans ce jeu de données.'));
+      container.append(
+        h('div', {class: 'agenda__toolbar', style: {marginBottom: '14px'}}, boutonNouveau),
+        h('p', {class: 'empty'}, 'Aucun artiste dans ce jeu de données.'),
+      );
       return;
     }
 
     container.append(
+      h('div', {class: 'agenda__toolbar', style: {marginBottom: '14px'}}, boutonNouveau),
       h('p', {class: 'view__intro'},
         `${lignes.length} passage${lignes.length > 1 ? 's' : ''}. « En conflit » compte les bénévoles qui veulent voir `
         + "l'artiste mais tiennent déjà une place sur ce créneau (préférence forte non respectée, §7.2).",
@@ -50,7 +66,7 @@ export function montrerArtistes(container: HTMLElement, m: Magasin): () => void 
             h('th', null, 'Artiste'), h('th', null, 'Horaire'),
             h('th', null, 'Lieu'), h('th', null, 'Demande'), h('th', null, 'Conflits'),
           )),
-          h('tbody', null, ...jour.items.map(ligne)),
+          h('tbody', null, ...jour.items.map((l) => ligne(l, m))),
         ),
       )),
     );
