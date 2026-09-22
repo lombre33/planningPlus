@@ -7,7 +7,7 @@
  */
 
 import type {
-  Affinite, Artiste, Benevole, Besoin, Disponibilite, Equipe, Groupe, Id, Lieu, MacroCreneau,
+  Affinite, Artiste, Benevole, Besoin, Disponibilite, Epoch, Equipe, Groupe, Id, Lieu, MacroCreneau,
   Mission, Modele, OriginePlace, Place, PositionGroupe, SouhaitMission, SousCreneau,
 } from './domain/types';
 import {libelleHeurePlage} from './temps';
@@ -51,6 +51,24 @@ export interface EcritureGrist {
    *  pour que le référentiel ne s'écarte jamais du document sur l'id
    *  d'une mission (un besoin peut aussitôt la référencer). */
   creerMission(mission: Omit<Mission, 'id'>): Promise<Id>;
+  /** Écrit un macro-créneau et rend l'id que Grist lui attribue — voir
+   *  `Magasin.enregistrerMacroCreneau`, qui l'attend avant d'insérer
+   *  localement, pour la même raison que `creerMission`. */
+  creerMacroCreneau(macro: {nom: string; debut: Epoch; fin: Epoch}): Promise<Id>;
+  /** Modifie un macro-créneau déjà réel : nom et horaires, toujours fournis
+   *  ensemble (voir `Magasin.enregistrerMacroCreneau`, qui ne les sépare
+   *  jamais côté appelant). */
+  modifierMacroCreneau(id: Id, macro: {nom: string; debut: Epoch; fin: Epoch}): Promise<void>;
+  /** Remplace tous les sous-créneaux d'un macro-créneau déjà réel (§8 point
+   *  3, redécoupage automatique) : supprime les ids donnés puis crée les
+   *  nouveaux — deux allers-retours liés, jamais un seul batché (un id créé
+   *  par un appel `applyUserActions` ne peut pas être référencé par une
+   *  action du même appel). Rend les ids réels des nouveaux sous-créneaux,
+   *  dans le même ordre que `nouveaux`. */
+  remplacerSousCreneaux(
+    idsASupprimer: readonly Id[],
+    nouveaux: readonly {macroCreneauId: Id; missionId: Id | null; libelle: string; debut: Epoch; fin: Epoch}[],
+  ): Promise<Id[]>;
   /** Écrit un besoin (mission × sous-créneau) et rend son id réel. */
   creerBesoin(besoin: {
     missionId: Id; sousCreneauId: Id; effectifMin: number; effectifMax: number; tailleGroupe: number;
@@ -138,16 +156,27 @@ export class Magasin {
 
   // --- Écriture : agenda -----------------------------------------------------
 
-  enregistrerMacroCreneau(patch: Omit<MacroCreneau, 'id'> & {id?: Id}): Id {
+  /** Crée ou modifie un macro-créneau (§8 point 1 : positionner un
+   *  macro-créneau, et son édition ultérieure — nom, glisser-déposer,
+   *  redimensionnement). En mode connecté, écrit d'abord dans le document
+   *  Grist réel et attend confirmation avant de toucher l'état local, pour
+   *  la même raison que `creerMission` : un échec d'écriture ne doit jamais
+   *  ressembler à un succès à l'écran. */
+  async enregistrerMacroCreneau(patch: Omit<MacroCreneau, 'id'> & {id?: Id}): Promise<Id> {
     if (patch.id != null) {
       const idx = this.data.macroCreneaux.findIndex((m) => m.id === patch.id);
       if (idx >= 0) {
+        if (this.ecriture) {
+          await this.ecriture.modifierMacroCreneau(patch.id, {nom: patch.Nom, debut: patch.Debut, fin: patch.Fin});
+        }
         this.data.macroCreneaux[idx] = {...this.data.macroCreneaux[idx]!, ...patch, id: patch.id};
         this.notifier();
         return patch.id;
       }
     }
-    const id = prochainId(this.data.macroCreneaux);
+    const id = this.ecriture
+      ? await this.ecriture.creerMacroCreneau({nom: patch.Nom, debut: patch.Debut, fin: patch.Fin})
+      : prochainId(this.data.macroCreneaux);
     this.data.macroCreneaux.push({...patch, id});
     this.notifier();
     return id;
@@ -180,7 +209,7 @@ export class Magasin {
    *  volée, ou pour changer la durée après coup, mais jamais quand l'un
    *  d'eux porte déjà une mission (`Besoin`) : on refuse plutôt que
    *  d'orpheliner silencieusement une affectation en cours. */
-  redecouperSousCreneaux(macroId: Id, dureeMinutes: number): {ok: true} | {ok: false; raison: string} {
+  async redecouperSousCreneaux(macroId: Id, dureeMinutes: number): Promise<{ok: true} | {ok: false; raison: string}> {
     const macro = this.data.macroCreneaux.find((m) => m.id === macroId);
     if (!macro) { return {ok: false, raison: 'Macro-créneau introuvable.'}; }
     const actuels = this.data.sousCreneaux.filter((s) => s.Macro_creneau === macroId);
@@ -188,15 +217,34 @@ export class Magasin {
     if (aUneMission) {
       return {ok: false, raison: 'Des missions sont déjà rattachées à ces sous-créneaux : supprimez-les avant de redécouper.'};
     }
-    this.data.sousCreneaux = this.data.sousCreneaux.filter((s) => s.Macro_creneau !== macroId);
+    const idsASupprimer = actuels.map((s) => s.id);
     const dureeSec = dureeMinutes * 60;
+    const plages: {libelle: string; debut: Epoch; fin: Epoch}[] = [];
     for (let t = macro.Debut; t < macro.Fin; t += dureeSec) {
       const fin = Math.min(t + dureeSec, macro.Fin);
-      this.data.sousCreneaux.push({
-        id: prochainId(this.data.sousCreneaux), Macro_creneau: macroId, Mission: null,
-        Libelle: libelleHeurePlage(t, fin), Debut: t, Fin: fin,
-      });
+      plages.push({libelle: libelleHeurePlage(t, fin), debut: t, fin});
     }
+    let idsReels: Id[];
+    if (this.ecriture) {
+      try {
+        idsReels = await this.ecriture.remplacerSousCreneaux(
+          idsASupprimer,
+          plages.map((p) => ({macroCreneauId: macroId, missionId: null, libelle: p.libelle, debut: p.debut, fin: p.fin})),
+        );
+      } catch {
+        return {ok: false, raison: 'Échec de l\'écriture dans le document Grist : le redécoupage a été annulé.'};
+      }
+    } else {
+      const baseId = prochainId(this.data.sousCreneaux);
+      idsReels = plages.map((_, i) => baseId + i);
+    }
+    this.data.sousCreneaux = this.data.sousCreneaux.filter((s) => s.Macro_creneau !== macroId);
+    plages.forEach((p, i) => {
+      this.data.sousCreneaux.push({
+        id: idsReels[i]!, Macro_creneau: macroId, Mission: null,
+        Libelle: p.libelle, Debut: p.debut, Fin: p.fin,
+      });
+    });
     this.notifier();
     return {ok: true};
   }

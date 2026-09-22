@@ -104,10 +104,16 @@ export function ouvrirModalEditionCreneau(m: Magasin, macro: MacroCreneau): void
         champDureeSous,
         h('button', {
           class: 'btn btn--ghost', type: 'button',
-          onclick: () => {
-            const resultat = m.redecouperSousCreneaux(macro.id, Number(champDureeSous.value));
-            if (!resultat.ok) { erreurSous.afficher(resultat.raison); return; }
+          onclick: async () => {
             erreurSous.effacer();
+            let resultat;
+            try {
+              resultat = await m.redecouperSousCreneaux(macro.id, Number(champDureeSous.value));
+            } catch {
+              erreurSous.afficher("Échec de l'écriture dans le document Grist connecté. Réessayez.");
+              return;
+            }
+            if (!resultat.ok) { erreurSous.afficher(resultat.raison); return; }
             compteurSous.textContent = texteCompteurSousCreneaux(sousActuels().length);
           },
         }, 'Redécouper automatiquement'),
@@ -118,14 +124,18 @@ export function ouvrirModalEditionCreneau(m: Magasin, macro: MacroCreneau): void
       h('button', {class: 'btn btn--ghost', type: 'button', onclick: fermer}, 'Annuler'),
       h('button', {
         class: 'btn btn--primary', type: 'button',
-        onclick: () => {
+        onclick: async () => {
           const debut = epochDepuisDateEtHeure(dateISO, champDebut.value);
           const finBrute = epochDepuisDateEtHeure(dateISO, texteHeure(champFin, caseApresMinuit.checked));
           if (debut == null || finBrute == null) { erreur.afficher('Merci de renseigner des horaires valides.'); return; }
           if (finBrute <= debut) { erreur.afficher("L'heure de fin doit être après l'heure de début."); return; }
           erreur.effacer();
-          m.enregistrerMacroCreneau({id: macro.id, Nom: champNom.value.trim() || macro.Nom, Debut: debut, Fin: finBrute});
-          fermer();
+          try {
+            await m.enregistrerMacroCreneau({id: macro.id, Nom: champNom.value.trim() || macro.Nom, Debut: debut, Fin: finBrute});
+            fermer();
+          } catch {
+            erreur.afficher("Échec de l'écriture dans le document Grist connecté. Réessayez.");
+          }
         },
       }, 'Enregistrer'),
     ),
@@ -151,16 +161,22 @@ export function ouvrirModalCreationCreneau(m: Magasin, jourCle: string | null, d
       h('button', {class: 'btn btn--ghost', type: 'button', onclick: fermer}, 'Annuler'),
       h('button', {
         class: 'btn btn--primary', type: 'button',
-        onclick: () => {
+        onclick: async () => {
           const debut = epochDepuisDateEtHeure(champDate.value, champDebut.value);
           const fin = epochDepuisDateEtHeure(champDate.value, texteHeure(champFin, caseApresMinuit.checked));
           if (debut == null || fin == null) { erreur.afficher('Merci de renseigner un jour et des horaires valides.'); return; }
           if (fin <= debut) { erreur.afficher("L'heure de fin doit être après l'heure de début."); return; }
           erreur.effacer();
           const nom = champNom.value.trim() || `Créneau du ${champDate.value}`;
-          const idMacro = m.enregistrerMacroCreneau({Nom: nom, Debut: debut, Fin: fin});
-          m.redecouperSousCreneaux(idMacro, Number(champDuree.value));
-          fermer();
+          try {
+            // Deux allers-retours liés : `redecouperSousCreneaux` a besoin de
+            // l'id réel rendu par Grist, jamais d'un id local provisoire.
+            const idMacro = await m.enregistrerMacroCreneau({Nom: nom, Debut: debut, Fin: fin});
+            await m.redecouperSousCreneaux(idMacro, Number(champDuree.value));
+            fermer();
+          } catch {
+            erreur.afficher("Échec de l'écriture dans le document Grist connecté. Réessayez.");
+          }
         },
       }, 'Créer'),
     ),

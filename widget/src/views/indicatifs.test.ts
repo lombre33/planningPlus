@@ -107,7 +107,8 @@ describe('planning complet : missions et besoin, mais zone volontairement vide',
     function ecritureQuiRefuseTout(): EcritureGrist {
       const refuse = () => async () => { throw new Error('document indisponible'); };
       return {
-        creerMission: refuse(), creerBesoin: refuse(), creerGroupe: refuse(), positionnerGroupe: refuse(),
+        creerMission: refuse(), creerMacroCreneau: refuse(), modifierMacroCreneau: refuse(),
+        remplacerSousCreneaux: refuse(), creerBesoin: refuse(), creerGroupe: refuse(), positionnerGroupe: refuse(),
         definirPlaces: refuse(), deplacerPosition: refuse(), ajouterPosition: refuse(),
       };
     }

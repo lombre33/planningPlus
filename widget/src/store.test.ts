@@ -12,6 +12,9 @@ function ecritureDeTest(partielle: Partial<EcritureGrist> = {}): EcritureGrist {
   const nonBranchee = (nom: string) => async () => { throw new Error(`${nom} non fourni par ce double de test`); };
   return {
     creerMission: nonBranchee('creerMission'),
+    creerMacroCreneau: nonBranchee('creerMacroCreneau'),
+    modifierMacroCreneau: nonBranchee('modifierMacroCreneau'),
+    remplacerSousCreneaux: nonBranchee('remplacerSousCreneaux'),
     creerBesoin: nonBranchee('creerBesoin'),
     creerGroupe: nonBranchee('creerGroupe'),
     positionnerGroupe: nonBranchee('positionnerGroupe'),
@@ -392,10 +395,10 @@ describe('Magasin.redecouperSousCreneaux', () => {
     return {m, macroId: 1, debut, fin};
   }
 
-  it('découpe toute la plage du macro-créneau par pas de la durée demandée', () => {
+  it('découpe toute la plage du macro-créneau par pas de la durée demandée', async () => {
     const {m, macroId, debut, fin} = modeleUnMacro();
 
-    const resultat = m.redecouperSousCreneaux(macroId, 60);
+    const resultat = await m.redecouperSousCreneaux(macroId, 60);
 
     expect(resultat).toEqual({ok: true});
     expect(m.sousCreneaux).toHaveLength(2);
@@ -406,44 +409,154 @@ describe('Magasin.redecouperSousCreneaux', () => {
     expect(second!.Fin).toBe(fin);
   });
 
-  it('remplace les sous-créneaux existants plutôt que de les cumuler', () => {
+  it('remplace les sous-créneaux existants plutôt que de les cumuler', async () => {
     const {m, macroId} = modeleUnMacro();
-    m.redecouperSousCreneaux(macroId, 60);
+    await m.redecouperSousCreneaux(macroId, 60);
     expect(m.sousCreneaux).toHaveLength(2);
 
-    m.redecouperSousCreneaux(macroId, 120);
+    await m.redecouperSousCreneaux(macroId, 120);
 
     expect(m.sousCreneaux).toHaveLength(1);
   });
 
-  it('refuse et ne change rien si un sous-créneau porte déjà une mission (Besoin)', () => {
+  it('refuse et ne change rien si un sous-créneau porte déjà une mission (Besoin)', async () => {
     const {m, macroId} = modeleUnMacro();
-    m.redecouperSousCreneaux(macroId, 60);
+    await m.redecouperSousCreneaux(macroId, 60);
     const sousCreneauId = m.sousCreneaux[0]!.id;
-    m.creerBesoin(1, sousCreneauId);
+    await m.creerBesoin(1, sousCreneauId);
     const avant = m.sousCreneaux;
 
-    const resultat = m.redecouperSousCreneaux(macroId, 120);
+    const resultat = await m.redecouperSousCreneaux(macroId, 120);
 
     expect(resultat.ok).toBe(false);
     if (!resultat.ok) { expect(resultat.raison).toMatch(/déjà rattachées/); }
     expect(m.sousCreneaux).toBe(avant);
   });
 
-  it('renvoie une erreur pour un macro-créneau introuvable', () => {
+  it('renvoie une erreur pour un macro-créneau introuvable', async () => {
     const {m} = modeleUnMacro();
 
-    const resultat = m.redecouperSousCreneaux(999, 60);
+    const resultat = await m.redecouperSousCreneaux(999, 60);
 
     expect(resultat.ok).toBe(false);
   });
 
-  it('notifie les abonnés une seule fois en cas de succès', () => {
+  it('notifie les abonnés une seule fois en cas de succès', async () => {
     const {m, macroId} = modeleUnMacro();
     let notifications = 0;
     m.subscribe(() => { notifications += 1; });
 
-    m.redecouperSousCreneaux(macroId, 60);
+    await m.redecouperSousCreneaux(macroId, 60);
+
+    expect(notifications).toBe(1);
+  });
+
+  it("en mode connecté, attend les ids réels avant d'insérer localement, en deux allers-retours liés", async () => {
+    const {m, macroId} = modeleUnMacro();
+    const appels: string[] = [];
+    m.brancherEcriture(ecritureDeTest({
+      remplacerSousCreneaux: async (idsASupprimer, nouveaux) => {
+        appels.push(`remplacerSousCreneaux(${JSON.stringify(idsASupprimer)},${nouveaux.length})`);
+        return nouveaux.map((_, i) => 701 + i);
+      },
+    }));
+
+    const resultat = await m.redecouperSousCreneaux(macroId, 60);
+
+    expect(resultat).toEqual({ok: true});
+    expect(appels).toEqual(['remplacerSousCreneaux([],2)']);
+    const ids = m.sousCreneaux.map((s) => s.id).sort((a, b) => a - b);
+    expect(ids).toEqual([701, 702]);
+  });
+
+  it("en mode connecté, si le pont échoue, aucun sous-créneau n'est modifié localement", async () => {
+    const {m, macroId} = modeleUnMacro();
+    const avant = m.sousCreneaux;
+    m.brancherEcriture(ecritureDeTest({remplacerSousCreneaux: async () => { throw new Error('document indisponible'); }}));
+
+    const resultat = await m.redecouperSousCreneaux(macroId, 60);
+
+    expect(resultat.ok).toBe(false);
+    if (!resultat.ok) { expect(resultat.raison).toMatch(/Échec de l.écriture/); }
+    expect(m.sousCreneaux).toBe(avant);
+  });
+});
+
+describe('Magasin.enregistrerMacroCreneau', () => {
+  function macroDeTest() {
+    return {
+      Nom: 'Nouvelle journée',
+      Debut: epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 18, heures: 9}),
+      Fin: epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 18, heures: 17}),
+    };
+  }
+
+  it("sans écrivain branché (mode démo), génère un id local et l'ajoute au référentiel", async () => {
+    const m = new Magasin(normaliser());
+    const nbAvant = m.macroCreneaux.length;
+
+    const id = await m.enregistrerMacroCreneau(macroDeTest());
+
+    expect(m.macroCreneaux).toHaveLength(nbAvant + 1);
+    expect(m.macroCreneaux.find((mc) => mc.id === id)?.Nom).toBe('Nouvelle journée');
+  });
+
+  it("à la création, avec une écriture branchée, attend l'id qu'elle rend avant d'insérer localement", async () => {
+    const m = new Magasin(normaliser());
+    const appels: unknown[] = [];
+    m.brancherEcriture(ecritureDeTest({
+      creerMacroCreneau: async (macro) => { appels.push(macro); return 999; },
+    }));
+
+    const id = await m.enregistrerMacroCreneau(macroDeTest());
+
+    expect(id).toBe(999);
+    expect(appels).toHaveLength(1);
+    expect(m.macroCreneaux.find((mc) => mc.id === 999)?.Nom).toBe('Nouvelle journée');
+  });
+
+  it("ne crée rien localement si l'écriture branchée échoue à la création", async () => {
+    const m = new Magasin(normaliser());
+    const nbAvant = m.macroCreneaux.length;
+    m.brancherEcriture(ecritureDeTest({creerMacroCreneau: async () => { throw new Error('document indisponible'); }}));
+
+    await expect(m.enregistrerMacroCreneau(macroDeTest())).rejects.toThrow('document indisponible');
+    expect(m.macroCreneaux).toHaveLength(nbAvant);
+  });
+
+  it("à la modification, avec une écriture branchée, attend la confirmation avant de modifier localement", async () => {
+    const m = new Magasin(normaliser());
+    const macroId = m.macroCreneaux[0]!.id;
+    const appels: unknown[] = [];
+    m.brancherEcriture(ecritureDeTest({
+      modifierMacroCreneau: async (id, macro) => { appels.push({id, macro}); },
+    }));
+
+    const patch = {...macroDeTest(), id: macroId};
+    const id = await m.enregistrerMacroCreneau(patch);
+
+    expect(id).toBe(macroId);
+    const attendu = macroDeTest();
+    expect(appels).toEqual([{id: macroId, macro: {nom: attendu.Nom, debut: attendu.Debut, fin: attendu.Fin}}]);
+    expect(m.macroCreneaux.find((mc) => mc.id === macroId)?.Nom).toBe('Nouvelle journée');
+  });
+
+  it("ne modifie rien localement si l'écriture branchée échoue à la modification", async () => {
+    const m = new Magasin(normaliser());
+    const macroId = m.macroCreneaux[0]!.id;
+    const avant = m.macroCreneaux.find((mc) => mc.id === macroId)!;
+    m.brancherEcriture(ecritureDeTest({modifierMacroCreneau: async () => { throw new Error('document indisponible'); }}));
+
+    await expect(m.enregistrerMacroCreneau({...macroDeTest(), id: macroId})).rejects.toThrow('document indisponible');
+    expect(m.macroCreneaux.find((mc) => mc.id === macroId)).toEqual(avant);
+  });
+
+  it('notifie les abonnés une seule fois', async () => {
+    const m = new Magasin(normaliser());
+    let notifications = 0;
+    m.subscribe(() => { notifications += 1; });
+
+    await m.enregistrerMacroCreneau(macroDeTest());
 
     expect(notifications).toBe(1);
   });

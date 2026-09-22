@@ -36,8 +36,9 @@ import type {Id} from './domain/types';
 import {normaliser} from './donnees/normaliser';
 import type {DocApiEcriture} from './grist';
 import {
-  actionsCreerBesoin, actionsCreerGroupe, actionsCreerMission, actionsDefinirPlaces,
-  actionsDeplacerPositionGroupe, actionsPositionnerGroupe, appliquerActions, LIBELLE_PAR_TABLE, lireDocument,
+  actionsCreerBesoin, actionsCreerGroupe, actionsCreerMacroCreneau, actionsCreerMission, actionsCreerSousCreneaux,
+  actionsDefinirPlaces, actionsDeplacerMacroCreneau, actionsDeplacerPositionGroupe, actionsPositionnerGroupe,
+  actionsRenommerMacroCreneau, actionsSupprimerSousCreneaux, appliquerActions, LIBELLE_PAR_TABLE, lireDocument,
 } from './grist';
 import {Magasin, type EcritureGrist} from './store';
 
@@ -74,6 +75,29 @@ function construireEcritureGrist(docApi: DocApiEcriture, resolution: Record<stri
         competencesRequises: mission.Competences_requises,
       }), resolution);
       return id as Id;
+    },
+    async creerMacroCreneau(macro) {
+      const [id] = await appliquerActions(docApi, actionsCreerMacroCreneau(macro), resolution);
+      return id as Id;
+    },
+    async modifierMacroCreneau(id, macro) {
+      // Nom et horaires n'ont pas besoin d'être dans le même `UserAction`,
+      // mais un seul aller-retour suffit puisque aucun id n'est à recoller
+      // entre les deux (contrairement à `remplacerSousCreneaux`).
+      await appliquerActions(
+        docApi,
+        [...actionsRenommerMacroCreneau(id, macro.nom), ...actionsDeplacerMacroCreneau(id, macro.debut, macro.fin)],
+        resolution,
+      );
+    },
+    async remplacerSousCreneaux(idsASupprimer, nouveaux) {
+      // Deux allers-retours liés : un id créé par `actionsCreerSousCreneaux`
+      // ne peut pas être référencé dans le même `applyUserActions` que celui
+      // qui le crée, donc suppression puis création ne peuvent pas être
+      // batchées (vérifié en vrai, voir `Magasin.redecouperSousCreneaux`).
+      await appliquerActions(docApi, actionsSupprimerSousCreneaux(idsASupprimer), resolution);
+      const [ids] = await appliquerActions(docApi, actionsCreerSousCreneaux(nouveaux), resolution);
+      return (ids ?? []) as Id[];
     },
     async creerBesoin(besoin) {
       const [id] = await appliquerActions(docApi, actionsCreerBesoin(besoin), resolution);

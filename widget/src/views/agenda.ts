@@ -30,6 +30,23 @@ const HAUTEUR_LIGNE_PX = 96;
 const DUREE_MIN_MINUTES = 15;
 
 export function montrerAgenda(container: HTMLElement, m: Magasin): () => void {
+  let dernierMessage: {texte: string; ton: 'ok' | 'danger'} | null = null;
+
+  /** Écrit vers le magasin (mode connecté : vers Grist, voir `EcritureGrist`)
+   *  sans jamais laisser un échec silencieux — même contrat que la vue
+   *  Indicatifs : sur un échec, le bloc glissé/redimensionné reprend sa
+   *  position réelle au rafraîchissement plutôt que de rester affiché à
+   *  l'endroit où la souris l'a laissé sans que rien n'ait été écrit. */
+  async function ecrire(action: () => Promise<unknown>): Promise<void> {
+    try {
+      await action();
+      dernierMessage = null;
+    } catch {
+      dernierMessage = {texte: "Échec de l'écriture dans le document Grist connecté. Réessayez.", ton: 'danger'};
+    }
+    rafraichir();
+  }
+
   function rafraichir(): void {
     vider(container);
     const jours = regrouperParJour(m.macroCreneaux);
@@ -82,6 +99,7 @@ export function montrerAgenda(container: HTMLElement, m: Magasin): () => void {
           h('span', {class: 'view__intro', style: {margin: '0'}},
             "Glissez l'en-tête d'un macro-créneau pour le déplacer, ses bords gauche/droit pour le redimensionner ; l'icône ✎ ouvre le détail."),
         ),
+        dernierMessage ? h('span', {class: `pill pill--${dernierMessage.ton}`}, dernierMessage.texte) : null,
         grille,
       ),
     );
@@ -145,7 +163,7 @@ export function montrerAgenda(container: HTMLElement, m: Magasin): () => void {
       const minutesAjustees = Math.round(minutesBrutes / DUREE_MIN_MINUTES) * DUREE_MIN_MINUTES;
       const nouveauDebut = jourDebutEpoch + minutesAjustees * 60;
       const duree = macro.Fin - macro.Debut;
-      m.enregistrerMacroCreneau({...macro, id: macro.id, Debut: nouveauDebut, Fin: nouveauDebut + duree});
+      void ecrire(() => m.enregistrerMacroCreneau({...macro, id: macro.id, Debut: nouveauDebut, Fin: nouveauDebut + duree}));
     };
     poignee.addEventListener('mousedown', (e: MouseEvent) => {
       if ((e.target as HTMLElement).tagName === 'BUTTON') { return; }
@@ -192,13 +210,13 @@ export function montrerAgenda(container: HTMLElement, m: Magasin): () => void {
             const debutAjuste = Math.round(debutBrut / DUREE_MIN_MINUTES) * DUREE_MIN_MINUTES;
             const nouveauDebut = jourDebutEpoch + debutAjuste * 60;
             if (macro.Fin - nouveauDebut < DUREE_MIN_MINUTES * 60) { return; }
-            m.enregistrerMacroCreneau({...macro, Debut: nouveauDebut});
+            void ecrire(() => m.enregistrerMacroCreneau({...macro, Debut: nouveauDebut}));
           } else {
             const finBrute = (leftFinal + largeurFinale) / PX_PAR_MINUTE + plage.minMinute;
             const finAjustee = Math.round(finBrute / DUREE_MIN_MINUTES) * DUREE_MIN_MINUTES;
             const nouveauFin = jourDebutEpoch + finAjustee * 60;
             if (nouveauFin - macro.Debut < DUREE_MIN_MINUTES * 60) { return; }
-            m.enregistrerMacroCreneau({...macro, Fin: nouveauFin});
+            void ecrire(() => m.enregistrerMacroCreneau({...macro, Fin: nouveauFin}));
           }
         };
         document.addEventListener('mousemove', onMouseMove);
