@@ -14,15 +14,41 @@ export {construireDonneesPlanning, construireLignesParametres, lireDocument} fro
 
 export {construireModele} from './modele';
 
-export type {DocApiEcriture, NouveauGroupe, NouvelleDisponibilite, NouvellePlace, UserAction} from './ecriture';
+export type {
+  DocApiEcriture,
+  NouveauBesoin,
+  NouveauGroupe,
+  NouveauMacroCreneau,
+  NouveauSousCreneau,
+  NouvelleDisponibilite,
+  NouvelleMission,
+  NouvellePlace,
+  UserAction,
+} from './ecriture';
 export {
+  actionsCreerBesoin,
   actionsCreerGroupe,
+  actionsCreerMacroCreneau,
+  actionsCreerMission,
+  actionsCreerSousCreneaux,
   actionsDefinirCompetencesBenevole,
   actionsDefinirPlaces,
+  actionsDeplacerMacroCreneau,
+  actionsDeplacerPositionGroupe,
   actionsEcrireDisponibilites,
   actionsEnregistrerHeureCoupure,
   actionsEnregistrerParametresAlgorithme,
+  actionsModifierGroupe,
+  actionsModifierMission,
+  actionsModifierSousCreneau,
   actionsPositionnerGroupe,
+  actionsRenommerMacroCreneau,
+  actionsRetirerPositionGroupe,
+  actionsSupprimerBesoin,
+  actionsSupprimerGroupe,
+  actionsSupprimerMacroCreneau,
+  actionsSupprimerMission,
+  actionsSupprimerSousCreneaux,
   actionsVerrouillerPlace,
   appliquerActions,
 } from './ecriture';

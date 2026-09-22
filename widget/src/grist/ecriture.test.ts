@@ -1,16 +1,182 @@
 import {describe, expect, it} from 'vitest';
 import {
+  actionsCreerBesoin,
   actionsCreerGroupe,
+  actionsCreerMacroCreneau,
+  actionsCreerMission,
+  actionsCreerSousCreneaux,
   actionsDefinirCompetencesBenevole,
   actionsDefinirPlaces,
+  actionsDeplacerMacroCreneau,
+  actionsDeplacerPositionGroupe,
   actionsEcrireDisponibilites,
   actionsEnregistrerHeureCoupure,
   actionsEnregistrerParametresAlgorithme,
+  actionsModifierGroupe,
+  actionsModifierMission,
+  actionsModifierSousCreneau,
   actionsPositionnerGroupe,
+  actionsRenommerMacroCreneau,
+  actionsRetirerPositionGroupe,
+  actionsSupprimerBesoin,
+  actionsSupprimerGroupe,
+  actionsSupprimerMacroCreneau,
+  actionsSupprimerMission,
+  actionsSupprimerSousCreneaux,
   actionsVerrouillerPlace,
   appliquerActions,
 } from './ecriture';
 import {PARAMETRES_PAR_DEFAUT} from '../moteur/types';
+
+describe('actionsCreerMission', () => {
+  it('construit un AddRecord avec Lieu/Equipe encodés et les compétences en ChoiceList', () => {
+    expect(actionsCreerMission({
+      nom: 'Bar principal',
+      description: 'Servir les boissons',
+      lieuId: 3,
+      equipeId: 1,
+      priorite: 'Critique',
+      competencesRequises: ['Majeur', 'Caisse'],
+    })).toEqual([
+      ['AddRecord', 'Missions', null, {
+        Nom: 'Bar principal',
+        Description: 'Servir les boissons',
+        Lieu: 3,
+        Equipe: 1,
+        Priorite: 'Critique',
+        Competences_requises: ['L', 'Majeur', 'Caisse'],
+      }],
+    ]);
+  });
+
+  it('encode un lieu ou une équipe absents en 0, et une description/compétences absentes en vide', () => {
+    const action = actionsCreerMission({nom: 'X', lieuId: null, equipeId: null, priorite: 'Normale'})[0]!;
+    expect(action[3]).toEqual({
+      Nom: 'X', Description: '', Lieu: 0, Equipe: 0, Priorite: 'Normale', Competences_requises: ['L'],
+    });
+  });
+});
+
+describe('actionsModifierMission', () => {
+  it('ne touche que les champs fournis', () => {
+    expect(actionsModifierMission(9, {nom: 'Bar VIP'})).toEqual([
+      ['UpdateRecord', 'Missions', 9, {Nom: 'Bar VIP'}],
+    ]);
+  });
+
+  it('efface une référence explicitement mise à null (encodée 0, jamais null)', () => {
+    expect(actionsModifierMission(9, {lieuId: null})).toEqual([
+      ['UpdateRecord', 'Missions', 9, {Lieu: 0}],
+    ]);
+  });
+
+  it("ne construit aucune action quand aucun champ n'est fourni", () => {
+    expect(actionsModifierMission(9, {})).toEqual([]);
+  });
+});
+
+describe('actionsSupprimerMission', () => {
+  it('construit un RemoveRecord', () => {
+    expect(actionsSupprimerMission(9)).toEqual([['RemoveRecord', 'Missions', 9]]);
+  });
+});
+
+describe('actionsCreerMacroCreneau', () => {
+  it('construit un AddRecord avec Debut/Fin', () => {
+    expect(actionsCreerMacroCreneau({nom: 'Journée vendredi', debut: 1000, fin: 2000})).toEqual([
+      ['AddRecord', 'Macro_creneaux', null, {Nom: 'Journée vendredi', Debut: 1000, Fin: 2000}],
+    ]);
+  });
+});
+
+describe('actionsDeplacerMacroCreneau', () => {
+  it('construit un UpdateRecord ciblant Debut/Fin', () => {
+    expect(actionsDeplacerMacroCreneau(7, 1100, 2100)).toEqual([
+      ['UpdateRecord', 'Macro_creneaux', 7, {Debut: 1100, Fin: 2100}],
+    ]);
+  });
+});
+
+describe('actionsRenommerMacroCreneau', () => {
+  it('construit un UpdateRecord ciblant Nom', () => {
+    expect(actionsRenommerMacroCreneau(7, 'Journée samedi')).toEqual([
+      ['UpdateRecord', 'Macro_creneaux', 7, {Nom: 'Journée samedi'}],
+    ]);
+  });
+});
+
+describe('actionsSupprimerMacroCreneau', () => {
+  it('construit un RemoveRecord', () => {
+    expect(actionsSupprimerMacroCreneau(7)).toEqual([['RemoveRecord', 'Macro_creneaux', 7]]);
+  });
+});
+
+describe('actionsCreerSousCreneaux', () => {
+  it('construit un BulkAddRecord avec Mission encodée en Ref (null pour un sous-créneau commun)', () => {
+    const actions = actionsCreerSousCreneaux([
+      {macroCreneauId: 7, missionId: null, libelle: '10:00–11:30', debut: 1000, fin: 1900},
+      {macroCreneauId: 7, missionId: 12, libelle: '11:30–13:00', debut: 1900, fin: 2800},
+    ]);
+    expect(actions).toEqual([[
+      'BulkAddRecord', 'Sous_creneaux', [null, null],
+      {
+        Macro_creneau: [7, 7],
+        Mission: [0, 12],
+        Libelle: ['10:00–11:30', '11:30–13:00'],
+        Debut: [1000, 1900],
+        Fin: [1900, 2800],
+      },
+    ]]);
+  });
+
+  it('ne construit aucune action pour une liste vide', () => {
+    expect(actionsCreerSousCreneaux([])).toEqual([]);
+  });
+});
+
+describe('actionsModifierSousCreneau', () => {
+  it('ne touche que les champs fournis, Mission encodée en Ref', () => {
+    expect(actionsModifierSousCreneau(15, {missionId: 12, libelle: '11:30–13:00'})).toEqual([
+      ['UpdateRecord', 'Sous_creneaux', 15, {Mission: 12, Libelle: '11:30–13:00'}],
+    ]);
+  });
+
+  it('efface la mission (sous-créneau commun) quand missionId est explicitement null', () => {
+    expect(actionsModifierSousCreneau(15, {missionId: null})).toEqual([
+      ['UpdateRecord', 'Sous_creneaux', 15, {Mission: 0}],
+    ]);
+  });
+});
+
+describe('actionsSupprimerSousCreneaux', () => {
+  it('construit un BulkRemoveRecord', () => {
+    expect(actionsSupprimerSousCreneaux([15, 16])).toEqual([
+      ['BulkRemoveRecord', 'Sous_creneaux', [15, 16]],
+    ]);
+  });
+
+  it('ne construit aucune action pour une liste vide', () => {
+    expect(actionsSupprimerSousCreneaux([])).toEqual([]);
+  });
+});
+
+describe('actionsCreerBesoin', () => {
+  it('construit un AddRecord avec Mission et Sous_creneau en Ref simples (jamais 0, toujours fournis)', () => {
+    expect(actionsCreerBesoin({
+      missionId: 12, sousCreneauId: 15, effectifMin: 1, effectifMax: 3, tailleGroupe: 2,
+    })).toEqual([
+      ['AddRecord', 'Besoins', null, {
+        Mission: 12, Sous_creneau: 15, Effectif_min: 1, Effectif_max: 3, Taille_groupe: 2,
+      }],
+    ]);
+  });
+});
+
+describe('actionsSupprimerBesoin', () => {
+  it('construit un RemoveRecord', () => {
+    expect(actionsSupprimerBesoin(50)).toEqual([['RemoveRecord', 'Besoins', 50]]);
+  });
+});
 
 describe('actionsCreerGroupe', () => {
   it('construit un AddRecord avec Equipe encodée et un id laissé à Grist', () => {
@@ -25,6 +191,20 @@ describe('actionsCreerGroupe', () => {
   });
 });
 
+describe('actionsModifierGroupe', () => {
+  it('ne touche que les champs fournis', () => {
+    expect(actionsModifierGroupe(60, {taille: 3})).toEqual([
+      ['UpdateRecord', 'Groupes', 60, {Taille: 3}],
+    ]);
+  });
+});
+
+describe('actionsSupprimerGroupe', () => {
+  it('construit un RemoveRecord', () => {
+    expect(actionsSupprimerGroupe(60)).toEqual([['RemoveRecord', 'Groupes', 60]]);
+  });
+});
+
 describe('actionsPositionnerGroupe', () => {
   it('construit un BulkAddRecord répétant le groupe pour chaque besoin', () => {
     expect(actionsPositionnerGroupe(60, [50, 51])).toEqual([
@@ -34,6 +214,20 @@ describe('actionsPositionnerGroupe', () => {
 
   it('ne construit aucune action pour une liste de besoins vide', () => {
     expect(actionsPositionnerGroupe(60, [])).toEqual([]);
+  });
+});
+
+describe('actionsDeplacerPositionGroupe', () => {
+  it('construit un UpdateRecord ciblant Besoin, en gardant l\'id de la position', () => {
+    expect(actionsDeplacerPositionGroupe(500, 51)).toEqual([
+      ['UpdateRecord', 'Positions_groupe', 500, {Besoin: 51}],
+    ]);
+  });
+});
+
+describe('actionsRetirerPositionGroupe', () => {
+  it('construit un RemoveRecord', () => {
+    expect(actionsRetirerPositionGroupe(500)).toEqual([['RemoveRecord', 'Positions_groupe', 500]]);
   });
 });
 

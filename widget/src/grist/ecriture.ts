@@ -3,21 +3,44 @@
  * langage que `docApi.applyUserActions` comprenne) à partir d'objets du
  * domaine, puis les envoie.
  *
- * Portée (voir le fil qui a confié cette couche, et §5.4 du cahier des
- * charges) : ce que le widget doit pouvoir écrire aujourd'hui — un groupe et
- * ses positions, le roster (`Places`) qui va avec, des disponibilités, le
- * verrouillage d'une place, et les deux réglages qui ont valeur d'audit
- * (paramètres d'algorithme, heure de coupure). Tout le reste (bénévoles,
- * missions, structure temporelle, ...) reste saisi nativement dans Grist —
- * ce module ne les écrit jamais.
+ * Portée (voir le fil qui a confié cette couche, §5.4 du cahier des charges,
+ * et la V0.1 agile décidée par Antoine le 2026-09-22) : ce que le widget
+ * doit pouvoir écrire aujourd'hui — missions, macro-créneaux et
+ * sous-créneaux (structure temporelle, désormais en écriture, V0.1, y
+ * compris modification et suppression), les besoins (mission × sous-créneau,
+ * §6.3 — la case vide sur laquelle un « + » crée la ligne), un groupe
+ * (indicatif) et ses positions, le roster (`Places`) qui va avec, des
+ * disponibilités, le verrouillage d'une place, et les deux réglages qui ont
+ * valeur d'audit (paramètres d'algorithme, heure de coupure). Bénévoles,
+ * artistes, lieux et équipes restent saisis nativement dans Grist — ce
+ * module ne les écrit pas, tant que rien ne le demande.
  *
  * Chaque `actionsXxx` est une fonction pure qui rend un tableau d'actions ;
  * `appliquerActions` est le seul point qui parle réellement à
- * `docApi.applyUserActions`. Cette séparation permet de tester les
- * constructeurs d'actions sans document Grist réel (`ecriture.test.ts`) tout
- * en les rejouant, inchangés, contre une vraie instance (`dev/`).
+ * `docApi.applyUserActions`, et c'est son retour (`retValues`) qui porte le
+ * rowId réellement attribué par Grist à une ligne créée — voir le
+ * doc-comment d'`appliquerActions` pour la forme exacte (id direct pour un
+ * `AddRecord`, tableau d'ids pour un `BulkAddRecord`). Un appelant qui vient
+ * de créer une ligne recolle son identifiant local sur ce retour ; cette
+ * fonction ne fabrique jamais elle-même d'id. Cette séparation permet aussi
+ * de tester les constructeurs d'actions sans document Grist réel
+ * (`ecriture.test.ts`) tout en les rejouant, inchangés, contre une vraie
+ * instance (`dev/`).
+ *
+ * Chaque type `NouveauXxx` a ses propres champs en camelCase (`equipeId`,
+ * pas `Equipe`), délibérément distincts des types du domaine
+ * (`../domain/types`, en PascalCase) : une même forme pour toute construction
+ * d'action, plutôt qu'une variante par écran qui l'appelle (trois fils ont
+ * demandé un chemin d'écriture pour la V0.1 ; c'est le risque que cette
+ * convention évite). Une modification partielle (`actionsModifierXxx`) suit
+ * la même règle en `Partial` : un champ absent (`undefined`) n'est pas
+ * touché, un champ de référence explicitement mis à `null` efface la
+ * référence (encodée `0`, jamais `null`, voir `./valeurs`) — la différence
+ * entre « je ne touche pas ce champ » et « je le vide » est déportée sur
+ * `undefined` vs `null`, jamais sur une valeur par défaut devinée ici.
  */
 
+import type {Epoch, Priorite} from '../domain/types';
 import type {Id, OriginePlace, ParametresAlgorithme} from '../moteur/types';
 import {encoderListe, encoderRef} from './valeurs';
 import {clesEtValeursParametresAlgorithme, CLE_HEURE_COUPURE, type LigneParametre} from './parametres';
@@ -71,6 +94,177 @@ export async function appliquerActions(
   return (resultat as {retValues?: unknown[]} | undefined)?.retValues ?? [];
 }
 
+// --- Missions ---------------------------------------------------------------
+
+export interface NouvelleMission {
+  nom: string;
+  description?: string;
+  lieuId: Id | null;
+  equipeId: Id | null;
+  priorite: Priorite;
+  competencesRequises?: readonly string[];
+}
+
+/** Crée une mission (V0.1, §1.1 étape 2). `retValues[0]` de l'action est son nouvel id. */
+export function actionsCreerMission(mission: NouvelleMission): UserAction[] {
+  return [[
+    'AddRecord', 'Missions', null, {
+      Nom: mission.nom,
+      Description: mission.description ?? '',
+      Lieu: encoderRef(mission.lieuId),
+      Equipe: encoderRef(mission.equipeId),
+      Priorite: mission.priorite,
+      Competences_requises: encoderListe(mission.competencesRequises ?? []),
+    },
+  ]];
+}
+
+/** Modifie une mission existante ; seuls les champs fournis sont touchés (voir l'en-tête du fichier). */
+export function actionsModifierMission(missionId: Id, champs: Partial<NouvelleMission>): UserAction[] {
+  const valeurs: Record<string, unknown> = {};
+  if (champs.nom !== undefined) { valeurs.Nom = champs.nom; }
+  if (champs.description !== undefined) { valeurs.Description = champs.description; }
+  if (champs.lieuId !== undefined) { valeurs.Lieu = encoderRef(champs.lieuId); }
+  if (champs.equipeId !== undefined) { valeurs.Equipe = encoderRef(champs.equipeId); }
+  if (champs.priorite !== undefined) { valeurs.Priorite = champs.priorite; }
+  if (champs.competencesRequises !== undefined) { valeurs.Competences_requises = encoderListe(champs.competencesRequises); }
+  if (Object.keys(valeurs).length === 0) { return []; }
+  return [['UpdateRecord', 'Missions', missionId, valeurs]];
+}
+
+/** Supprime une mission. N'efface pas les besoins qui la référencent (à la charge de l'appelant). */
+export function actionsSupprimerMission(missionId: Id): UserAction[] {
+  return [['RemoveRecord', 'Missions', missionId]];
+}
+
+// --- Macro-créneaux et sous-créneaux -----------------------------------------
+
+export interface NouveauMacroCreneau {
+  nom: string;
+  debut: Epoch;
+  fin: Epoch;
+}
+
+/** Crée un macro-créneau (V0.1, §1.1 étape 1). `retValues[0]` de l'action est son nouvel id. */
+export function actionsCreerMacroCreneau(macroCreneau: NouveauMacroCreneau): UserAction[] {
+  return [[
+    'AddRecord', 'Macro_creneaux', null, {
+      Nom: macroCreneau.nom,
+      Debut: macroCreneau.debut,
+      Fin: macroCreneau.fin,
+    },
+  ]];
+}
+
+/** Déplace ou redimensionne un macro-créneau existant (glisser-déposer sur l'agenda). */
+export function actionsDeplacerMacroCreneau(macroCreneauId: Id, debut: Epoch, fin: Epoch): UserAction[] {
+  return [['UpdateRecord', 'Macro_creneaux', macroCreneauId, {Debut: debut, Fin: fin}]];
+}
+
+/** Renomme un macro-créneau existant. */
+export function actionsRenommerMacroCreneau(macroCreneauId: Id, nom: string): UserAction[] {
+  return [['UpdateRecord', 'Macro_creneaux', macroCreneauId, {Nom: nom}]];
+}
+
+/**
+ * Supprime un macro-créneau. N'efface pas ses sous-créneaux : Grist ne
+ * cascade pas les suppressions, et un macro-créneau vidé de ses
+ * sous-créneaux avant d'être supprimé n'est pas la même décision produit
+ * qu'une suppression qui en emporte le contenu — à la charge de l'appelant.
+ */
+export function actionsSupprimerMacroCreneau(macroCreneauId: Id): UserAction[] {
+  return [['RemoveRecord', 'Macro_creneaux', macroCreneauId]];
+}
+
+export interface NouveauSousCreneau {
+  macroCreneauId: Id;
+  /** `null` pour un sous-créneau commun à toutes les missions du macro-créneau (§6.2). */
+  missionId: Id | null;
+  libelle: string;
+  debut: Epoch;
+  fin: Epoch;
+}
+
+/**
+ * Crée un ou plusieurs sous-créneaux dans un macro-créneau (V0.1, §1.1
+ * étape 3) — un découpage automatique par durée par défaut se réduit à
+ * calculer cette liste côté appelant, cette fonction ne fait qu'écrire.
+ */
+export function actionsCreerSousCreneaux(sousCreneaux: readonly NouveauSousCreneau[]): UserAction[] {
+  if (sousCreneaux.length === 0) { return []; }
+  return [[
+    'BulkAddRecord', 'Sous_creneaux', sousCreneaux.map(() => null),
+    {
+      Macro_creneau: sousCreneaux.map((s) => s.macroCreneauId),
+      Mission: sousCreneaux.map((s) => encoderRef(s.missionId)),
+      Libelle: sousCreneaux.map((s) => s.libelle),
+      Debut: sousCreneaux.map((s) => s.debut),
+      Fin: sousCreneaux.map((s) => s.fin),
+    },
+  ]];
+}
+
+/** Modifie un sous-créneau existant ; seuls les champs fournis sont touchés. */
+export function actionsModifierSousCreneau(
+  sousCreneauId: Id,
+  champs: Partial<Omit<NouveauSousCreneau, 'macroCreneauId'>>,
+): UserAction[] {
+  const valeurs: Record<string, unknown> = {};
+  if (champs.missionId !== undefined) { valeurs.Mission = encoderRef(champs.missionId); }
+  if (champs.libelle !== undefined) { valeurs.Libelle = champs.libelle; }
+  if (champs.debut !== undefined) { valeurs.Debut = champs.debut; }
+  if (champs.fin !== undefined) { valeurs.Fin = champs.fin; }
+  if (Object.keys(valeurs).length === 0) { return []; }
+  return [['UpdateRecord', 'Sous_creneaux', sousCreneauId, valeurs]];
+}
+
+/**
+ * Supprime un ou plusieurs sous-créneaux (un re-découpage automatique de la
+ * plage, par exemple, remplace l'ensemble existant plutôt que de le
+ * modifier ligne à ligne). N'efface pas les besoins qui les référencent.
+ */
+export function actionsSupprimerSousCreneaux(sousCreneauIds: readonly Id[]): UserAction[] {
+  if (sousCreneauIds.length === 0) { return []; }
+  return [['BulkRemoveRecord', 'Sous_creneaux', [...sousCreneauIds]]];
+}
+
+// --- Besoins (mission × sous-créneau, §6.3) ---------------------------------
+
+export interface NouveauBesoin {
+  missionId: Id;
+  sousCreneauId: Id;
+  effectifMin: number;
+  effectifMax: number;
+  tailleGroupe: number;
+}
+
+/**
+ * Crée un besoin : une mission ouverte sur un sous-créneau donné, avec son
+ * effectif attendu (§6.3). C'est la ligne que fait naître le « + » discret
+ * sur une case vide de la page Indicatifs — une case sans besoin n'est pas
+ * une anomalie (§7.4), elle n'a simplement encore aucune ligne ici.
+ * `retValues[0]` de l'action est son nouvel id.
+ */
+export function actionsCreerBesoin(besoin: NouveauBesoin): UserAction[] {
+  return [[
+    'AddRecord', 'Besoins', null, {
+      Mission: besoin.missionId,
+      Sous_creneau: besoin.sousCreneauId,
+      Effectif_min: besoin.effectifMin,
+      Effectif_max: besoin.effectifMax,
+      Taille_groupe: besoin.tailleGroupe,
+    },
+  ]];
+}
+
+/**
+ * Supprime un besoin (la case redevient une zone vide). N'efface pas les
+ * positions de groupe qui le référencent.
+ */
+export function actionsSupprimerBesoin(besoinId: Id): UserAction[] {
+  return [['RemoveRecord', 'Besoins', besoinId]];
+}
+
 // --- Groupe, positions, roster --------------------------------------------
 
 export interface NouveauGroupe {
@@ -92,6 +286,26 @@ export function actionsCreerGroupe(groupe: NouveauGroupe): UserAction[] {
   ]];
 }
 
+/** Modifie un groupe (indicatif) existant ; seuls les champs fournis sont touchés. */
+export function actionsModifierGroupe(groupeId: Id, champs: Partial<NouveauGroupe>): UserAction[] {
+  const valeurs: Record<string, unknown> = {};
+  if (champs.code !== undefined) { valeurs.Code = champs.code; }
+  if (champs.taille !== undefined) { valeurs.Taille = champs.taille; }
+  if (champs.equipeId !== undefined) { valeurs.Equipe = encoderRef(champs.equipeId); }
+  if (champs.notes !== undefined) { valeurs.Notes = champs.notes; }
+  if (Object.keys(valeurs).length === 0) { return []; }
+  return [['UpdateRecord', 'Groupes', groupeId, valeurs]];
+}
+
+/**
+ * Supprime un groupe (indicatif). N'efface pas ses positions ni son roster
+ * (`Positions_groupe`, `Places`) : les retirer d'abord est à la charge de
+ * l'appelant, qui connaît le geste produit exact (retrait vs réaffectation).
+ */
+export function actionsSupprimerGroupe(groupeId: Id): UserAction[] {
+  return [['RemoveRecord', 'Groupes', groupeId]];
+}
+
 /** Positionne un groupe déjà créé sur un ou plusieurs besoins (§6.3). */
 export function actionsPositionnerGroupe(groupeId: Id, besoinIds: readonly Id[]): UserAction[] {
   if (besoinIds.length === 0) { return []; }
@@ -102,6 +316,21 @@ export function actionsPositionnerGroupe(groupeId: Id, besoinIds: readonly Id[])
       Besoin: [...besoinIds],
     },
   ]];
+}
+
+/**
+ * Déplace une position existante vers un autre besoin (glisser-déposer d'un
+ * indicatif d'un sous-créneau à un autre, page Indicatifs). Une position
+ * garde son id : c'est un `UpdateRecord`, pas un retrait suivi d'une
+ * recréation.
+ */
+export function actionsDeplacerPositionGroupe(positionId: Id, nouveauBesoinId: Id): UserAction[] {
+  return [['UpdateRecord', 'Positions_groupe', positionId, {Besoin: nouveauBesoinId}]];
+}
+
+/** Retire un groupe d'un besoin (la position disparaît, le groupe et ses places restent). */
+export function actionsRetirerPositionGroupe(positionId: Id): UserAction[] {
+  return [['RemoveRecord', 'Positions_groupe', positionId]];
 }
 
 export interface NouvellePlace {
