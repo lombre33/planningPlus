@@ -15,6 +15,7 @@ function ecritureDeTest(partielle: Partial<EcritureGrist> = {}): EcritureGrist {
     creerMission: nonBranchee('creerMission'),
     creerMacroCreneau: nonBranchee('creerMacroCreneau'),
     modifierMacroCreneau: nonBranchee('modifierMacroCreneau'),
+    supprimerMacroCreneau: nonBranchee('supprimerMacroCreneau'),
     creerArtiste: nonBranchee('creerArtiste'),
     modifierArtiste: nonBranchee('modifierArtiste'),
     remplacerSousCreneaux: nonBranchee('remplacerSousCreneaux'),
@@ -518,6 +519,98 @@ describe('Magasin.redecouperSousCreneaux', () => {
     }
     const ids = m.sousCreneaux.map((s) => s.id).sort((a, b) => a - b);
     expect(ids).toEqual([701, 702]);
+  });
+});
+
+describe('Magasin.supprimerMacroCreneau', () => {
+  function modeleUnMacro(): {m: Magasin; macroId: Id; debut: number; fin: number} {
+    const debut = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 10});
+    const fin = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 12});
+    const m = new Magasin({
+      equipes: [], lieux: [], benevoles: [], missions: [], artistes: [],
+      macroCreneaux: [{id: 1, Nom: 'Journée', Debut: debut, Fin: fin}],
+      sousCreneaux: [], besoins: [], groupes: [], positionsGroupe: [], places: [],
+      disponibilites: [], souhaitsMissions: [], affinites: [],
+    });
+    return {m, macroId: 1, debut, fin};
+  }
+
+  it('retire le macro-créneau et ses sous-créneaux', async () => {
+    const {m, macroId} = modeleUnMacro();
+    await m.redecouperSousCreneaux(macroId, 60);
+    expect(m.sousCreneaux).toHaveLength(2);
+
+    const resultat = await m.supprimerMacroCreneau(macroId);
+
+    expect(resultat).toEqual({ok: true});
+    expect(m.macroCreneaux).toHaveLength(0);
+    expect(m.sousCreneaux).toHaveLength(0);
+  });
+
+  it('refuse et ne change rien si un sous-créneau porte déjà une mission (Besoin)', async () => {
+    const {m, macroId} = modeleUnMacro();
+    await m.redecouperSousCreneaux(macroId, 60);
+    const sousCreneauId = m.sousCreneaux[0]!.id;
+    await m.creerBesoin(1, sousCreneauId);
+    const avantMacros = m.macroCreneaux;
+    const avantSous = m.sousCreneaux;
+
+    const resultat = await m.supprimerMacroCreneau(macroId);
+
+    expect(resultat.ok).toBe(false);
+    if (!resultat.ok) { expect(resultat.raison).toMatch(/déjà positionnées/); }
+    expect(m.macroCreneaux).toBe(avantMacros);
+    expect(m.sousCreneaux).toBe(avantSous);
+  });
+
+  it('renvoie une erreur pour un macro-créneau introuvable', async () => {
+    const {m} = modeleUnMacro();
+
+    const resultat = await m.supprimerMacroCreneau(999);
+
+    expect(resultat.ok).toBe(false);
+  });
+
+  it('notifie les abonnés une seule fois en cas de succès', async () => {
+    const {m, macroId} = modeleUnMacro();
+    let notifications = 0;
+    m.subscribe(() => { notifications += 1; });
+
+    await m.supprimerMacroCreneau(macroId);
+
+    expect(notifications).toBe(1);
+  });
+
+  it("en mode connecté, transmet le macro-créneau et ses sous-créneaux en un seul appel du pont", async () => {
+    const {m, macroId} = modeleUnMacro();
+    await m.redecouperSousCreneaux(macroId, 60);
+    const idsSous = m.sousCreneaux.map((s) => s.id).sort((a, b) => a - b);
+    const appels: string[] = [];
+    m.brancherEcriture(ecritureDeTest({
+      supprimerMacroCreneau: async (macroCreneauId, sousCreneauIds) => {
+        appels.push(`supprimerMacroCreneau(${macroCreneauId},${JSON.stringify([...sousCreneauIds].sort((a, b) => a - b))})`);
+      },
+    }));
+
+    const resultat = await m.supprimerMacroCreneau(macroId);
+
+    expect(resultat).toEqual({ok: true});
+    expect(appels).toEqual([`supprimerMacroCreneau(${macroId},${JSON.stringify(idsSous)})`]);
+  });
+
+  it("en mode connecté, si le pont échoue, rien n'est retiré localement", async () => {
+    const {m, macroId} = modeleUnMacro();
+    await m.redecouperSousCreneaux(macroId, 60);
+    const avantMacros = m.macroCreneaux;
+    const avantSous = m.sousCreneaux;
+    m.brancherEcriture(ecritureDeTest({supprimerMacroCreneau: async () => { throw new Error('document indisponible'); }}));
+
+    const resultat = await m.supprimerMacroCreneau(macroId);
+
+    expect(resultat.ok).toBe(false);
+    if (!resultat.ok) { expect(resultat.raison).toMatch(/Échec de l.écriture/); }
+    expect(m.macroCreneaux).toBe(avantMacros);
+    expect(m.sousCreneaux).toBe(avantSous);
   });
 });
 

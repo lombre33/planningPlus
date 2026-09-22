@@ -91,6 +91,7 @@ describe('montrerGrille sur un document vide', () => {
       creerMission: async () => { if (echecMission) { throw new Error('document indisponible'); } return 1; },
       creerMacroCreneau: async () => 1,
       modifierMacroCreneau: async () => {},
+      supprimerMacroCreneau: async () => {},
       creerArtiste: async () => 1,
       modifierArtiste: async () => {},
       remplacerSousCreneaux: async () => [],

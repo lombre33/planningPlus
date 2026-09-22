@@ -42,8 +42,8 @@ import {
   actionsCreerArtiste, actionsCreerBesoin, actionsCreerEquipe, actionsCreerGroupe, actionsCreerMacroCreneau,
   actionsCreerMission, actionsCreerSousCreneaux, actionsCreerTablesManquantes, actionsDefinirPlaces,
   actionsDeplacerMacroCreneau, actionsDeplacerPositionGroupe, actionsModifierArtiste, actionsPositionnerGroupe,
-  actionsReglerAffichage, actionsRenommerMacroCreneau, actionsSupprimerSousCreneaux, appliquerActions,
-  LIBELLE_PAR_TABLE, lireDocument, zipperTable,
+  actionsReglerAffichage, actionsRenommerMacroCreneau, actionsSupprimerMacroCreneau, actionsSupprimerSousCreneaux,
+  appliquerActions, LIBELLE_PAR_TABLE, lireDocument, zipperTable,
 } from './grist';
 import {type EcritureGrist, Magasin, SuppressionApresCreationEchouee} from './store';
 
@@ -98,6 +98,16 @@ function construireEcritureGrist(docApi: DocApiEcriture, resolution: Record<stri
       await appliquerActions(
         docApi,
         [...actionsRenommerMacroCreneau(id, macro.nom), ...actionsDeplacerMacroCreneau(id, macro.debut, macro.fin)],
+        resolution,
+      );
+    },
+    async supprimerMacroCreneau(macroCreneauId, sousCreneauIds) {
+      // Un seul aller-retour : contrairement à `remplacerSousCreneaux`, rien
+      // ici ne crée d'id qu'une autre action du même appel devrait
+      // référencer — les deux suppressions sont indépendantes.
+      await appliquerActions(
+        docApi,
+        [...actionsSupprimerMacroCreneau(macroCreneauId), ...actionsSupprimerSousCreneaux(sousCreneauIds)],
         resolution,
       );
     },

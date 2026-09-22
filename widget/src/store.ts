@@ -63,6 +63,13 @@ export interface EcritureGrist {
    *  ensemble (voir `Magasin.enregistrerMacroCreneau`, qui ne les sépare
    *  jamais côté appelant). */
   modifierMacroCreneau(id: Id, macro: {nom: string; debut: Epoch; fin: Epoch}): Promise<void>;
+  /** Supprime un macro-créneau déjà réel et les sous-créneaux donnés (les
+   *  siens) en un seul aller-retour (`RemoveRecord` + `BulkRemoveRecord`) —
+   *  Grist ne cascade pas les suppressions, donc les sous-créneaux à
+   *  emporter sont fournis explicitement par l'appelant (voir
+   *  `Magasin.supprimerMacroCreneau`, qui garde le même garde-fou que
+   *  `redecouperSousCreneaux` : refus si l'un d'eux porte déjà un besoin). */
+  supprimerMacroCreneau(macroCreneauId: Id, sousCreneauIds: readonly Id[]): Promise<void>;
   /** Écrit un artiste (un passage : nom, lieu, horaires) et rend l'id que
    *  Grist lui attribue — voir `Magasin.enregistrerArtiste`, qui l'attend
    *  avant d'insérer localement, pour la même raison que `creerMission`.
@@ -358,6 +365,35 @@ export class Magasin {
         Libelle: p.libelle, Debut: p.debut, Fin: p.fin,
       });
     });
+    this.notifier();
+    return {ok: true};
+  }
+
+  /** Supprime un macro-créneau et ses sous-créneaux (Grist ne cascade pas —
+   *  demande du fil Agenda, 2026-09-22, pour le bouton de suppression de la
+   *  vue Agenda). Même garde-fou que `redecouperSousCreneaux` : refuse si
+   *  l'un des sous-créneaux porte déjà une mission (`Besoin`), plutôt que
+   *  d'orpheliner silencieusement une affectation en cours. */
+  async supprimerMacroCreneau(macroId: Id): Promise<{ok: true} | {ok: false; raison: string}> {
+    const macro = this.data.macroCreneaux.find((m) => m.id === macroId);
+    if (!macro) { return {ok: false, raison: 'Macro-créneau introuvable.'}; }
+    const sousCreneauxDuMacro = this.data.sousCreneaux.filter((s) => s.Macro_creneau === macroId);
+    const aUneMission = sousCreneauxDuMacro.some((s) => this.data.besoins.some((b) => b.Sous_creneau === s.id));
+    if (aUneMission) {
+      return {
+        ok: false,
+        raison: 'Des missions sont déjà positionnées sur ce macro-créneau : la suppression n\'est pas possible sans risquer de perdre ce travail.',
+      };
+    }
+    if (this.ecriture) {
+      try {
+        await this.ecriture.supprimerMacroCreneau(macroId, sousCreneauxDuMacro.map((s) => s.id));
+      } catch {
+        return {ok: false, raison: 'Échec de l\'écriture dans le document Grist : la suppression a été annulée.'};
+      }
+    }
+    this.data.sousCreneaux = this.data.sousCreneaux.filter((s) => s.Macro_creneau !== macroId);
+    this.data.macroCreneaux = this.data.macroCreneaux.filter((m) => m.id !== macroId);
     this.notifier();
     return {ok: true};
   }

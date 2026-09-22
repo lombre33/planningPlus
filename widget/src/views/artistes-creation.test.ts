@@ -104,6 +104,7 @@ describe('document connecté : échec d’écriture puis nouvel essai', () => {
     const ecriture: EcritureGrist = {
       creerEquipe: async () => 1, creerMission: async () => 1,
       creerMacroCreneau: async () => 1, modifierMacroCreneau: async () => {},
+      supprimerMacroCreneau: async () => {},
       creerArtiste: async () => { if (echec) { throw new Error('document indisponible'); } return 1; },
       modifierArtiste: async () => {},
       remplacerSousCreneaux: async () => [], creerBesoin: async () => 1,
