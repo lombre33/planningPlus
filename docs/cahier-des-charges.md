@@ -1,11 +1,12 @@
 # PlanningPlus — Cahier des charges
 
-**Version :** v1.4 (double engagement distingué du chevauchement de créneaux,
-persistance et accès concurrent explicités, 2026-09-21)
-**Statut :** structure et règles validées, y compris le mécanisme
-d'indicatifs (§6.3) et le parcours d'affectation et de correction (§7.5),
-maquettés l'un et l'autre
-**Dernière mise à jour :** 2026-09-21
+**Version :** v1.5 (V0.1 — premier incrément agile — cadrée en §11.1 ;
+création des missions dans le widget ; démarrage sans table créée par le
+widget, 2026-09-22)
+**Statut :** structure et règles validées (§6.3, §7.5) ; le développement est
+passé en mode agile par incréments courts à partir du 2026-09-22, voir §11.1
+pour le périmètre en cours
+**Dernière mise à jour :** 2026-09-22
 
 > Les décisions issues du cadrage sont annotées *(Décision Antoine,
 > 2026-09-21)* dans le texte. Voir le détail question par question dans
@@ -115,7 +116,11 @@ typées et des références explicites. Conséquences :
 - seules les données purement algorithmiques (état interne du solveur, traces de
   calcul, instantanés de version) peuvent être stockées sous une forme non
   directement exploitable, et sont alors isolées dans des tables dédiées et
-  clairement nommées.
+  clairement nommées ;
+- le widget ne crée **jamais** de table : il lit et écrit des lignes dans des
+  tables existantes (§6), jamais leur structure. La création des tables
+  elles-mêmes reste de la responsabilité de qui prépare le document Grist.
+  *(Décision Antoine, 2026-09-21 soir.)*
 
 ### 5.2 Contrainte B — auditabilité
 
@@ -175,6 +180,16 @@ des contraintes A et B mais n'avait pas été rassemblée en un seul endroit.
   aperçu avant validation plutôt qu'appliquée directement. Grist gère
   lui-même la synchronisation des écritures concurrentes au niveau du
   document ; ce point n'appelle pas de mécanisme supplémentaire pour la v1.
+- **Trois états au démarrage (vérifiés à l'écran, 2026-09-21).** Le widget
+  distingue explicitement : pas d'hôte Grist (ou timeout, ou échec de
+  connexion) → **mode démonstration**, sur un jeu de données factice, jamais
+  confondu avec un vrai document ; hôte Grist présent et les tables du §6
+  toutes présentes (vides ou non) → connecté, sur les vraies données, y
+  compris à vide (jamais de repli silencieux sur la démo) ; hôte Grist
+  présent mais au moins une table absente → un écran qui nomme précisément
+  la ou les tables manquantes plutôt que de deviner ou de planter. Le mode
+  démonstration reste un comportement prévu et volontaire, pas un filet de
+  secours à retirer : il permet de découvrir l'outil sans document préparé.
 
 ## 6. Modèle de données
 
@@ -195,13 +210,26 @@ des contraintes A et B mais n'avait pas été rassemblée en un seul endroit.
 
 | Table | Colonnes principales |
 | --- | --- |
-| `Macro_creneaux` | `Nom`, `Debut`, `Fin` |
+| `Macro_creneaux` | `Nom`, `Debut`, `Fin`, `Duree_sous_creneau_defaut` (quart d'heure, optionnel) |
 | `Sous_creneaux` | `Nom`, `Macro_creneau` (→), `Mission` (→, optionnel), `Debut`, `Fin` |
 
 Les bornes sont des date-heures alignées sur le quart d'heure. Le découpage au
 quart d'heure n'est pas matérialisé en base : il est dérivé des bornes au moment
 du calcul. Cela évite une table de plusieurs dizaines de milliers de lignes et
 garde les vues natives lisibles.
+
+**Découpage automatique en sous-créneaux (ajouté le 2026-09-22, V0.1, §11.1,
+point 3).** Un macro-créneau porte une durée par défaut de sous-créneau
+(`Duree_sous_creneau_defaut`, un multiple du quart d'heure). Un geste dans le
+widget découpe alors automatiquement la plage `Debut`–`Fin` du macro-créneau
+en `Sous_creneaux` successifs de cette durée, dernier tronçon possiblement
+plus court si la plage n'est pas un multiple exact — ce geste ne fait
+qu'insérer des lignes dans `Sous_creneaux` (§5.1, pas de table créée). Une
+fois posés, ces sous-créneaux se corrigent, se suppriment ou se complètent à
+la main comme n'importe quel sous-créneau (trou et chevauchement restent
+tolérés, §6.2 plus bas). Le découpage automatique est une facilité de saisie,
+jamais une contrainte : rien n'empêche des sous-créneaux de durées inégales
+posés à la main.
 
 Par défaut, les sous-créneaux d'un macro-créneau sont communs à toutes les
 missions (une seule grille de rotation). La colonne `Mission` reste vide dans
@@ -269,6 +297,16 @@ jamais scindé entre deux jours d'affichage.
 | `Groupes` | `Code` (indicatif, ex. « Beta12 »), `Taille`, `Equipe` (→) |
 | `Positions_groupe` | `Groupe` (→), `Besoin` (→) |
 | `Places` | `Groupe` (→), `Rang` (1..*n*), `Benevole` (→), `Origine` (algorithme / manuel), `Verrouillee` (booléen), `Score` |
+
+**Création d'une mission depuis le widget (décision Antoine, 2026-09-22, cadrage
+de la V0.1, §11.1).** Le widget permet de créer une `Mission` sans passer par
+la table Grist native — une écriture de ligne dans `Missions`, pas une
+création de table (voir §5.1). Ça répond à la question, posée puis retirée,
+de savoir si le référentiel se saisit dans le widget ou uniquement dans
+Grist : pour les missions, la réponse est le widget. **Antoine n'a nommé que
+les missions** ; rien n'est tranché pour `Equipes`, `Lieux`, `Benevoles` et
+`Artistes`, qui restent en saisie native Grist jusqu'à ce qu'il le demande —
+ne pas généraliser au-delà de ce qu'il a écrit.
 
 **Zone volontairement vide (précision du 2026-09-21, voir aussi §1.1 et §6.2).**
 Un `Besoin` n'existe que s'il a été créé délibérément pour un couple (mission,
@@ -589,7 +627,47 @@ Liste de travail, à arbitrer (voir le brainstorm dans le fil et la
 
 ## 11. Étapes
 
-1. Cadrage : questions, puis ce cahier des charges. **En cours.**
-2. Maquette interactive, validée avant tout développement.
-3. Développement itératif, avec batterie de tests tenue à jour.
+1. Cadrage : questions, puis ce cahier des charges. **Fait**, tenu à jour en
+   continu au fil des fils de développement plutôt que clos une fois pour
+   toutes.
+2. Maquette interactive, validée avant tout développement. **Faite** —
+   plusieurs vues rejouées et corrigées sur retour d'Antoine (§1.1, §6.3,
+   §7.5).
+3. Développement itératif, avec batterie de tests tenue à jour. **En cours**,
+   démarré le 2026-09-22 : Antoine passe le projet en mode agile, par
+   incréments courts plutôt qu'un développement d'un seul tenant. Voir §11.1
+   pour le premier incrément (V0.1) et son périmètre.
 4. Passe d'audit de sécurité et de lisibilité du code.
+
+### 11.1 V0.1 — premier incrément (agile)
+
+*(Périmètre donné par Antoine, 2026-09-22, dans le fil du projet — voir aussi
+[questions de cadrage](questions-cadrage.md). Ce cahier des charges décrit le
+produit complet ; cette sous-section fixe ce qui doit fonctionner pour que la
+V0.1 soit considérée faite, sans qu'il faille réécrire le document à chaque
+nouvel incrément. Les incréments suivants s'ajouteront ici au fur et à
+mesure, sans remplacer celui-ci.)*
+
+1. **Macro-créneaux** — les positionner (date et heure) dans une interface
+   soignée et sobre (§6.2, vue Agenda du §8).
+2. **Missions** — les créer depuis le widget (§6.3, décision ci-dessus).
+3. **Sous-créneaux** — définir une durée par défaut sur un macro-créneau et y
+   placer des sous-créneaux, avec une option de découpage automatique de la
+   plage selon cette durée (§6.2, mécanisme ajouté le 2026-09-22).
+4. **Indicatifs** — une page dédiée qui crée les indicatifs et permet de les
+   répartir sur les sous-créneaux simplement (glisser-déposer et/ou clic),
+   §6.3 et §7.5 ; la page existe déjà côté maquette (fil Page Indicatifs).
+
+**Périmètre technique (confirmé par Antoine, 2026-09-22 : « on ne parle plus
+de la maquette »).** La V0.1 est du code réel dans le widget, écrivant dans
+un vrai document Grist — pas la maquette Artifact isolée, qui n'est plus la
+cible. Une fonctionnalité qui ne vivrait que sur le jeu de démonstration
+n'est pas livrée. Cela ne remet pas en cause le mode démonstration (§5.4) : c'est le
+comportement prévu et déjà vérifié quand aucun document Grist n'est branché,
+pas quelque chose à retirer.
+
+Hors de ce périmètre pour la V0.1 (mais dans le produit complet décrit
+ailleurs dans ce document) : l'algorithme d'affectation, le catalogue
+d'anomalies, le verrouillage et la correction manuelle, les autres vues du
+§8. Rien n'empêche un fil d'avancer dessus en parallèle si Antoine le
+demande ; ce n'est simplement pas ce qui définit la V0.1 comme faite.
