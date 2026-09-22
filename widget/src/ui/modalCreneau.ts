@@ -12,7 +12,7 @@
 
 import type {MacroCreneau} from '../domain/types';
 import type {Magasin} from '../store';
-import {epochDepuisDateEtHeure, epochMinuitLocal, libelleHeure, libelleHeurePlage} from '../temps';
+import {epochDepuisDateEtHeure, epochMinuitLocal, libelleHeure} from '../temps';
 import {h, ouvrirModal} from './dom';
 
 /** Texte "HH:MM", éventuellement décalé de 24 h si la case "après minuit"
@@ -30,6 +30,31 @@ export function creerErreur(): {noeud: HTMLElement; afficher: (texte: string) =>
     afficher: (texte: string) => { noeud.textContent = texte; noeud.hidden = false; },
     effacer: () => { noeud.hidden = true; },
   };
+}
+
+function texteCompteurSousCreneaux(n: number): string {
+  if (n === 0) { return 'Aucun sous-créneau pour le moment.'; }
+  return n === 1 ? '1 sous-créneau.' : `${n} sous-créneaux.`;
+}
+
+/** Durée la plus fréquente parmi des sous-créneaux existants, en minutes ;
+ *  90 par défaut s'il n'y en a aucun (même valeur que la création). */
+function dureeDominanteMinutes(sousCreneaux: readonly {Debut: number; Fin: number}[]): number {
+  if (sousCreneaux.length === 0) { return 90; }
+  const comptes = new Map<number, number>();
+  for (const s of sousCreneaux) {
+    const minutes = Math.round((s.Fin - s.Debut) / 60);
+    comptes.set(minutes, (comptes.get(minutes) ?? 0) + 1);
+  }
+  return [...comptes.entries()].sort((a, b) => b[1] - a[1])[0]![0];
+}
+
+function champDureeSousCreneau(dureeInitiale: number): HTMLSelectElement {
+  return h('select', {class: 'select'},
+    h('option', {value: '60', selected: dureeInitiale === 60}, '1 h par sous-créneau'),
+    h('option', {value: '90', selected: dureeInitiale === 90}, '1 h 30 par sous-créneau'),
+    h('option', {value: '120', selected: dureeInitiale === 120}, '2 h par sous-créneau'),
+  ) as HTMLSelectElement;
 }
 
 function champHoraires(
@@ -63,10 +88,32 @@ export function ouvrirModalEditionCreneau(m: Magasin, macro: MacroCreneau): void
 
   const erreur = creerErreur();
 
+  const sousActuels = () => m.sousCreneaux.filter((s) => s.Macro_creneau === macro.id);
+  const compteurSous = h('p', {class: 'modal__section-compteur'}, texteCompteurSousCreneaux(sousActuels().length)) as HTMLElement;
+  const champDureeSous = champDureeSousCreneau(dureeDominanteMinutes(sousActuels()));
+  const erreurSous = creerErreur();
+
   ouvrirModal('Modifier le macro-créneau', (fermer) => h('div', {style: {display: 'flex', flexDirection: 'column', gap: '14px'}},
     h('div', {class: 'field'}, h('label', null, 'Nom'), champNom),
     ligne,
     erreur.noeud,
+    h('div', {class: 'modal__section'},
+      h('p', {class: 'modal__section-titre'}, 'Sous-créneaux'),
+      compteurSous,
+      h('div', {class: 'modal__row'},
+        champDureeSous,
+        h('button', {
+          class: 'btn btn--ghost', type: 'button',
+          onclick: () => {
+            const resultat = m.redecouperSousCreneaux(macro.id, Number(champDureeSous.value));
+            if (!resultat.ok) { erreurSous.afficher(resultat.raison); return; }
+            erreurSous.effacer();
+            compteurSous.textContent = texteCompteurSousCreneaux(sousActuels().length);
+          },
+        }, 'Redécouper automatiquement'),
+      ),
+      erreurSous.noeud,
+    ),
     h('div', {class: 'modal__actions'},
       h('button', {class: 'btn btn--ghost', type: 'button', onclick: fermer}, 'Annuler'),
       h('button', {
@@ -90,11 +137,7 @@ export function ouvrirModalCreationCreneau(m: Magasin, jourCle: string | null, d
   const champDate = h('input', {class: 'input', type: 'date', value: aujourdhui}) as HTMLInputElement;
   const champNom = h('input', {class: 'input', type: 'text', placeholder: 'Journée vendredi'}) as HTMLInputElement;
   const {ligne, champDebut, champFin, caseApresMinuit} = champHoraires('Début', '10:00', 'Fin', '18:00', false);
-  const champDuree = h('select', {class: 'select'},
-    h('option', {value: '60'}, '1 h par sous-créneau'),
-    h('option', {value: '90', selected: dureeSousCreneauParDefautMinutes === 90}, '1 h 30 par sous-créneau'),
-    h('option', {value: '120'}, '2 h par sous-créneau'),
-  ) as HTMLSelectElement;
+  const champDuree = champDureeSousCreneau(dureeSousCreneauParDefautMinutes);
 
   const erreur = creerErreur();
 
@@ -116,13 +159,7 @@ export function ouvrirModalCreationCreneau(m: Magasin, jourCle: string | null, d
           erreur.effacer();
           const nom = champNom.value.trim() || `Créneau du ${champDate.value}`;
           const idMacro = m.enregistrerMacroCreneau({Nom: nom, Debut: debut, Fin: fin});
-          const dureeSec = Number(champDuree.value) * 60;
-          for (let t = debut; t < fin; t += dureeSec) {
-            const finSous = Math.min(t + dureeSec, fin);
-            m.enregistrerSousCreneau({
-              Macro_creneau: idMacro, Mission: null, Libelle: libelleHeurePlage(t, finSous), Debut: t, Fin: finSous,
-            });
-          }
+          m.redecouperSousCreneaux(idMacro, Number(champDuree.value));
           fermer();
         },
       }, 'Créer'),
