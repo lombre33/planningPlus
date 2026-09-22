@@ -165,28 +165,30 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
     const sousEffectif = c.pourvues < c.besoin.Effectif_min;
     const surEffectif = c.pourvues > c.besoin.Effectif_max;
     const surlignee = groupeSelectionne != null && c.groupesPositionnes.some((g) => g.groupe.id === groupeSelectionne);
+    // Indication, jamais une création automatique ni un blocage (retour
+    // Antoine 2026-09-22, point 3) : deux places par binôme, arrondi au-dessus.
+    const binomesRecommandes = Math.ceil(c.besoin.Effectif_min / 2);
 
     const cellule = h('div', {
       class: `indicatif-cell${modeCible ? ' indicatif-cell--cible' : ''}${surlignee ? ' indicatif-cell--surlignee' : ''}`,
     },
       h('div', {class: `indicatif-cell__eff${sousEffectif ? ' indicatif-cell__eff--sous' : ''}`},
         h('span', null, `min ${c.besoin.Effectif_min}`),
+        h('span', {
+          class: 'indicatif-cell__reco',
+          title: `Indication : ${c.besoin.Effectif_min} places ÷ 2, arrondi au-dessus — pas une création automatique`,
+        }, `≈${binomesRecommandes} binôme${binomesRecommandes > 1 ? 's' : ''}`),
         surEffectif ? h('span', {class: 'flag', title: 'Dépasse le maximum — signalé, pas bloquant'}, '⚑') : null,
       ),
       ...c.groupesPositionnes.map((g) => puceGroupe(ix, g.groupe, besoinId)),
     );
 
-    if (c.groupesPositionnes.length === 0) {
-      cellule.append(h('button', {
-        class: 'ajouter-binome', type: 'button', style: {opacity: '1'},
-        onclick: (e: Event) => { e.stopPropagation(); selectionnerNouveauGroupe(besoinId); },
-      }, '+ positionner un binôme'));
-    } else if (c.groupesPositionnes.length < 2) {
-      cellule.append(h('button', {
-        class: 'ajouter-binome', type: 'button', title: 'Ajouter un second binôme sur ce besoin (§6.3)',
-        onclick: (e: Event) => { e.stopPropagation(); selectionnerNouveauGroupe(besoinId); },
-      }, '+ binôme'));
-    }
+    cellule.append(h('button', {
+      class: 'ajouter-binome', type: 'button',
+      style: c.groupesPositionnes.length === 0 ? {opacity: '1'} : undefined,
+      title: c.groupesPositionnes.length === 0 ? undefined : 'Ajouter un binôme supplémentaire sur ce besoin (§6.3)',
+      onclick: (e: Event) => { e.stopPropagation(); selectionnerNouveauGroupe(besoinId); },
+    }, c.groupesPositionnes.length === 0 ? '+ positionner un binôme' : '+ binôme'));
 
     cellule.addEventListener('dragover', (e: DragEvent) => {
       if (groupeDeplace == null || besoinOrigineDeplace === besoinId) { return; }

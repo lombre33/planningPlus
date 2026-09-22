@@ -95,15 +95,23 @@ describe('planning complet : missions et besoin, mais zone volontairement vide',
     expect(container.querySelector('.ajouter-binome')).toBeNull();
   });
 
-  it("crée un indicatif dès qu'un besoin existe sur la case, avec son binôme par défaut", () => {
+  it("un besoin fraîchement créé n'a encore aucun binôme (plus de création automatique)", () => {
     const m = new Magasin(modele());
     m.creerBesoin(1, 1);
     montrerIndicatifs(container, m);
-    expect(container.querySelector('.groupe-chip')).not.toBeNull();
-    expect(container.querySelectorAll('.groupe-chip')).toHaveLength(1);
+    expect(container.querySelector('.groupe-chip')).toBeNull();
+    expect(container.querySelector('.ajouter-binome')?.textContent).toBe('+ positionner un binôme');
   });
 
-  describe('ajout d’un binôme depuis la case (bouton « + binôme », selectionnerNouveauGroupe)', () => {
+  it('indique le nombre de binômes recommandé (effectif ÷ 2, arrondi au-dessus), sans jamais en créer', () => {
+    const m = new Magasin(modele());
+    m.creerBesoin(1, 1, {effectifMin: 5});
+    montrerIndicatifs(container, m);
+    expect(container.querySelector('.indicatif-cell__reco')?.textContent).toBe('≈3 binômes');
+    expect(container.querySelector('.groupe-chip')).toBeNull();
+  });
+
+  describe('création explicite d’un binôme depuis la case (bouton « + binôme », selectionnerNouveauGroupe)', () => {
     function ecritureQuiRefuseTout(): EcritureGrist {
       const refuse = () => async () => { throw new Error('document indisponible'); };
       return {
@@ -113,15 +121,16 @@ describe('planning complet : missions et besoin, mais zone volontairement vide',
       };
     }
 
-    it('en mode démo, crée le second indicatif sans afficher de message d’échec', async () => {
+    it('en mode démo, chaque clic crée un binôme de plus, sans limite ni message d’échec', async () => {
       const m = new Magasin(modele());
       await m.creerBesoin(1, 1);
       montrerIndicatifs(container, m);
 
-      container.querySelector<HTMLButtonElement>('.ajouter-binome')!.click();
-      await new Promise((resolve) => setTimeout(resolve, 0));
-
-      expect(container.querySelectorAll('.groupe-chip')).toHaveLength(2);
+      for (const attendu of [1, 2, 3]) {
+        container.querySelector<HTMLButtonElement>('.ajouter-binome')!.click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(container.querySelectorAll('.groupe-chip')).toHaveLength(attendu);
+      }
       expect(container.querySelector('.pill--danger')).toBeNull();
     });
 

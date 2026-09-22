@@ -1139,6 +1139,11 @@ table.grille .mission-cell .lieu {
   font-family: var(--font-body);
 }
 
+.indicatif-cell__reco {
+  color: var(--text-faint);
+  opacity: 0.75;
+}
+
 .groupe-chip {
   all: unset;
   box-sizing: border-box;
