@@ -12,6 +12,11 @@
  *
  * Les paramètres peuvent aussi venir de `dev/.env` ou de l'environnement,
  * sous les noms GRIST_URL et GRIST_API_KEY.
+ *
+ * `--sans-donnees` construit le schéma seul (les 17 tables, aucune ligne) :
+ * c'est ce mode qui produit `dev/seed/modele-planningplus.grist` (voir
+ * `dev/README.md`, « Document modèle »), le fichier qu'un utilisateur sans
+ * accès à ce dépôt importe pour obtenir le schéma dans son propre document.
  */
 
 import {readFileSync} from 'node:fs';
@@ -70,6 +75,7 @@ const config = {
   nbArtistes: Number(args.artistes ?? 20),
   dureeSousCreneauMinutes: Number(args['duree-sous-creneau'] ?? 90),
   graine: Number(args.graine ?? 20260717),
+  sansDonnees: args['sans-donnees'] === 'true',
 };
 
 if (!config.cleApi) {
@@ -385,19 +391,23 @@ async function principal() {
   // on relit les identifiants réels avant l'injection de données, qui en dépend.
   idReelParSchema = await idsReelsDepuisLignes(idDoc, rowIdParSchema);
 
-  console.log(
-    `Données (graine ${config.graine}, ${config.nbJours} jours, ${config.nbBenevoles} bénévoles, `
-    + `${config.nbEquipes} équipes, ${config.nbArtistes} artistes) :`,
-  );
-  const donnees = genererFestival({
-    graine: config.graine,
-    nbJours: config.nbJours,
-    nbBenevoles: config.nbBenevoles,
-    nbEquipes: config.nbEquipes,
-    nbArtistes: config.nbArtistes,
-    dureeSousCreneauMinutes: config.dureeSousCreneauMinutes,
-  });
-  await injecterDonnees(idDoc, donnees, idReelParSchema);
+  if (config.sansDonnees) {
+    console.log('Données : aucune (--sans-donnees) — document schéma seul, tables vides.');
+  } else {
+    console.log(
+      `Données (graine ${config.graine}, ${config.nbJours} jours, ${config.nbBenevoles} bénévoles, `
+      + `${config.nbEquipes} équipes, ${config.nbArtistes} artistes) :`,
+    );
+    const donnees = genererFestival({
+      graine: config.graine,
+      nbJours: config.nbJours,
+      nbBenevoles: config.nbBenevoles,
+      nbEquipes: config.nbEquipes,
+      nbArtistes: config.nbArtistes,
+      dureeSousCreneauMinutes: config.dureeSousCreneauMinutes,
+    });
+    await injecterDonnees(idDoc, donnees, idReelParSchema);
+  }
 
   console.log(`\nFuseau horaire du document : ${TIMEZONE}`);
   console.log(`Document prêt : ${config.url}/o/docs/${idDoc}`);
