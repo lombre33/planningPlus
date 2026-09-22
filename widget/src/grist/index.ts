@@ -27,7 +27,7 @@ export {
   appliquerActions,
 } from './ecriture';
 
-export {LIBELLE_PAR_TABLE, resoudreIdsTables} from './tables';
+export {idsReelsDeTest, LIBELLE_PAR_TABLE, resoudreIdsTables} from './tables';
 
 export type {LigneParametre} from './parametres';
 export {

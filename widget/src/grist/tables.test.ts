@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {resoudreIdsTables} from './tables';
+import {idsReelsDeTest, LIBELLE_PAR_TABLE, resoudreIdsTables} from './tables';
 
 describe('resoudreIdsTables', () => {
   it('résout un identifiant réel identique à l\'identifiant de schéma', () => {
@@ -24,5 +24,26 @@ describe('resoudreIdsTables', () => {
 
   it('ignore une table réelle qui ne correspond à aucune table canonique', () => {
     expect(resoudreIdsTables(['Table1', 'Groupes'])).toEqual({Groupes: 'Groupes'});
+  });
+});
+
+describe('idsReelsDeTest', () => {
+  it('résout, une fois passé à resoudreIdsTables, toutes les tables canoniques (document complet)', () => {
+    expect(resoudreIdsTables(idsReelsDeTest())).toEqual(
+      Object.fromEntries(Object.keys(LIBELLE_PAR_TABLE).map((c) => [c, expect.any(String)])),
+    );
+  });
+
+  it('résout précisément les tables dont le libellé a fait dériver un identifiant différent du schéma', () => {
+    const resolues = resoudreIdsTables(idsReelsDeTest());
+    expect(resolues.Positions_groupe).toBe(LIBELLE_PAR_TABLE.Positions_groupe);
+    expect(resolues.Souhaits_missions).toBe(LIBELLE_PAR_TABLE.Souhaits_missions);
+  });
+
+  it('omet une table canonique du résultat, pour simuler un document à qui elle manque', () => {
+    const idsReels = idsReelsDeTest(['Macro_creneaux']);
+    expect(idsReels).not.toContain(LIBELLE_PAR_TABLE.Macro_creneaux);
+    expect(resoudreIdsTables(idsReels)).not.toHaveProperty('Macro_creneaux');
+    expect(resoudreIdsTables(idsReels)).toHaveProperty('Equipes');
   });
 });

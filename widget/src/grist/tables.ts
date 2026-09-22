@@ -65,3 +65,23 @@ export function resoudreIdsTables(idsReels: readonly string[]): Record<string, s
   }
   return resolues;
 }
+
+/**
+ * Identifiants réels à donner à un faux `docApi.listTables()` dans un
+ * double de test, plutôt que d'y coder en dur des noms de table : un test
+ * qui invente ses propres identifiants (les noms de schéma, par exemple)
+ * ment dans le sens rassurant dès que l'un d'eux a dérivé de son titre
+ * (`Positions_groupe`/`Souhaits_missions`, voir plus haut) — un document
+ * réellement complet se ferait alors passer pour incomplet, ou l'inverse.
+ * Les libellés (`LIBELLE_PAR_TABLE`) conviennent tels quels : c'est le
+ * texte dont Grist dérive l'identifiant réel, et `resoudreIdsTables` les
+ * compare de façon normalisée, jamais à l'identifiant de schéma lui-même.
+ *
+ * `omettre` retire une ou plusieurs tables canoniques du résultat, pour
+ * simuler un document auquel il manque une table.
+ */
+export function idsReelsDeTest(omettre: readonly string[] = []): string[] {
+  return Object.entries(LIBELLE_PAR_TABLE)
+    .filter(([canonique]) => !omettre.includes(canonique))
+    .map(([, libelle]) => libelle);
+}

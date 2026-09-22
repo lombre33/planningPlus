@@ -71,6 +71,88 @@ tableau de la table cible) : il n'y a pas d'identifiant Grist réel sans
 document. Le fichier n'est pas versionné (voir `.gitignore`) : il se
 régénère à la demande, comme le reste de `dev/seed/`.
 
+## Document modèle (`dev/seed/modele-planningplus.grist`)
+
+Le widget lit et écrit des données ; il ne crée jamais de table ni de colonne
+lui-même, même au premier lancement sur un document qui n'a pas encore le
+schéma — décision de projet, pas une limite technique (voir « Pourquoi le
+widget ne crée pas son propre schéma » ci-dessous). Quelqu'un qui démarre un
+nouveau document Grist a donc besoin d'un moyen d'obtenir les dix-sept tables
+sans écrire de code ni passer par ce dépôt : `modele-planningplus.grist` est
+ce moyen — le même schéma que produit `seed.mjs`, mais sans aucune ligne.
+
+### Régénérer le fichier
+
+À refaire à chaque évolution du schéma (`schema.mjs`), pour que le fichier ne
+s'en désynchronise pas :
+
+```
+node dev/seed/seed.mjs --sans-donnees=true --nom="PlanningPlus — modèle"
+```
+
+Puis, depuis Grist (menu du document → Télécharger → « Download document
+structure only, for template use »), ou par l'API :
+
+```
+curl "$GRIST_URL/api/docs/<id du document créé>/download?template=true&removeHistory=true" \
+  -H "Authorization: Bearer $GRIST_API_KEY" -o dev/seed/modele-planningplus.grist
+```
+
+Supprimer ensuite le document temporaire créé pour l'occasion. Avant de
+commiter, rouvrir le fichier obtenu comme la base SQLite qu'il est
+(`sqlite3` ou `python3 -m sqlite3`) et vérifier directement dedans que les
+dix-sept tables existent et sont toutes à zéro ligne — sur le fichier produit,
+pas seulement sur l'intention du script : la seule vérification qui compte
+avant de distribuer un fichier à des gens qu'on ne verra jamais.
+
+**Une adresse reste visible dans l'historique du document importé** (table
+interne `_gristsys_ActionHistory`, consultable par exemple via l'onglet
+« Document history ») : Grist retient toujours la dernière action d'un
+document, même en structure seule, et celle-ci porte l'identité du compte
+qui a produit ce fichier localement — `antoine@exemple.test` pour la version
+actuelle, un compte de test sur le domaine réservé `.test` (RFC 2606, ne peut
+désigner personne), sans aucun rapport avec le véritable Antoine du projet.
+Ni une donnée de festival ni une fuite : un résidu du mécanisme natif de
+Grist, présent sur *tout* document ainsi téléchargé, pas quelque chose que
+ce fichier fait de particulier. Il disparaîtra de lui-même le jour où la
+régénération se fera depuis un compte au nom neutre ; rien à construire pour
+ça d'ici là.
+
+### Procédure d'import, telle qu'exécutée et vérifiée en vrai
+
+1. Récupérer `dev/seed/modele-planningplus.grist`.
+2. Dans Grist : page d'accueil → « Add New » → « Import Document » → choisir
+   le fichier. Grist crée un nouveau document, dans l'espace de travail de
+   la personne qui importe, avec les dix-sept tables déjà en place et
+   aucune ligne.
+3. Ajouter le widget PlanningPlus à ce document comme n'importe quel widget
+   personnalisé : Add New → Add page → Custom → coller l'URL du widget →
+   Tab pour sortir du champ (le bouton « Add widget » reste désactivé sans
+   ce blur) → Add widget → accepter l'avertissement sur les widgets tiers.
+   Puis, dans le panneau du widget (« … » → Widget options), accepter
+   l'accès complet (« Accept » sur « Widget needs full access to this
+   document ») — sans quoi le widget retombe sur la démonstration.
+
+Vérifié en vrai le 2026-09-21/22 (aller-retour complet téléchargement →
+réimport → inspection) : le document réimporté a bien les dix-sept tables,
+colonnes et types intacts (Ref, ChoiceList, `visibleCol`, libellés de table),
+zéro ligne partout, et le widget affiche alors la vraie maquette sur un
+agenda vide plutôt qu'une erreur ou la démonstration (voir « Document Grist
+non reconnu » dans `widget/src/main.ts`, qui reste le message affiché pour
+qui n'aurait pas suivi cette procédure).
+
+### Pourquoi le widget ne crée pas son propre schéma
+
+Techniquement possible (`docApi.applyUserActions` avec le même accès complet
+déjà demandé pour écrire les données) mais délibérément écarté : un widget
+capable de créer des tables devient un widget capable d'altérer le schéma de
+*n'importe quel* document où il est déposé, pas seulement ses données. Sur un
+outil destiné à d'autres usages qu'Antoine (« prendre large ») et qui doit
+passer un audit DINUM, c'est une surface qu'on ne veut pas ouvrir pour
+économiser une manipulation d'import. Décision d'Antoine, sur recommandation
+de ce fil, le 2026-09-22 : le widget lit et écrit des données, il ne touche
+jamais au schéma d'un document.
+
 ## Notes de montage d'un Grist local
 
 Pour tester en local sans dépendre d'un Grist distant, `grist-core` (le
