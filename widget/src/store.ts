@@ -362,6 +362,38 @@ export class Magasin {
     return {ok: true};
   }
 
+  /** Donne à une mission un sous-créneau propre à elle sur un macro-créneau
+   *  (§6.2, « communs, avec exceptions » — option retenue par Antoine le
+   *  2026-09-22 pour les missions dont les horaires ou les pauses sortent
+   *  de la trame commune). Dès qu'une mission a un sous-créneau à elle sur
+   *  un macro-créneau, ses sous-créneaux communs cessent de s'y appliquer,
+   *  remplacés par les siens — c'est la vue (`grille.ts`) qui applique
+   *  cette règle à l'affichage, cette méthode ne fait qu'ajouter la ligne.
+   *  Réutilise le pont de `redecouperSousCreneaux` (`remplacerSousCreneaux`)
+   *  avec une liste de suppression vide : une création pure, un seul
+   *  aller-retour, sans nouveau chemin d'écriture. */
+  async creerSousCreneauMission(
+    macroId: Id, missionId: Id, plage: {libelle: string; debut: Epoch; fin: Epoch},
+  ): Promise<Id> {
+    const nouveau = {macroCreneauId: macroId, missionId, libelle: plage.libelle, debut: plage.debut, fin: plage.fin};
+    let id: Id;
+    if (this.ecriture) {
+      try {
+        id = (await this.ecriture.remplacerSousCreneaux([], [nouveau]))[0]!;
+      } catch (erreur) {
+        if (!(erreur instanceof SuppressionApresCreationEchouee)) { throw erreur; }
+        id = erreur.idsReelsCrees[0]!;
+      }
+    } else {
+      id = prochainId(this.data.sousCreneaux);
+    }
+    this.data.sousCreneaux.push({
+      id, Macro_creneau: macroId, Mission: missionId, Libelle: plage.libelle, Debut: plage.debut, Fin: plage.fin,
+    });
+    this.notifier();
+    return id;
+  }
+
   // --- Écriture : affectations ------------------------------------------------
 
   /** Affecte (ou vide) une place. Une place appartient à un indicatif : ceci

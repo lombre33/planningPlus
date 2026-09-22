@@ -521,6 +521,88 @@ describe('Magasin.redecouperSousCreneaux', () => {
   });
 });
 
+describe('Magasin.creerSousCreneauMission', () => {
+  function modeleUneMission(): {m: Magasin; macroId: Id; missionId: Id} {
+    const debut = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 10});
+    const fin = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 12});
+    const m = new Magasin({
+      equipes: [{id: 1, Nom: 'Bars', Couleur: '#c00', Referent: null, Notes: ''}],
+      lieux: [], benevoles: [], artistes: [],
+      missions: [{
+        id: 1, Nom: 'Buvette', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: [],
+      }],
+      macroCreneaux: [{id: 1, Nom: 'Journée', Debut: debut, Fin: fin}],
+      sousCreneaux: [], besoins: [], groupes: [], positionsGroupe: [], places: [],
+      disponibilites: [], souhaitsMissions: [], affinites: [],
+    });
+    return {m, macroId: 1, missionId: 1};
+  }
+
+  it("sans écrivain branché (mode démo), génère un id local et l'ajoute au référentiel, rattaché à la mission", async () => {
+    const {m, macroId, missionId} = modeleUneMission();
+
+    const id = await m.creerSousCreneauMission(macroId, missionId, {libelle: '19h-20h30', debut: 1000, fin: 6400});
+
+    const sc = m.sousCreneaux.find((s) => s.id === id);
+    expect(sc).toBeDefined();
+    expect(sc!.Mission).toBe(missionId);
+    expect(sc!.Macro_creneau).toBe(macroId);
+    expect(sc!.Debut).toBe(1000);
+    expect(sc!.Fin).toBe(6400);
+  });
+
+  it("laisse intacts les sous-créneaux et besoins déjà posés — n'en retire ni n'en remplace aucun", async () => {
+    const {m, macroId, missionId} = modeleUneMission();
+    await m.redecouperSousCreneaux(macroId, 60);
+    const nbAvant = m.sousCreneaux.length;
+    const besoinId = await m.creerBesoin(missionId, m.sousCreneaux[0]!.id);
+
+    await m.creerSousCreneauMission(macroId, missionId, {libelle: '19h-20h', debut: 1000, fin: 4600});
+
+    expect(m.sousCreneaux).toHaveLength(nbAvant + 1);
+    expect(m.besoins.some((b) => b.id === besoinId)).toBe(true);
+  });
+
+  it("en mode connecté, attend l'id réel avant d'insérer localement, via remplacerSousCreneaux([], …)", async () => {
+    const {m, macroId, missionId} = modeleUneMission();
+    const appels: string[] = [];
+    m.brancherEcriture(ecritureDeTest({
+      remplacerSousCreneaux: async (idsASupprimer, nouveaux) => {
+        appels.push(`remplacerSousCreneaux(${JSON.stringify(idsASupprimer)},${JSON.stringify(nouveaux)})`);
+        return [801];
+      },
+    }));
+
+    const id = await m.creerSousCreneauMission(macroId, missionId, {libelle: '19h-20h', debut: 1000, fin: 4600});
+
+    expect(id).toBe(801);
+    expect(appels).toEqual([
+      `remplacerSousCreneaux([],${JSON.stringify([{macroCreneauId: macroId, missionId, libelle: '19h-20h', debut: 1000, fin: 4600}])})`,
+    ]);
+    expect(m.sousCreneaux.find((s) => s.id === 801)?.Mission).toBe(missionId);
+  });
+
+  it("en mode connecté, si le pont échoue, aucun sous-créneau n'est ajouté localement", async () => {
+    const {m, macroId, missionId} = modeleUneMission();
+    const avant = m.sousCreneaux;
+    m.brancherEcriture(ecritureDeTest({remplacerSousCreneaux: async () => { throw new Error('document indisponible'); }}));
+
+    await expect(m.creerSousCreneauMission(macroId, missionId, {libelle: '19h-20h', debut: 1000, fin: 4600}))
+      .rejects.toThrow('document indisponible');
+    expect(m.sousCreneaux).toBe(avant);
+  });
+
+  it('notifie les abonnés une seule fois', async () => {
+    const {m, macroId, missionId} = modeleUneMission();
+    let notifications = 0;
+    m.subscribe(() => { notifications += 1; });
+
+    await m.creerSousCreneauMission(macroId, missionId, {libelle: '19h-20h', debut: 1000, fin: 4600});
+
+    expect(notifications).toBe(1);
+  });
+});
+
 describe('Magasin.enregistrerMacroCreneau', () => {
   function macroDeTest() {
     return {

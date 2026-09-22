@@ -891,10 +891,60 @@ table.grille .mission-cell .lieu {
   font-size: 11px;
 }
 
+/* Geste discret pour donner à une mission un créneau à elle, décalé ou en
+   pause par rapport à la trame commune (option B, cahier des charges §6.2,
+   demande d'Antoine du 2026-09-22). */
+table.grille .mission-cell__creneau-propre {
+  all: unset;
+  cursor: pointer;
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--border);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+table.grille .mission-cell__creneau-propre:hover,
+table.grille .mission-cell__creneau-propre:focus-visible {
+  color: var(--text-muted);
+  border-color: var(--text-faint);
+}
+
+/* En-tête au quart d'heure (demande d'Antoine du 2026-09-22) : une
+   graduation marquée à l'heure, discrète entre deux, plutôt qu'une colonne
+   par sous-créneau — sans quoi une soirée de dix-huit heures à deux heures
+   ferait trente-deux colonnes identiques. */
+table.grille .axe-quart {
+  min-width: 20px;
+  padding: 8px 2px !important;
+  text-align: center;
+  font-size: 9px;
+  color: var(--text-faint);
+  font-weight: 400;
+}
+
+table.grille .axe-quart--heure {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  border-left: 1px solid var(--border);
+}
+
 .besoin-cell {
   min-width: 108px;
   vertical-align: top;
   padding: 6px !important;
+}
+
+.besoin-cell__libelle {
+  display: block;
+  font-size: 9px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  margin-bottom: 2px;
+  white-space: nowrap;
 }
 
 .besoin-cell--vide {
@@ -902,6 +952,18 @@ table.grille .mission-cell .lieu {
   background: repeating-linear-gradient(
     45deg, transparent, transparent 6px, var(--bg) 6px, var(--bg) 7px
   );
+}
+
+/* Hors cadre : aucun sous-créneau (commun ou propre) ne couvre cet horaire
+   pour cette mission — à distinguer de .besoin-cell--vide, où un
+   sous-créneau existe mais n'a volontairement reçu aucun besoin. Motif en
+   diagonale inverse pour rester lisiblement différent au premier coup d'œil. */
+.besoin-cell--horscadre {
+  min-width: 0;
+  background: repeating-linear-gradient(
+    135deg, transparent, transparent 5px, var(--surface-muted) 5px, var(--surface-muted) 6px
+  );
+  opacity: .5;
 }
 
 /* Offre discrète pour créer un besoin sur une case volontairement vide :
