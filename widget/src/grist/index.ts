@@ -21,12 +21,14 @@ export type {
   NouveauMacroCreneau,
   NouveauSousCreneau,
   NouvelleDisponibilite,
+  NouvelleEquipe,
   NouvelleMission,
   NouvellePlace,
   UserAction,
 } from './ecriture';
 export {
   actionsCreerBesoin,
+  actionsCreerEquipe,
   actionsCreerGroupe,
   actionsCreerMacroCreneau,
   actionsCreerMission,
@@ -54,6 +56,8 @@ export {
 } from './ecriture';
 
 export {idsReelsDeTest, LIBELLE_PAR_TABLE, resoudreIdsTables} from './tables';
+
+export {actionsCreerTablesManquantes} from './creation';
 
 export type {LigneParametre} from './parametres';
 export {

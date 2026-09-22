@@ -36,9 +36,10 @@ import type {Id} from './domain/types';
 import {normaliser} from './donnees/normaliser';
 import type {DocApiEcriture} from './grist';
 import {
-  actionsCreerBesoin, actionsCreerGroupe, actionsCreerMacroCreneau, actionsCreerMission, actionsCreerSousCreneaux,
-  actionsDefinirPlaces, actionsDeplacerMacroCreneau, actionsDeplacerPositionGroupe, actionsPositionnerGroupe,
-  actionsRenommerMacroCreneau, actionsSupprimerSousCreneaux, appliquerActions, LIBELLE_PAR_TABLE, lireDocument,
+  actionsCreerBesoin, actionsCreerEquipe, actionsCreerGroupe, actionsCreerMacroCreneau, actionsCreerMission,
+  actionsCreerSousCreneaux, actionsCreerTablesManquantes, actionsDefinirPlaces, actionsDeplacerMacroCreneau,
+  actionsDeplacerPositionGroupe, actionsPositionnerGroupe, actionsRenommerMacroCreneau, actionsSupprimerSousCreneaux,
+  appliquerActions, LIBELLE_PAR_TABLE, lireDocument,
 } from './grist';
 import {type EcritureGrist, Magasin, SuppressionApresCreationEchouee} from './store';
 
@@ -65,6 +66,12 @@ const TABLES_REQUISES = [
  */
 function construireEcritureGrist(docApi: DocApiEcriture, resolution: Record<string, string>): EcritureGrist {
   return {
+    async creerEquipe(equipe) {
+      const [id] = await appliquerActions(docApi, actionsCreerEquipe({
+        nom: equipe.Nom, couleur: equipe.Couleur, notes: equipe.Notes,
+      }), resolution);
+      return id as Id;
+    },
     async creerMission(mission) {
       const [id] = await appliquerActions(docApi, actionsCreerMission({
         nom: mission.Nom,
@@ -145,9 +152,10 @@ function demarrerDemo(racine: HTMLElement): void {
   demarrerApp(racine, magasin, 'Démonstration — jeu de données figé');
 }
 
-/** Un document connecté, mais dont le schéma ne correspond pas (ou plus) à
- *  celui attendu — jamais la démo (fausses données dans le contexte d'un
- *  vrai document) ni des vues silencieusement vides. */
+/** Un document connecté dont la création automatique des tables manquantes
+ *  a échoué (droits insuffisants, écriture refusée) — jamais la démo
+ *  (fausses données dans le contexte d'un vrai document) ni des vues
+ *  silencieusement vides. */
 function afficherDocumentNonReconnu(racine: HTMLElement, tablesManquantes: readonly string[]): void {
   racine.textContent = '';
 
@@ -158,13 +166,28 @@ function afficherDocumentNonReconnu(racine: HTMLElement, tablesManquantes: reado
   const libelles = tablesManquantes.map((id) => LIBELLE_PAR_TABLE[id] ?? id);
   const message = document.createElement('p');
   message.textContent = tablesManquantes.length === 1
-    ? `Ce document ne contient pas la table « ${libelles[0]} », attendue par PlanningPlus.`
-    : `Ce document ne contient pas les tables suivantes, attendues par PlanningPlus : ${libelles.join(', ')}.`;
+    ? `La table « ${libelles[0]} », attendue par PlanningPlus, n'a pas pu être créée automatiquement.`
+    : `Les tables suivantes, attendues par PlanningPlus, n'ont pas pu être créées automatiquement : ${libelles.join(', ')}.`;
   racine.append(message);
 
   const note = document.createElement('p');
-  note.textContent = 'Créez-les (voir dev/seed/ pour le schéma de référence) avant de continuer, ou ouvrez ce widget hors de Grist pour la démonstration interactive.';
+  note.textContent = "Vérifiez que ce widget dispose de l'accès complet au document, puis rechargez la page — ou ouvrez ce widget hors de Grist pour la démonstration interactive.";
   racine.append(note);
+}
+
+/**
+ * Crée dans le document les tables PlanningPlus absentes (`tablesManquantes`,
+ * identifiants canoniques), à partir de `./grist/schema` — décision
+ * d'Antoine du 2026-09-22 (voir `dev/README.md`, « Document modèle »).
+ * Deux allers-retours distincts (`actionsCreerTablesManquantes` : `tables`
+ * puis `referencesDifferees`), jamais un seul batché, pour la même raison
+ * que partout ailleurs dans ce fichier — voir le commentaire de
+ * `actionsCreerTablesManquantes`.
+ */
+async function creerTablesManquantes(docApi: DocApiEcriture, tablesManquantes: readonly string[]): Promise<void> {
+  const {tables, referencesDifferees} = actionsCreerTablesManquantes(tablesManquantes);
+  if (tables.length > 0) { await docApi.applyUserActions(tables); }
+  if (referencesDifferees.length > 0) { await docApi.applyUserActions(referencesDifferees); }
 }
 
 async function demarrer(): Promise<void> {
@@ -186,13 +209,20 @@ async function demarrer(): Promise<void> {
       demarrerDemo(racine);
       return;
     }
+    let resultatFinal = resultat;
     const tablesManquantes = TABLES_REQUISES.filter((t) => !(t in resultat.resolution));
     if (tablesManquantes.length > 0) {
-      afficherDocumentNonReconnu(racine, tablesManquantes);
-      return;
+      await creerTablesManquantes(window.grist.docApi, tablesManquantes);
+      const relu = await lireDocument(window.grist.docApi);
+      const encoreManquantes = TABLES_REQUISES.filter((t) => !(t in relu.resolution));
+      if (encoreManquantes.length > 0) {
+        afficherDocumentNonReconnu(racine, encoreManquantes);
+        return;
+      }
+      resultatFinal = relu;
     }
-    const magasin = new Magasin(resultat.modele);
-    magasin.brancherEcriture(construireEcritureGrist(window.grist.docApi, resultat.resolution));
+    const magasin = new Magasin(resultatFinal.modele);
+    magasin.brancherEcriture(construireEcritureGrist(window.grist.docApi, resultatFinal.resolution));
     demarrerApp(racine, magasin, 'Document Grist connecté');
   } catch {
     demarrerDemo(racine);

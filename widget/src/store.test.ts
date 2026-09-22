@@ -11,6 +11,7 @@ import {epochDepuisHeureLocale} from './temps';
 function ecritureDeTest(partielle: Partial<EcritureGrist> = {}): EcritureGrist {
   const nonBranchee = (nom: string) => async () => { throw new Error(`${nom} non fourni par ce double de test`); };
   return {
+    creerEquipe: nonBranchee('creerEquipe'),
     creerMission: nonBranchee('creerMission'),
     creerMacroCreneau: nonBranchee('creerMacroCreneau'),
     modifierMacroCreneau: nonBranchee('modifierMacroCreneau'),

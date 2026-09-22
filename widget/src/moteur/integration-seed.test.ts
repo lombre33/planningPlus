@@ -13,10 +13,6 @@
  */
 
 import {describe, expect, it} from 'vitest';
-// @ts-expect-error -- dev/seed/generate.mjs est un module Node (.mjs) sans déclaration de
-// types, en dehors du programme TypeScript de ce widget (voir dev/README.md). Le typage
-// explicite ci-dessous (OptionsFestival, Festival, genererFestival) documente et vérifie
-// la forme qu'on lui suppose, plutôt que de laisser `any` se propager silencieusement.
 import {genererFestival as genererFestivalBrut} from '../../../dev/seed/generate.mjs';
 import {calculerAffectation} from './affectation';
 import type {

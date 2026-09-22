@@ -73,13 +73,13 @@ régénère à la demande, comme le reste de `dev/seed/`.
 
 ## Document modèle (`dev/seed/modele-planningplus.grist`)
 
-Le widget lit et écrit des données ; il ne crée jamais de table ni de colonne
-lui-même, même au premier lancement sur un document qui n'a pas encore le
-schéma — décision de projet, pas une limite technique (voir « Pourquoi le
-widget ne crée pas son propre schéma » ci-dessous). Quelqu'un qui démarre un
-nouveau document Grist a donc besoin d'un moyen d'obtenir les dix-sept tables
-sans écrire de code ni passer par ce dépôt : `modele-planningplus.grist` est
-ce moyen — le même schéma que produit `seed.mjs`, mais sans aucune ligne.
+Le widget crée lui-même, au premier lancement, les tables PlanningPlus qui
+manquent encore dans le document connecté (voir « Le widget crée son propre
+schéma » ci-dessous) : `modele-planningplus.grist` n'est donc plus le seul
+moyen d'obtenir les dix-sept tables. Il reste utile pour qui préfère partir
+d'un fichier déjà prêt, l'inspecter hors ligne, ou éviter l'aller-retour de
+création automatique — le même schéma que produit `seed.mjs`, mais sans
+aucune ligne.
 
 ### Régénérer le fichier
 
@@ -137,21 +137,34 @@ Vérifié en vrai le 2026-09-21/22 (aller-retour complet téléchargement →
 réimport → inspection) : le document réimporté a bien les dix-sept tables,
 colonnes et types intacts (Ref, ChoiceList, `visibleCol`, libellés de table),
 zéro ligne partout, et le widget affiche alors la vraie maquette sur un
-agenda vide plutôt qu'une erreur ou la démonstration (voir « Document Grist
-non reconnu » dans `widget/src/main.ts`, qui reste le message affiché pour
-qui n'aurait pas suivi cette procédure).
+agenda vide plutôt qu'une erreur ou la démonstration. Cette procédure reste
+utilisable, mais n'est plus la seule voie : sur un document qui n'a aucune
+des dix-sept tables, le widget les crée désormais lui-même au premier
+lancement (voir « Le widget crée son propre schéma » ci-dessous) — l'écran
+« Document Grist non reconnu » de `widget/src/main.ts` ne s'affiche plus que
+si cette création automatique échoue (droits insuffisants, écriture
+refusée).
 
-### Pourquoi le widget ne crée pas son propre schéma
+### Le widget crée son propre schéma
 
-Techniquement possible (`docApi.applyUserActions` avec le même accès complet
-déjà demandé pour écrire les données) mais délibérément écarté : un widget
-capable de créer des tables devient un widget capable d'altérer le schéma de
-*n'importe quel* document où il est déposé, pas seulement ses données. Sur un
-outil destiné à d'autres usages qu'Antoine (« prendre large ») et qui doit
-passer un audit DINUM, c'est une surface qu'on ne veut pas ouvrir pour
-économiser une manipulation d'import. Décision d'Antoine, sur recommandation
-de ce fil, le 2026-09-22 : le widget lit et écrit des données, il ne touche
-jamais au schéma d'un document.
+Revirement d'Antoine le 2026-09-22 (la décision précédente, ci-dessus dans
+l'historique de ce fichier, écartait ça pour l'argument d'audit DINUM — il a
+tranché dans l'autre sens depuis) : au premier lancement sur un document
+connecté, si une ou plusieurs des tables PlanningPlus manquent, le widget les
+crée lui-même via `docApi.applyUserActions` (`AddTable`/`AddColumn`), à
+partir de la même source de vérité que `dev/seed/schema.mjs`
+(`widget/src/grist/schema.ts`, qui la ré-exporte telle quelle — un seul
+schéma, jamais deux à resynchroniser à la main). Voir
+`widget/src/grist/creation.ts` et l'appel dans `widget/src/main.ts`.
+
+Portée volontairement restreinte, pour ne pas rouvrir la surface que la
+décision du matin voulait éviter : seules les tables PlanningPlus
+(`schema.ts`, `TABLES`) peuvent être créées — jamais une table étrangère déjà
+présente dans le document où ce widget est posé. L'opération est idempotente
+et, aujourd'hui, strictement additive : une table déjà présente n'est ni
+recréée ni modifiée, quelle que soit sa forme. La réparation d'un schéma qui
+a dérivé (recréation avec perte de lignes, à annoncer à l'écran) reste à
+construire.
 
 ## Notes de montage d'un Grist local
 

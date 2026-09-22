@@ -94,6 +94,27 @@ export async function appliquerActions(
   return (resultat as {retValues?: unknown[]} | undefined)?.retValues ?? [];
 }
 
+// --- Équipes ------------------------------------------------------------
+
+export interface NouvelleEquipe {
+  nom: string;
+  couleur?: string;
+  notes?: string;
+}
+
+/** Crée une équipe (demande d'Antoine du 2026-09-22 : le widget écrit
+ *  aussi les équipes, plus seulement les tables). `retValues[0]` est son
+ *  nouvel id. */
+export function actionsCreerEquipe(equipe: NouvelleEquipe): UserAction[] {
+  return [[
+    'AddRecord', 'Equipes', null, {
+      Nom: equipe.nom,
+      Couleur: equipe.couleur ?? '',
+      Notes: equipe.notes ?? '',
+    },
+  ]];
+}
+
 // --- Missions ---------------------------------------------------------------
 
 export interface NouvelleMission {

@@ -46,6 +46,10 @@ type Listener = () => void;
  * orchestre la séquence, jamais l'implémentation de `EcritureGrist`.
  */
 export interface EcritureGrist {
+  /** Écrit une équipe et rend l'id que Grist lui attribue — voir
+   *  `Magasin.creerEquipe`, qui l'attend avant d'insérer localement, pour
+   *  la même raison que `creerMission`. */
+  creerEquipe(equipe: Omit<Equipe, 'id' | 'Referent'>): Promise<Id>;
   /** Écrit une mission et rend l'id que Grist lui attribue — voir
    *  `Magasin.creerMission`, qui l'attend avant d'insérer localement,
    *  pour que le référentiel ne s'écarte jamais du document sur l'id
@@ -156,6 +160,20 @@ export class Magasin {
   get disponibilites(): Disponibilite[] { return this.data.disponibilites; }
   get souhaitsMissions(): SouhaitMission[] { return this.data.souhaitsMissions; }
   get affinites(): Affinite[] { return this.data.affinites; }
+
+  // --- Écriture : équipes ------------------------------------------------
+
+  /** Crée une équipe (demande d'Antoine du 2026-09-22). Même discipline
+   *  que `creerMission` : en mode connecté, attend l'id réel avant
+   *  d'insérer localement — une équipe fraîchement créée peut aussitôt
+   *  être visée par une mission. `Referent` part toujours vide : rien
+   *  n'écrit encore dedans. */
+  async creerEquipe(patch: Omit<Equipe, 'id' | 'Referent'>): Promise<Id> {
+    const id = this.ecriture ? await this.ecriture.creerEquipe(patch) : prochainId(this.data.equipes);
+    this.data.equipes.push({...patch, id, Referent: null});
+    this.notifier();
+    return id;
+  }
 
   // --- Écriture : référentiel missions ----------------------------------------
 
