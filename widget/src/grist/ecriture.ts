@@ -11,8 +11,9 @@
  * §6.3 — la case vide sur laquelle un « + » crée la ligne), un groupe
  * (indicatif) et ses positions, le roster (`Places`) qui va avec, des
  * disponibilités, le verrouillage d'une place, et les deux réglages qui ont
- * valeur d'audit (paramètres d'algorithme, heure de coupure). Bénévoles,
- * artistes, lieux et équipes restent saisis nativement dans Grist — ce
+ * valeur d'audit (paramètres d'algorithme, heure de coupure). Artistes
+ * (création et modification, demandé le 2026-09-22 pour le fil Artistes).
+ * Bénévoles, lieux et équipes restent saisis nativement dans Grist — ce
  * module ne les écrit pas, tant que rien ne le demande.
  *
  * Chaque `actionsXxx` est une fonction pure qui rend un tableau d'actions ;
@@ -156,6 +157,38 @@ export function actionsModifierMission(missionId: Id, champs: Partial<NouvelleMi
 /** Supprime une mission. N'efface pas les besoins qui la référencent (à la charge de l'appelant). */
 export function actionsSupprimerMission(missionId: Id): UserAction[] {
   return [['RemoveRecord', 'Missions', missionId]];
+}
+
+// --- Artistes -----------------------------------------------------------
+
+export interface NouvelArtiste {
+  nom: string;
+  lieuId: Id | null;
+  debut: Epoch;
+  fin: Epoch;
+}
+
+/** Crée un artiste (passage). `retValues[0]` de l'action est son nouvel id. */
+export function actionsCreerArtiste(artiste: NouvelArtiste): UserAction[] {
+  return [[
+    'AddRecord', 'Artistes', null, {
+      Nom: artiste.nom,
+      Lieu: encoderRef(artiste.lieuId),
+      Debut: artiste.debut,
+      Fin: artiste.fin,
+    },
+  ]];
+}
+
+/** Modifie un artiste existant ; seuls les champs fournis sont touchés (voir l'en-tête du fichier). */
+export function actionsModifierArtiste(artisteId: Id, champs: Partial<NouvelArtiste>): UserAction[] {
+  const valeurs: Record<string, unknown> = {};
+  if (champs.nom !== undefined) { valeurs.Nom = champs.nom; }
+  if (champs.lieuId !== undefined) { valeurs.Lieu = encoderRef(champs.lieuId); }
+  if (champs.debut !== undefined) { valeurs.Debut = champs.debut; }
+  if (champs.fin !== undefined) { valeurs.Fin = champs.fin; }
+  if (Object.keys(valeurs).length === 0) { return []; }
+  return [['UpdateRecord', 'Artistes', artisteId, valeurs]];
 }
 
 // --- Macro-créneaux et sous-créneaux -----------------------------------------

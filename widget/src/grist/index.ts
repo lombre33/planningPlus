@@ -20,6 +20,7 @@ export type {
   NouveauGroupe,
   NouveauMacroCreneau,
   NouveauSousCreneau,
+  NouvelArtiste,
   NouvelleDisponibilite,
   NouvelleEquipe,
   NouvelleMission,
@@ -27,6 +28,7 @@ export type {
   UserAction,
 } from './ecriture';
 export {
+  actionsCreerArtiste,
   actionsCreerBesoin,
   actionsCreerEquipe,
   actionsCreerGroupe,
@@ -40,6 +42,7 @@ export {
   actionsEcrireDisponibilites,
   actionsEnregistrerHeureCoupure,
   actionsEnregistrerParametresAlgorithme,
+  actionsModifierArtiste,
   actionsModifierGroupe,
   actionsModifierMission,
   actionsModifierSousCreneau,

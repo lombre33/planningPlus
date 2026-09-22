@@ -1,5 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import {
+  actionsCreerArtiste,
   actionsCreerBesoin,
   actionsCreerGroupe,
   actionsCreerMacroCreneau,
@@ -12,6 +13,7 @@ import {
   actionsEcrireDisponibilites,
   actionsEnregistrerHeureCoupure,
   actionsEnregistrerParametresAlgorithme,
+  actionsModifierArtiste,
   actionsModifierGroupe,
   actionsModifierMission,
   actionsModifierSousCreneau,
@@ -72,6 +74,37 @@ describe('actionsModifierMission', () => {
 
   it("ne construit aucune action quand aucun champ n'est fourni", () => {
     expect(actionsModifierMission(9, {})).toEqual([]);
+  });
+});
+
+describe('actionsCreerArtiste', () => {
+  it('construit un AddRecord avec Lieu encodé', () => {
+    expect(actionsCreerArtiste({nom: 'DJ Set', lieuId: 3, debut: 1000, fin: 2000})).toEqual([
+      ['AddRecord', 'Artistes', null, {Nom: 'DJ Set', Lieu: 3, Debut: 1000, Fin: 2000}],
+    ]);
+  });
+
+  it('encode un lieu absent en 0', () => {
+    const action = actionsCreerArtiste({nom: 'X', lieuId: null, debut: 0, fin: 1})[0]!;
+    expect(action[3]).toEqual({Nom: 'X', Lieu: 0, Debut: 0, Fin: 1});
+  });
+});
+
+describe('actionsModifierArtiste', () => {
+  it('ne touche que les champs fournis', () => {
+    expect(actionsModifierArtiste(4, {nom: 'DJ Set (retard)'})).toEqual([
+      ['UpdateRecord', 'Artistes', 4, {Nom: 'DJ Set (retard)'}],
+    ]);
+  });
+
+  it('efface une référence explicitement mise à null (encodée 0, jamais null)', () => {
+    expect(actionsModifierArtiste(4, {lieuId: null})).toEqual([
+      ['UpdateRecord', 'Artistes', 4, {Lieu: 0}],
+    ]);
+  });
+
+  it("ne construit aucune action quand aucun champ n'est fourni", () => {
+    expect(actionsModifierArtiste(4, {})).toEqual([]);
   });
 });
 
