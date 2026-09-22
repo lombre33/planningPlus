@@ -38,8 +38,8 @@ import type {DocApiEcriture} from './grist';
 import {
   actionsCreerBesoin, actionsCreerEquipe, actionsCreerGroupe, actionsCreerMacroCreneau, actionsCreerMission,
   actionsCreerSousCreneaux, actionsCreerTablesManquantes, actionsDefinirPlaces, actionsDeplacerMacroCreneau,
-  actionsDeplacerPositionGroupe, actionsPositionnerGroupe, actionsRenommerMacroCreneau, actionsSupprimerSousCreneaux,
-  appliquerActions, LIBELLE_PAR_TABLE, lireDocument,
+  actionsDeplacerPositionGroupe, actionsPositionnerGroupe, actionsReglerAffichage, actionsRenommerMacroCreneau,
+  actionsSupprimerSousCreneaux, appliquerActions, LIBELLE_PAR_TABLE, lireDocument, zipperTable,
 } from './grist';
 import {type EcritureGrist, Magasin, SuppressionApresCreationEchouee} from './store';
 
@@ -190,6 +190,28 @@ async function creerTablesManquantes(docApi: DocApiEcriture, tablesManquantes: r
   if (referencesDifferees.length > 0) { await docApi.applyUserActions(referencesDifferees); }
 }
 
+/**
+ * Pose, sur les tables tout juste créées (`tablesTraitees`), le titre et les
+ * colonnes de référence lisibles que porte déjà `dev/seed/seed.mjs` — pour
+ * qu'un document créé par le widget se lise comme un document importé
+ * (demandé par le coordinateur le 2026-09-22). Lit les deux tables de
+ * métadonnées dont `actionsReglerAffichage` a besoin (`./grist/creation`),
+ * puis envoie ses actions en un seul aller-retour : aucune ne référence une
+ * ligne créée par une autre dans ce même lot.
+ */
+async function reglerAffichageTablesCreees(
+  docApi: {fetchTable(tableId: string): Promise<import('./grist').TableBrute>} & DocApiEcriture,
+  tablesTraitees: readonly string[],
+  resolution: Record<string, string>,
+): Promise<void> {
+  const [lignesTables, lignesColonnes] = await Promise.all([
+    docApi.fetchTable('_grist_Tables').then(zipperTable),
+    docApi.fetchTable('_grist_Tables_column').then(zipperTable),
+  ]);
+  const actions = actionsReglerAffichage(tablesTraitees, resolution, lignesTables, lignesColonnes);
+  if (actions.length > 0) { await docApi.applyUserActions(actions); }
+}
+
 async function demarrer(): Promise<void> {
   const racine = document.getElementById('app');
   if (!racine) { return; }
@@ -219,6 +241,7 @@ async function demarrer(): Promise<void> {
         afficherDocumentNonReconnu(racine, encoreManquantes);
         return;
       }
+      await reglerAffichageTablesCreees(window.grist.docApi, tablesManquantes, relu.resolution);
       resultatFinal = relu;
     }
     const magasin = new Magasin(resultatFinal.modele);

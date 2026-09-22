@@ -57,7 +57,7 @@ export {
 
 export {idsReelsDeTest, LIBELLE_PAR_TABLE, resoudreIdsTables} from './tables';
 
-export {actionsCreerTablesManquantes} from './creation';
+export {actionsCreerTablesManquantes, actionsReglerAffichage} from './creation';
 
 export type {LigneParametre} from './parametres';
 export {

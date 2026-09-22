@@ -17,6 +17,7 @@
  * à annoncer à l'écran) est un chantier distinct, non couvert ici.
  */
 
+import type {LigneBrute} from './brut';
 import type {UserAction} from './ecriture';
 import {REFERENCES_DIFFEREES, TABLES} from './schema';
 
@@ -85,4 +86,67 @@ export function actionsCreerTablesManquantes(tablesManquantes: readonly string[]
     .filter((r) => manquantes.has(r.table))
     .map((r) => ['AddColumn', IDENTIFIANT_DEMANDE[r.table] ?? r.table, r.colonne.id, actionColonne(r.colonne)]);
   return {tables, referencesDifferees};
+}
+
+/**
+ * Construit les actions qui rendent les tables tout juste créées
+ * (`tablesTraitees`) lisibles nativement dans Grist, comme le fait déjà
+ * `dev/seed/seed.mjs` (`reglerAffichageReferences` + `reglerLibellesTables`) :
+ * un titre de table sur sa vue brute, et pour chaque colonne de référence qui
+ * porte un `visibleCol`, une formule d'affichage qui montre ce libellé plutôt
+ * que l'identifiant de ligne. Demandé par le coordinateur le 2026-09-22 pour
+ * qu'un document créé par le widget se lise comme un document importé.
+ *
+ * Pure comme le reste de ce fichier, mais a besoin en entrée des lignes de
+ * `_grist_Tables` et `_grist_Tables_column` du document (l'appelant les lit
+ * via `docApi.fetchTable`, ce module ne parle jamais lui-même à l'API) : ces
+ * deux tables de métadonnées portent les identifiants de ligne réels
+ * (`rawViewSectionRef`, `id` de colonne) dont `UpdateRecord`/`ModifyColumn`/
+ * `SetDisplayFormula` ont besoin, que `resolution` (identifiant canonique →
+ * identifiant réel de table, rendu par `lireDocument`) ne porte pas.
+ *
+ * Ne touche que les tables de `tablesTraitees` : une table déjà présente
+ * avant cet appel garde son affichage tel quel, jamais réécrit.
+ */
+export function actionsReglerAffichage(
+  tablesTraitees: readonly string[],
+  resolution: Readonly<Record<string, string>>,
+  lignesTables: readonly LigneBrute[],
+  lignesColonnes: readonly LigneBrute[],
+): UserAction[] {
+  const traitees = new Set(tablesTraitees);
+  const rowIdTableParReel = new Map(lignesTables.map((t) => [t.tableId as string, t.id]));
+  const rawViewSectionParReel = new Map(lignesTables.map((t) => [t.tableId as string, t.rawViewSectionRef as number]));
+  const rowIdColonne = new Map(lignesColonnes.map((c) => [`${c.parentId}.${c.colId}`, c.id]));
+
+  const actions: UserAction[] = [];
+
+  for (const table of TABLES) {
+    if (!traitees.has(table.id)) { continue; }
+    const idReel = resolution[table.id];
+    const rawViewSection = idReel ? rawViewSectionParReel.get(idReel) : undefined;
+    if (!rawViewSection) { continue; }
+    actions.push(['UpdateRecord', '_grist_Views_section', rawViewSection, {
+      title: table.libelle ?? table.id,
+      description: table.description ?? '',
+    }]);
+  }
+
+  const colonnesDesTablesTraitees = [
+    ...TABLES.filter((t) => traitees.has(t.id)).flatMap((t) => t.colonnes.map((c) => ({table: t.id, colonne: c}))),
+    ...REFERENCES_DIFFEREES.filter((r) => traitees.has(r.table)).map((r) => ({table: r.table, colonne: r.colonne})),
+  ];
+  for (const {table, colonne} of colonnesDesTablesTraitees) {
+    if (!colonne.visibleCol) { continue; }
+    const idReelTable = resolution[table];
+    const idReelCible = resolution[colonne.type.split(':')[1] ?? ''];
+    const rowIdTable = idReelTable ? rowIdTableParReel.get(idReelTable) : undefined;
+    const refColonneCible = idReelCible ? rowIdColonne.get(`${rowIdTableParReel.get(idReelCible)}.${colonne.visibleCol}`) : undefined;
+    const refColonne = rowIdTable ? rowIdColonne.get(`${rowIdTable}.${colonne.id}`) : undefined;
+    if (!rowIdTable || !refColonneCible || !refColonne) { continue; }
+    actions.push(['ModifyColumn', idReelTable, colonne.id, {visibleCol: refColonneCible}]);
+    actions.push(['SetDisplayFormula', idReelTable, null, refColonne, `$${colonne.id}.${colonne.visibleCol}`]);
+  }
+
+  return actions;
 }
