@@ -109,3 +109,39 @@ export function epochDepuisDateEtHeure(dateISO: string, heureTexte: string, fuse
   const [heures, minutes] = [heureMatch[1], heureMatch[2]].map(Number);
   return epochDepuisHeureLocale({annee: annee!, mois: mois!, jour: jour!, heures: heures!, minutes: minutes!}, fuseau);
 }
+
+/** Décale une date ISO (YYYY-MM-DD) de `deltaJours` jours calendaires,
+ *  changements de mois et d'année compris. Pure arithmétique de calendrier
+ *  (aucun instant réel en jeu) : `Date.UTC` suffit, pas de fuseau à passer. */
+function decalerDateISO(dateISO: string, deltaJours: number): string {
+  const [annee, mois, jour] = dateISO.split('-').map(Number);
+  return new Date(Date.UTC(annee!, mois! - 1, jour! + deltaJours)).toISOString().slice(0, 10);
+}
+
+/**
+ * Horodatage d'un jour de festival et d'une heure « HH:MM » (cahier des
+ * charges §6.2) : applique la règle « heure brute avant l'heure de coupure,
+ * donc jour suivant » au début comme à la fin d'un macro-créneau — jamais
+ * seulement à la fin, comme le faisait la case « après minuit » à elle
+ * seule. Sans cette règle appliquée au début aussi, un début saisi
+ * « jeudi 00h30 » se calculait littéralement jeudi 00h30, un instant qui
+ * tombe (heure de coupure oblige) dans le jour de festival mercredi —
+ * bug diagnostiqué par le fil Agenda le 2026-09-22 : le jour affiché
+ * (`cleJourFestival`) ne correspondait plus au jour saisi.
+ *
+ * `apresMinuitForce` reste nécessaire au-delà de l'heure de coupure : une
+ * nuit blanche qui finit à 10h (donc après la coupure par défaut) doit
+ * pouvoir être forcée sur le jour suivant, ce que l'heure brute seule ne
+ * permet pas de déduire (10h est une heure de matinée tout à fait normale
+ * pour un macro-créneau qui, lui, commence bien ce jour-là).
+ */
+export function epochJourFestivalEtHeure(
+  jourISO: string, heureTexte: string, apresMinuitForce = false,
+  heureCoupure = HEURE_COUPURE_JOUR_FESTIVAL, fuseau = TIMEZONE,
+): number | null {
+  const heureMatch = /^(\d{1,2}):(\d{2})$/.exec(heureTexte.trim());
+  if (!heureMatch) { return null; }
+  const heures = Number(heureMatch[1]);
+  const jourSuivant = apresMinuitForce || heures < heureCoupure;
+  return epochDepuisDateEtHeure(jourSuivant ? decalerDateISO(jourISO, 1) : jourISO, heureTexte, fuseau);
+}
