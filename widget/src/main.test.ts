@@ -72,15 +72,12 @@ describe('démarrage du widget', () => {
     expect(document.body.textContent).toContain('Équipes');
   });
 
-  /** Le constructeur d'actions Grist pour les missions n'existe pas encore
-   *  (`grist/ecriture.ts`, V0.1 en cours côté fil Environnement Grist de
-   *  test) : tant qu'il manque, une tentative de création en mode connecté
-   *  doit échouer visiblement plutôt que de réussir en apparence sans rien
-   *  écrire dans le document — précisément le piège signalé par le fil Vue
-   *  agenda. Couvre le pont bout en bout, pas seulement `Magasin.creerMission`
-   *  isolément (déjà couvert par `store.test.ts`). */
-  it("en mode connecté, créer une mission échoue visiblement tant que l'écriture Grist n'est pas branchée (pas de faux succès local)", async () => {
-    window.grist = {
+  /** Couvre le pont bout en bout (clic réel → `appliquerActions` →
+   *  `docApi.applyUserActions`), pas seulement `Magasin.creerMission`
+   *  isolément (déjà couvert par `store.test.ts`) ni la construction des
+   *  actions elle-même (déjà couverte par `grist/ecriture.test.ts`). */
+  function docApiConnecteAvecUneEquipe(applyUserActions: (actions: unknown[][]) => Promise<{retValues: unknown[]}>) {
+    return {
       ready: () => {},
       docApi: {
         listTables: async () => TOUTES_LES_TABLES,
@@ -89,12 +86,12 @@ describe('démarrage du widget', () => {
             ? {id: [1], Nom: ['Accueil'], Couleur: ['#ff0000'], Referent: [0], Notes: ['']}
             : {id: []}
         ),
-        applyUserActions: async () => ({retValues: []}),
+        applyUserActions,
       },
     };
-    await demarrerEtAttendre();
-    expect(document.querySelector('.pill--neutral')?.textContent).toBe('Document Grist connecté');
+  }
 
+  async function creerMissionDepuisLInterface(): Promise<void> {
     const ongletMissions = Array.from(document.querySelectorAll('.rail__item'))
       .find((b) => b.textContent?.includes('Missions')) as HTMLButtonElement;
     ongletMissions.click();
@@ -108,6 +105,35 @@ describe('démarrage du widget', () => {
       .find((b) => b.textContent === 'Créer') as HTMLButtonElement;
     boutonCreer.click();
     await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  it("en mode connecté, créer une mission écrit réellement dans le document (appliquerActions) et l'affiche avec l'id que Grist a rendu", async () => {
+    const actionsRecues: unknown[][][] = [];
+    window.grist = docApiConnecteAvecUneEquipe(async (actions) => {
+      actionsRecues.push(actions);
+      return {retValues: [777]};
+    });
+    await demarrerEtAttendre();
+    expect(document.querySelector('.pill--neutral')?.textContent).toBe('Document Grist connecté');
+
+    await creerMissionDepuisLInterface();
+
+    expect(document.querySelector('.field-erreur:not([hidden])')).toBeNull();
+    // Succès : la modale se ferme (elle ne reste ouverte que sur l'échec, voir
+    // le test suivant) — le document de test n'a pas de sous-créneau, la
+    // grille n'affiche donc aucune table où vérifier la mission par le texte.
+    expect(document.querySelector('.modal-backdrop')).toBeNull();
+    expect(actionsRecues).toEqual([[['AddRecord', 'Missions', null, {
+      Nom: 'Contrôle billetterie', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: ['L'],
+    }]]]);
+  });
+
+  it("en mode connecté, si l'écriture Grist échoue réellement (applyUserActions rejette), l'échec est visible et rien n'est créé localement", async () => {
+    window.grist = docApiConnecteAvecUneEquipe(async () => { throw new Error('document en lecture seule'); });
+    await demarrerEtAttendre();
+    expect(document.querySelector('.pill--neutral')?.textContent).toBe('Document Grist connecté');
+
+    await creerMissionDepuisLInterface();
 
     expect(document.querySelector('.field-erreur:not([hidden])')?.textContent)
       .toContain("Échec de l'écriture");

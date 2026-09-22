@@ -32,8 +32,10 @@
 
 import './style.css';
 import {demarrerApp} from './app';
+import type {Id} from './domain/types';
 import {normaliser} from './donnees/normaliser';
-import {LIBELLE_PAR_TABLE, lireDocument} from './grist';
+import type {DocApiEcriture} from './grist';
+import {actionsCreerMission, appliquerActions, LIBELLE_PAR_TABLE, lireDocument} from './grist';
 import {Magasin, type EcritureGrist} from './store';
 
 const DELAI_CONNEXION_MS = 1500;
@@ -51,23 +53,24 @@ const TABLES_REQUISES = [
 
 /**
  * Le pont Grist réel (voir `EcritureGrist` dans `./store`), branché
- * uniquement en mode connecté — jamais en démo. `grist/ecriture.ts` ne
- * construit pas encore les actions pour les missions (V0.1, en cours côté
- * fil Environnement Grist de test) : en attendant, chaque méthode rejette
- * explicitement plutôt que de laisser le `Magasin` retomber sur une
- * génération d'id locale, ce qui ferait *croire* à une création réussie
- * sans jamais écrire dans le document — précisément le piège à éviter en
- * connecté (le mode démo, lui, n'appelle jamais ce pont : il garde son
- * id local, comportement inchangé). Remplacer le corps de `creerMission`
- * par le vrai `appliquerActions(window.grist.docApi, actionsCreerMission(...),
- * resultat.resolution)` dès que ce constructeur existe.
+ * uniquement en mode connecté — jamais en démo, qui n'appelle jamais ce
+ * pont et garde son id local, comportement inchangé. `resolution` (rendu
+ * par `lireDocument`) traduit les noms canoniques de table en identifiants
+ * réels du document (`grist/tables.ts`) ; `appliquerActions` s'en sert pour
+ * chaque action envoyée.
  */
-function construireEcritureGrist(): EcritureGrist {
+function construireEcritureGrist(docApi: DocApiEcriture, resolution: Record<string, string>): EcritureGrist {
   return {
-    creerMission() {
-      return Promise.reject(new Error(
-        "L'écriture des missions dans Grist n'est pas encore disponible dans cette version du widget.",
-      ));
+    async creerMission(mission) {
+      const [id] = await appliquerActions(docApi, actionsCreerMission({
+        nom: mission.Nom,
+        description: mission.Description,
+        lieuId: mission.Lieu || null,
+        equipeId: mission.Equipe || null,
+        priorite: mission.Priorite,
+        competencesRequises: mission.Competences_requises,
+      }), resolution);
+      return id as Id;
     },
   };
 }
@@ -124,7 +127,7 @@ async function demarrer(): Promise<void> {
       return;
     }
     const magasin = new Magasin(resultat.modele);
-    magasin.brancherEcriture(construireEcritureGrist());
+    magasin.brancherEcriture(construireEcritureGrist(window.grist.docApi, resultat.resolution));
     demarrerApp(racine, magasin, 'Document Grist connecté');
   } catch {
     demarrerDemo(racine);
