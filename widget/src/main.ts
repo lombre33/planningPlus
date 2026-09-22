@@ -35,7 +35,10 @@ import {demarrerApp} from './app';
 import type {Id} from './domain/types';
 import {normaliser} from './donnees/normaliser';
 import type {DocApiEcriture} from './grist';
-import {actionsCreerMission, appliquerActions, LIBELLE_PAR_TABLE, lireDocument} from './grist';
+import {
+  actionsCreerBesoin, actionsCreerGroupe, actionsCreerMission, actionsDefinirPlaces,
+  actionsDeplacerPositionGroupe, actionsPositionnerGroupe, appliquerActions, LIBELLE_PAR_TABLE, lireDocument,
+} from './grist';
 import {Magasin, type EcritureGrist} from './store';
 
 const DELAI_CONNEXION_MS = 1500;
@@ -71,6 +74,35 @@ function construireEcritureGrist(docApi: DocApiEcriture, resolution: Record<stri
         competencesRequises: mission.Competences_requises,
       }), resolution);
       return id as Id;
+    },
+    async creerBesoin(besoin) {
+      const [id] = await appliquerActions(docApi, actionsCreerBesoin(besoin), resolution);
+      return id as Id;
+    },
+    async creerGroupe(groupe) {
+      const [id] = await appliquerActions(
+        docApi, actionsCreerGroupe({...groupe, equipeId: groupe.equipeId || null}), resolution,
+      );
+      return id as Id;
+    },
+    async positionnerGroupe(groupeId, besoinId) {
+      await appliquerActions(docApi, actionsPositionnerGroupe(groupeId, [besoinId]), resolution);
+    },
+    async definirPlaces(groupeId, taille) {
+      const places = Array.from({length: taille}, (_, i) => ({
+        rang: i + 1, benevoleId: null, origine: 'Manuel' as const, verrouillee: false, score: null,
+      }));
+      await appliquerActions(docApi, actionsDefinirPlaces(groupeId, places), resolution);
+    },
+    async deplacerPosition(positionId, nouveauBesoinId) {
+      await appliquerActions(docApi, actionsDeplacerPositionGroupe(positionId, nouveauBesoinId), resolution);
+    },
+    async ajouterPosition(groupeId, besoinId) {
+      // `actionsPositionnerGroupe` est un `BulkAddRecord` : son retValue est
+      // le tableau des ids créés, à déplier (voir `appliquerActions`, et le
+      // constat vérifié en vrai par le fil Environnement Grist de test).
+      const [ids] = await appliquerActions(docApi, actionsPositionnerGroupe(groupeId, [besoinId]), resolution);
+      return (ids as Id[])[0] as Id;
     },
   };
 }

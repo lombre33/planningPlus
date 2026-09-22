@@ -9,7 +9,7 @@
  */
 import {beforeEach, describe, expect, it} from 'vitest';
 import type {Modele} from '../domain/types';
-import {Magasin} from '../store';
+import {type EcritureGrist, Magasin} from '../store';
 import {montrerIndicatifs} from './indicatifs';
 
 function modeleVide(): Modele {
@@ -101,5 +101,41 @@ describe('planning complet : missions et besoin, mais zone volontairement vide',
     montrerIndicatifs(container, m);
     expect(container.querySelector('.groupe-chip')).not.toBeNull();
     expect(container.querySelectorAll('.groupe-chip')).toHaveLength(1);
+  });
+
+  describe('ajout d’un binôme depuis la case (bouton « + binôme », selectionnerNouveauGroupe)', () => {
+    function ecritureQuiRefuseTout(): EcritureGrist {
+      const refuse = () => async () => { throw new Error('document indisponible'); };
+      return {
+        creerMission: refuse(), creerBesoin: refuse(), creerGroupe: refuse(), positionnerGroupe: refuse(),
+        definirPlaces: refuse(), deplacerPosition: refuse(), ajouterPosition: refuse(),
+      };
+    }
+
+    it('en mode démo, crée le second indicatif sans afficher de message d’échec', async () => {
+      const m = new Magasin(modele());
+      await m.creerBesoin(1, 1);
+      montrerIndicatifs(container, m);
+
+      container.querySelector<HTMLButtonElement>('.ajouter-binome')!.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(container.querySelectorAll('.groupe-chip')).toHaveLength(2);
+      expect(container.querySelector('.pill--danger')).toBeNull();
+    });
+
+    it('en mode connecté, si le pont refuse, affiche un message d’échec et ne crée rien de plus', async () => {
+      const m = new Magasin(modele());
+      await m.creerBesoin(1, 1);
+      m.brancherEcriture(ecritureQuiRefuseTout());
+      montrerIndicatifs(container, m);
+      const nbGroupesAvant = m.groupes.length;
+
+      container.querySelector<HTMLButtonElement>('.ajouter-binome')!.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(m.groupes).toHaveLength(nbGroupesAvant);
+      expect(container.querySelector('.pill--danger')?.textContent).toContain("Échec de l'écriture");
+    });
   });
 });

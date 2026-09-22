@@ -30,11 +30,31 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
   let equipeFiltre: Id | 'toutes' = 'toutes';
   let groupeSelectionne: Id | null = null;
   let modeCible: ModeCible | null = null;
+  let dernierMessage: {texte: string; ton: 'ok' | 'danger'} | null = null;
 
   // État transitoire du glisser-déposer natif (pas dans le magasin : ça ne
   // survit pas à un rafraîchissement, et n'a pas à le faire).
   let groupeDeplace: Id | null = null;
   let besoinOrigineDeplace: Id | null = null;
+
+  /** Écrit vers le magasin (mode connecté : vers Grist, voir `EcritureGrist`)
+   *  sans jamais laisser un échec silencieux : la case ou la puce reste
+   *  telle quelle et un message rouge apparaît, plutôt que de laisser
+   *  croire à un déplacement ou une création qui n'a pas eu lieu. */
+  async function ecrire(action: () => Promise<void>): Promise<void> {
+    try {
+      await action();
+      dernierMessage = null;
+    } catch {
+      dernierMessage = {texte: "Échec de l'écriture dans le document Grist connecté. Réessayez.", ton: 'danger'};
+    }
+    // `action` notifie déjà les abonnés sur un succès (`Magasin.notifier`),
+    // donc ce rafraîchissement peut sembler redondant dans ce cas — mais un
+    // échec, lui, interrompt `action` avant tout `notifier`, et c'est ce
+    // second cas qui a besoin de ce rafraîchissement explicite pour que le
+    // message d'erreur s'affiche.
+    rafraichir();
+  }
 
   function rafraichir(): void {
     const ix = indexer(m);
@@ -54,6 +74,7 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
     container.append(
       h('div', {class: 'indicatifs-layout'},
         barreOutils(jours),
+        dernierMessage ? h('span', {class: `pill pill--${dernierMessage.ton}`}, dernierMessage.texte) : null,
         modeCible ? bandeauCible() : null,
         jours.length === 0
           ? h('p', {class: 'empty'}, "Aucun macro-créneau défini pour l'instant. Commencez par l'étape 1 (Agenda), puis définissez des sous-créneaux, avant de positionner des indicatifs ici.")
@@ -178,7 +199,7 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
       cellule.classList.remove('indicatif-cell--dropzone');
       if (groupeDeplace == null || besoinOrigineDeplace == null || besoinOrigineDeplace === besoinId) { return; }
       const position = m.positionsGroupe.find((p) => p.Groupe === groupeDeplace && p.Besoin === besoinOrigineDeplace);
-      if (position) { m.deplacerPosition(position.id, besoinId); }
+      if (position) { void ecrire(() => m.deplacerPosition(position.id, besoinId)); }
     });
 
     if (modeCible) {
@@ -188,11 +209,12 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
     return cellule;
   }
 
-  function selectionnerNouveauGroupe(besoinId: Id): void {
-    const id = m.creerGroupeSurBesoin(besoinId);
-    if (id === -1) { return; }
-    groupeSelectionne = id;
-    rafraichir();
+  async function selectionnerNouveauGroupe(besoinId: Id): Promise<void> {
+    await ecrire(async () => {
+      const id = await m.creerGroupeSurBesoin(besoinId);
+      if (id === -1) { return; }
+      groupeSelectionne = id;
+    });
   }
 
   function puceGroupe(ix: Index, groupe: Groupe, besoinId: Id): HTMLElement {
@@ -317,11 +339,13 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
     if (!modeCible) { return; }
     const cible = modeCible;
     modeCible = null;
-    if (cible.mode === 'deplacer' && cible.positionId != null) {
-      m.deplacerPosition(cible.positionId, besoinId);
-    } else {
-      m.ajouterPosition(cible.groupeId, besoinId);
-    }
+    void ecrire(async () => {
+      if (cible.mode === 'deplacer' && cible.positionId != null) {
+        await m.deplacerPosition(cible.positionId, besoinId);
+      } else {
+        await m.ajouterPosition(cible.groupeId, besoinId);
+      }
+    });
   }
 
   function courtNom(nomComplet: string): string {

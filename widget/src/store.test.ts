@@ -1,8 +1,26 @@
 import {describe, expect, it} from 'vitest';
 import type {Id} from './domain/types';
 import {normaliser} from './donnees/normaliser';
-import {Magasin} from './store';
+import {type EcritureGrist, Magasin} from './store';
 import {epochDepuisHeureLocale} from './temps';
+
+/** Une écriture Grist de test qui rejette tout par défaut (chaque méthode
+ *  doit être explicitement fournie pour un test qui l'exerce) — évite
+ *  qu'un test sur une méthode du pont en exerce une autre sans s'en rendre
+ *  compte. */
+function ecritureDeTest(partielle: Partial<EcritureGrist> = {}): EcritureGrist {
+  const nonBranchee = (nom: string) => async () => { throw new Error(`${nom} non fourni par ce double de test`); };
+  return {
+    creerMission: nonBranchee('creerMission'),
+    creerBesoin: nonBranchee('creerBesoin'),
+    creerGroupe: nonBranchee('creerGroupe'),
+    positionnerGroupe: nonBranchee('positionnerGroupe'),
+    definirPlaces: nonBranchee('definirPlaces'),
+    deplacerPosition: nonBranchee('deplacerPosition'),
+    ajouterPosition: nonBranchee('ajouterPosition'),
+    ...partielle,
+  };
+}
 
 /** Une paire mission/sous-créneau sans besoin existant, pour tester la
  *  création sans dépendre de la position exacte des données de démo. */
@@ -18,13 +36,13 @@ function paireLibre(m: Magasin): {missionId: Id; sousCreneauId: Id} {
 }
 
 describe('Magasin.creerGroupeSurBesoin', () => {
-  it('crée un indicatif de taille 2, ses places vides et sa position sur le besoin visé', () => {
+  it('crée un indicatif de taille 2, ses places vides et sa position sur le besoin visé', async () => {
     const m = new Magasin(normaliser());
     const besoin = m.besoins[0]!;
     const nbGroupesAvant = m.groupes.length;
     const nbPlacesAvant = m.places.length;
 
-    const groupeId = m.creerGroupeSurBesoin(besoin.id);
+    const groupeId = await m.creerGroupeSurBesoin(besoin.id);
 
     expect(groupeId).not.toBe(-1);
     expect(m.groupes).toHaveLength(nbGroupesAvant + 1);
@@ -42,46 +60,83 @@ describe('Magasin.creerGroupeSurBesoin', () => {
     expect(position?.Besoin).toBe(besoin.id);
   });
 
-  it("reprend l'équipe de la mission du besoin", () => {
+  it("reprend l'équipe de la mission du besoin", async () => {
     const m = new Magasin(normaliser());
     const besoin = m.besoins[0]!;
     const mission = m.missions.find((mi) => mi.id === besoin.Mission)!;
 
-    const groupeId = m.creerGroupeSurBesoin(besoin.id);
+    const groupeId = await m.creerGroupeSurBesoin(besoin.id);
     const groupe = m.groupes.find((g) => g.id === groupeId)!;
 
     expect(groupe.Equipe).toBe(mission.Equipe);
   });
 
-  it('renvoie -1 sans rien créer pour un besoin inconnu', () => {
+  it('renvoie -1 sans rien créer pour un besoin inconnu', async () => {
     const m = new Magasin(normaliser());
     const nbGroupesAvant = m.groupes.length;
 
-    const groupeId = m.creerGroupeSurBesoin(-1);
+    const groupeId = await m.creerGroupeSurBesoin(-1);
 
     expect(groupeId).toBe(-1);
     expect(m.groupes).toHaveLength(nbGroupesAvant);
   });
 
-  it('notifie les abonnés du magasin', () => {
+  it('notifie les abonnés du magasin', async () => {
     const m = new Magasin(normaliser());
     let notifications = 0;
     m.subscribe(() => { notifications += 1; });
 
-    m.creerGroupeSurBesoin(m.besoins[0]!.id);
+    await m.creerGroupeSurBesoin(m.besoins[0]!.id);
 
     expect(notifications).toBe(1);
+  });
+
+  it('en mode connecté, enchaîne creerGroupe, positionnerGroupe puis definirPlaces, dans cet ordre, et utilise les ids réels rendus', async () => {
+    const m = new Magasin(normaliser());
+    const besoin = m.besoins[0]!;
+    const appels: string[] = [];
+    m.brancherEcriture(ecritureDeTest({
+      creerGroupe: async (groupe) => { appels.push(`creerGroupe(${groupe.code},${groupe.taille},${groupe.equipeId})`); return 501; },
+      positionnerGroupe: async (groupeId, besoinId) => { appels.push(`positionnerGroupe(${groupeId},${besoinId})`); },
+      definirPlaces: async (groupeId, taille) => { appels.push(`definirPlaces(${groupeId},${taille})`); },
+    }));
+
+    const groupeId = await m.creerGroupeSurBesoin(besoin.id);
+
+    expect(groupeId).toBe(501);
+    expect(m.groupes.find((g) => g.id === 501)).toBeDefined();
+    expect(m.places.filter((p) => p.Groupe === 501)).toHaveLength(2);
+    expect(appels).toEqual([
+      `creerGroupe(${m.groupes.find((g) => g.id === 501)!.Code},2,${m.groupes.find((g) => g.id === 501)!.Equipe})`,
+      `positionnerGroupe(501,${besoin.id})`,
+      `definirPlaces(501,2)`,
+    ]);
+  });
+
+  it('en mode connecté, si creerGroupe échoue, rien n’est créé localement (aucun groupe, aucune place, aucune position)', async () => {
+    const m = new Magasin(normaliser());
+    const besoin = m.besoins[0]!;
+    const nbGroupesAvant = m.groupes.length;
+    const nbPlacesAvant = m.places.length;
+    const nbPositionsAvant = m.positionsGroupe.length;
+    m.brancherEcriture(ecritureDeTest({creerGroupe: async () => { throw new Error('document indisponible'); }}));
+
+    await expect(m.creerGroupeSurBesoin(besoin.id)).rejects.toThrow('document indisponible');
+
+    expect(m.groupes).toHaveLength(nbGroupesAvant);
+    expect(m.places).toHaveLength(nbPlacesAvant);
+    expect(m.positionsGroupe).toHaveLength(nbPositionsAvant);
   });
 });
 
 describe('Magasin.creerBesoin', () => {
-  it('crée le besoin avec un binôme de taille 2 par défaut, positionné dessus (§6.3)', () => {
+  it('crée le besoin avec un binôme de taille 2 par défaut, positionné dessus (§6.3)', async () => {
     const m = new Magasin(normaliser());
     const {missionId, sousCreneauId} = paireLibre(m);
     const nbBesoinsAvant = m.besoins.length;
     const nbGroupesAvant = m.groupes.length;
 
-    const besoinId = m.creerBesoin(missionId, sousCreneauId);
+    const besoinId = await m.creerBesoin(missionId, sousCreneauId);
 
     expect(m.besoins).toHaveLength(nbBesoinsAvant + 1);
     const besoin = m.besoins.find((b) => b.id === besoinId)!;
@@ -101,11 +156,11 @@ describe('Magasin.creerBesoin', () => {
     expect(places.every((p) => p.Benevole === null)).toBe(true);
   });
 
-  it('respecte une taille de binôme et un minimum personnalisés', () => {
+  it('respecte une taille de binôme et un minimum personnalisés', async () => {
     const m = new Magasin(normaliser());
     const {missionId, sousCreneauId} = paireLibre(m);
 
-    const besoinId = m.creerBesoin(missionId, sousCreneauId, {tailleGroupe: 3, effectifMin: 3});
+    const besoinId = await m.creerBesoin(missionId, sousCreneauId, {tailleGroupe: 3, effectifMin: 3});
 
     const besoin = m.besoins.find((b) => b.id === besoinId)!;
     expect(besoin.Taille_groupe).toBe(3);
@@ -116,26 +171,155 @@ describe('Magasin.creerBesoin', () => {
     expect(groupe.Taille).toBe(3);
   });
 
-  it("relève Effectif_max au minimum demandé s'il dépasse la taille du binôme", () => {
+  it("relève Effectif_max au minimum demandé s'il dépasse la taille du binôme", async () => {
     const m = new Magasin(normaliser());
     const {missionId, sousCreneauId} = paireLibre(m);
 
-    const besoinId = m.creerBesoin(missionId, sousCreneauId, {tailleGroupe: 2, effectifMin: 4});
+    const besoinId = await m.creerBesoin(missionId, sousCreneauId, {tailleGroupe: 2, effectifMin: 4});
 
     const besoin = m.besoins.find((b) => b.id === besoinId)!;
     expect(besoin.Effectif_min).toBe(4);
     expect(besoin.Effectif_max).toBe(4);
   });
 
-  it('notifie les abonnés une seule fois', () => {
+  it('notifie les abonnés une seule fois', async () => {
     const m = new Magasin(normaliser());
     const {missionId, sousCreneauId} = paireLibre(m);
     let notifications = 0;
     m.subscribe(() => { notifications += 1; });
 
-    m.creerBesoin(missionId, sousCreneauId);
+    await m.creerBesoin(missionId, sousCreneauId);
 
     expect(notifications).toBe(1);
+  });
+
+  it('en mode connecté, attend l’id du besoin rendu par le pont, puis enchaîne le pont du binôme avec cet id', async () => {
+    const m = new Magasin(normaliser());
+    const {missionId, sousCreneauId} = paireLibre(m);
+    const mission = m.missions.find((mi) => mi.id === missionId)!;
+    const appels: string[] = [];
+    m.brancherEcriture(ecritureDeTest({
+      creerBesoin: async (besoin) => {
+        appels.push(`creerBesoin(${besoin.missionId},${besoin.sousCreneauId},${besoin.effectifMin},${besoin.effectifMax},${besoin.tailleGroupe})`);
+        return 701;
+      },
+      creerGroupe: async (groupe) => {
+        appels.push(`creerGroupe(${groupe.taille},${groupe.equipeId})`);
+        return 702;
+      },
+      positionnerGroupe: async (groupeId, besoinId) => { appels.push(`positionnerGroupe(${groupeId},${besoinId})`); },
+      definirPlaces: async (groupeId, taille) => { appels.push(`definirPlaces(${groupeId},${taille})`); },
+    }));
+
+    const besoinId = await m.creerBesoin(missionId, sousCreneauId);
+
+    expect(besoinId).toBe(701);
+    expect(m.besoins.find((b) => b.id === 701)).toBeDefined();
+    expect(m.groupes.find((g) => g.id === 702)).toBeDefined();
+    expect(m.places.filter((p) => p.Groupe === 702)).toHaveLength(2);
+    expect(appels).toEqual([
+      `creerBesoin(${missionId},${sousCreneauId},2,2,2)`,
+      `creerGroupe(2,${mission.Equipe})`,
+      `positionnerGroupe(702,701)`,
+      `definirPlaces(702,2)`,
+    ]);
+  });
+
+  it('en mode connecté, si creerBesoin échoue, rien n’est créé localement (aucun besoin, aucun groupe)', async () => {
+    const m = new Magasin(normaliser());
+    const {missionId, sousCreneauId} = paireLibre(m);
+    const nbBesoinsAvant = m.besoins.length;
+    const nbGroupesAvant = m.groupes.length;
+    m.brancherEcriture(ecritureDeTest({creerBesoin: async () => { throw new Error('document indisponible'); }}));
+
+    await expect(m.creerBesoin(missionId, sousCreneauId)).rejects.toThrow('document indisponible');
+
+    expect(m.besoins).toHaveLength(nbBesoinsAvant);
+    expect(m.groupes).toHaveLength(nbGroupesAvant);
+  });
+
+  it('en mode connecté, si le pont du binôme échoue après la création du besoin, le besoin reste créé localement (Grist l’a déjà, aucun retrait compensatoire)', async () => {
+    const m = new Magasin(normaliser());
+    const {missionId, sousCreneauId} = paireLibre(m);
+    const nbGroupesAvant = m.groupes.length;
+    m.brancherEcriture(ecritureDeTest({
+      creerBesoin: async () => 701,
+      creerGroupe: async () => { throw new Error('document indisponible'); },
+    }));
+
+    await expect(m.creerBesoin(missionId, sousCreneauId)).rejects.toThrow('document indisponible');
+
+    expect(m.besoins.find((b) => b.id === 701)).toBeDefined();
+    expect(m.groupes).toHaveLength(nbGroupesAvant);
+  });
+});
+
+describe('Magasin.deplacerPosition', () => {
+  it('en mode connecté, appelle le pont puis met à jour la position localement', async () => {
+    const m = new Magasin(normaliser());
+    const groupeId = await m.creerGroupeSurBesoin(m.besoins[0]!.id);
+    const position = m.positionsGroupe.find((p) => p.Groupe === groupeId)!;
+    const autreBesoin = m.besoins[1]!;
+    const appels: string[] = [];
+    m.brancherEcriture(ecritureDeTest({
+      deplacerPosition: async (positionId, nouveauBesoinId) => { appels.push(`deplacerPosition(${positionId},${nouveauBesoinId})`); },
+    }));
+
+    await m.deplacerPosition(position.id, autreBesoin.id);
+
+    expect(appels).toEqual([`deplacerPosition(${position.id},${autreBesoin.id})`]);
+    expect(m.positionsGroupe.find((p) => p.id === position.id)?.Besoin).toBe(autreBesoin.id);
+  });
+
+  it('en mode connecté, si le pont échoue, la position garde son besoin d’origine', async () => {
+    const m = new Magasin(normaliser());
+    const groupeId = await m.creerGroupeSurBesoin(m.besoins[0]!.id);
+    const position = m.positionsGroupe.find((p) => p.Groupe === groupeId)!;
+    const besoinOrigine = position.Besoin;
+    m.brancherEcriture(ecritureDeTest({deplacerPosition: async () => { throw new Error('document indisponible'); }}));
+
+    await expect(m.deplacerPosition(position.id, m.besoins[1]!.id)).rejects.toThrow('document indisponible');
+
+    expect(m.positionsGroupe.find((p) => p.id === position.id)?.Besoin).toBe(besoinOrigine);
+  });
+
+  it('ne fait rien pour une position inconnue (le pont n’est pas appelé)', async () => {
+    const m = new Magasin(normaliser());
+    let appele = false;
+    m.brancherEcriture(ecritureDeTest({deplacerPosition: async () => { appele = true; }}));
+
+    await m.deplacerPosition(-1, m.besoins[0]!.id);
+
+    expect(appele).toBe(false);
+  });
+});
+
+describe('Magasin.ajouterPosition', () => {
+  it('en mode connecté, attend l’id rendu par le pont avant d’ajouter la position localement', async () => {
+    const m = new Magasin(normaliser());
+    const groupeId = await m.creerGroupeSurBesoin(m.besoins[0]!.id);
+    const autreBesoin = m.besoins[1]!;
+    const appels: string[] = [];
+    m.brancherEcriture(ecritureDeTest({
+      ajouterPosition: async (g, besoinId) => { appels.push(`ajouterPosition(${g},${besoinId})`); return 801; },
+    }));
+
+    const positionId = await m.ajouterPosition(groupeId, autreBesoin.id);
+
+    expect(positionId).toBe(801);
+    expect(appels).toEqual([`ajouterPosition(${groupeId},${autreBesoin.id})`]);
+    expect(m.positionsGroupe.find((p) => p.id === 801)).toEqual({id: 801, Groupe: groupeId, Besoin: autreBesoin.id});
+  });
+
+  it('en mode connecté, si le pont échoue, aucune position n’est ajoutée localement', async () => {
+    const m = new Magasin(normaliser());
+    const groupeId = await m.creerGroupeSurBesoin(m.besoins[0]!.id);
+    const nbPositionsAvant = m.positionsGroupe.length;
+    m.brancherEcriture(ecritureDeTest({ajouterPosition: async () => { throw new Error('document indisponible'); }}));
+
+    await expect(m.ajouterPosition(groupeId, m.besoins[1]!.id)).rejects.toThrow('document indisponible');
+
+    expect(m.positionsGroupe).toHaveLength(nbPositionsAvant);
   });
 });
 
@@ -161,12 +345,12 @@ describe('Magasin.creerMission', () => {
   it("avec une écriture branchée (mode connecté), attend l'id qu'elle rend avant d'insérer localement", async () => {
     const m = new Magasin(normaliser());
     const appels: unknown[] = [];
-    m.brancherEcriture({
+    m.brancherEcriture(ecritureDeTest({
       creerMission: async (patch) => {
         appels.push(patch);
         return 999;
       },
-    });
+    }));
 
     const id = await m.creerMission(missionDeTest(m));
 
@@ -178,7 +362,7 @@ describe('Magasin.creerMission', () => {
   it("ne crée rien localement si l'écriture branchée échoue", async () => {
     const m = new Magasin(normaliser());
     const nbMissionsAvant = m.missions.length;
-    m.brancherEcriture({creerMission: async () => { throw new Error('document indisponible'); }});
+    m.brancherEcriture(ecritureDeTest({creerMission: async () => { throw new Error('document indisponible'); }}));
 
     await expect(m.creerMission(missionDeTest(m))).rejects.toThrow('document indisponible');
     expect(m.missions).toHaveLength(nbMissionsAvant);

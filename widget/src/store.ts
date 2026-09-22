@@ -35,6 +35,15 @@ type Listener = () => void;
  * Nouvelle mutation qui doit persister (macro-créneaux, sous-créneaux,
  * indicatifs…) : ajouter sa méthode ici plutôt qu'un nouveau champ/
  * `brancherXxx` séparé, pour ne jamais avoir plusieurs ponts divergents.
+ *
+ * Chaque méthode correspond à un seul aller-retour Grist, jamais à une
+ * séquence complète : `creerGroupeSurBesoin` (§6.3, un indicatif) est
+ * trois allers-retours liés (`creerGroupe` → `positionnerGroupe` →
+ * `definirPlaces`), parce qu'un identifiant créé par un appel
+ * `applyUserActions` ne peut pas être référencé par une action du même
+ * appel (contrainte Grist, vérifiée en vrai — voir
+ * `scripts/verifier-ecritures-v01.ts`) ; c'est la méthode `Magasin` qui
+ * orchestre la séquence, jamais l'implémentation de `EcritureGrist`.
  */
 export interface EcritureGrist {
   /** Écrit une mission et rend l'id que Grist lui attribue — voir
@@ -42,6 +51,26 @@ export interface EcritureGrist {
    *  pour que le référentiel ne s'écarte jamais du document sur l'id
    *  d'une mission (un besoin peut aussitôt la référencer). */
   creerMission(mission: Omit<Mission, 'id'>): Promise<Id>;
+  /** Écrit un besoin (mission × sous-créneau) et rend son id réel. */
+  creerBesoin(besoin: {
+    missionId: Id; sousCreneauId: Id; effectifMin: number; effectifMax: number; tailleGroupe: number;
+  }): Promise<Id>;
+  /** Écrit un indicatif (`Groupe`) et rend son id réel — première étape de
+   *  `Magasin.creerGroupeSurBesoin`. */
+  creerGroupe(groupe: {code: string; taille: number; equipeId: Id}): Promise<Id>;
+  /** Positionne un groupe déjà réel sur un besoin déjà réel. L'id de la
+   *  position n'est volontairement pas rendu : il ne sert qu'à un
+   *  déplacement ultérieur (`deplacerPosition`), retrouvé au rechargement
+   *  du document plutôt que suivi en mémoire d'une session à l'autre. */
+  positionnerGroupe(groupeId: Id, besoinId: Id): Promise<void>;
+  /** Crée les places (vides) d'un groupe déjà réel. */
+  definirPlaces(groupeId: Id, taille: number): Promise<void>;
+  /** Déplace une position déjà réelle vers un autre besoin déjà réel
+   *  (glisser-déposer d'un indicatif, page Indicatifs). */
+  deplacerPosition(positionId: Id, nouveauBesoinId: Id): Promise<void>;
+  /** Positionne un groupe déjà réel sur un second besoin (« + Ajouter une
+   *  position ») et rend l'id réel de cette nouvelle position. */
+  ajouterPosition(groupeId: Id, besoinId: Id): Promise<Id>;
 }
 
 function prochainId(lignes: {id: Id}[]): Id {
@@ -224,16 +253,21 @@ export class Magasin {
   }
 
   /** Déplace un positionnement d'indicatif vers un autre besoin : ne touche
-   *  qu'une ligne `PositionGroupe`, jamais le reste du planning (contrainte C). */
-  deplacerPosition(positionId: Id, nouveauBesoinId: Id): void {
+   *  qu'une ligne `PositionGroupe`, jamais le reste du planning (contrainte C).
+   *  `positionId`/`nouveauBesoinId` doivent déjà être réels en mode connecté
+   *  (créés par ce magasin, donc via `EcritureGrist` — voir son en-tête) :
+   *  une position tout juste créée dans cette même session n'est déplaçable
+   *  qu'après rechargement du document. */
+  async deplacerPosition(positionId: Id, nouveauBesoinId: Id): Promise<void> {
     const position = this.data.positionsGroupe.find((p) => p.id === positionId);
     if (!position) { return; }
+    if (this.ecriture) { await this.ecriture.deplacerPosition(positionId, nouveauBesoinId); }
     position.Besoin = nouveauBesoinId;
     this.notifier();
   }
 
-  ajouterPosition(groupeId: Id, besoinId: Id): Id {
-    const id = prochainId(this.data.positionsGroupe);
+  async ajouterPosition(groupeId: Id, besoinId: Id): Promise<Id> {
+    const id = this.ecriture ? await this.ecriture.ajouterPosition(groupeId, besoinId) : prochainId(this.data.positionsGroupe);
     this.data.positionsGroupe.push({id, Groupe: groupeId, Besoin: besoinId});
     this.notifier();
     return id;
@@ -251,17 +285,20 @@ export class Magasin {
    *  `creerGroupeSurBesoin`, comme aujourd'hui. Ne rien créer sur une case
    *  reste le geste pour une zone volontairement non couverte : cette
    *  méthode n'est jamais appelée automatiquement. */
-  creerBesoin(
+  async creerBesoin(
     missionId: Id, sousCreneauId: Id, params: {effectifMin?: number; tailleGroupe?: number} = {},
-  ): Id {
+  ): Promise<Id> {
     const tailleGroupe = params.tailleGroupe ?? 2;
     const effectifMin = params.effectifMin ?? tailleGroupe;
-    const id = prochainId(this.data.besoins);
+    const effectifMax = Math.max(tailleGroupe, effectifMin);
+    const id = this.ecriture
+      ? await this.ecriture.creerBesoin({missionId, sousCreneauId, effectifMin, effectifMax, tailleGroupe})
+      : prochainId(this.data.besoins);
     this.data.besoins.push({
       id, Mission: missionId, Sous_creneau: sousCreneauId,
-      Effectif_min: effectifMin, Effectif_max: Math.max(tailleGroupe, effectifMin), Taille_groupe: tailleGroupe,
+      Effectif_min: effectifMin, Effectif_max: effectifMax, Taille_groupe: tailleGroupe,
     });
-    this.creerGroupeSurBesoin(id, tailleGroupe);
+    await this.creerGroupeSurBesoin(id, tailleGroupe);
     return id;
   }
 
@@ -270,7 +307,7 @@ export class Magasin {
    *  déjà son binôme par défaut (§6.3, dimensionnement — un second binôme
    *  s'ajoute explicitement plutôt que d'agrandir le premier). L'équipe du
    *  nouvel indicatif reprend celle de la mission du besoin. */
-  creerGroupeSurBesoin(besoinId: Id, taille = 2): Id {
+  async creerGroupeSurBesoin(besoinId: Id, taille = 2): Promise<Id> {
     const besoin = this.data.besoins.find((b) => b.id === besoinId);
     if (!besoin) { return -1; }
     const mission = this.data.missions.find((mi) => mi.id === besoin.Mission);
@@ -278,19 +315,27 @@ export class Magasin {
     const equipe = this.data.equipes.find((e) => e.id === equipeId);
     const prefixe = (equipe?.Nom ?? 'XX').slice(0, 2).toUpperCase();
     const numero = this.data.groupes.length + 1;
+    const code = `${prefixe}${String(numero).padStart(2, '0')}`;
 
-    const groupeId = prochainId(this.data.groupes);
-    this.data.groupes.push({
-      id: groupeId, Code: `${prefixe}${String(numero).padStart(2, '0')}`,
-      Taille: taille, Equipe: equipeId, Notes: '',
-    });
+    // Trois allers-retours liés (`EcritureGrist`, voir son en-tête) : le
+    // groupe doit exister côté Grist avant de pouvoir le positionner, qui
+    // doit lui-même exister avant que ses places aient un sens.
+    const groupeId = this.ecriture
+      ? await this.ecriture.creerGroupe({code, taille, equipeId})
+      : prochainId(this.data.groupes);
+    this.data.groupes.push({id: groupeId, Code: code, Taille: taille, Equipe: equipeId, Notes: ''});
+
+    if (this.ecriture) { await this.ecriture.positionnerGroupe(groupeId, besoinId); }
+    this.data.positionsGroupe.push({id: prochainId(this.data.positionsGroupe), Groupe: groupeId, Besoin: besoinId});
+
+    if (this.ecriture) { await this.ecriture.definirPlaces(groupeId, taille); }
     for (let rang = 1; rang <= taille; rang++) {
       this.data.places.push({
         id: prochainId(this.data.places), Groupe: groupeId, Rang: rang,
         Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0,
       });
     }
-    this.data.positionsGroupe.push({id: prochainId(this.data.positionsGroupe), Groupe: groupeId, Besoin: besoinId});
+
     this.notifier();
     return groupeId;
   }
