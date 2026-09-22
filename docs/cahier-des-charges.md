@@ -607,10 +607,22 @@ Liste de travail, à arbitrer (voir le brainstorm dans le fil et la
    Permet aussi de créer et modifier un passage (nom, lieu, début, fin) : la
    table `Artistes` est un passage par ligne (§6), donc un artiste qui joue
    plusieurs fois se déclare en plusieurs lignes du même nom, sans qu'il
-   faille distinguer « artiste » et « passage » dans le modèle. Le passage
-   n'est pas rattaché à un macro-créneau ni à une colonne jour : ses horaires
-   se saisissent en durée libre, sans le découpage en sous-créneaux ni le pas
-   de 15 minutes utilisés pour l'agenda. *(Demande Antoine, 2026-09-22.)*
+   faille distinguer « artiste » et « passage » dans le modèle. Le formulaire
+   de création/édition saisit le passage en durée libre, sans le découpage en
+   sous-créneaux ni le pas de 15 minutes utilisés pour l'agenda.
+   *(Demande Antoine, 2026-09-22.)*
+
+   Présentée en frise, sur le même principe que la grille Missions (§8.2) :
+   chaque artiste est une ligne, ses passages des blocs posés sur un axe
+   commun au quart d'heure, un onglet par jour de festival. Glisser un bloc
+   le déplace, ALT maintenu le redimensionne depuis le bord saisi — ce geste
+   se cale au quart d'heure (l'axe de la frise), même si le formulaire reste
+   en durée libre. Cliquer la piste d'une ligne crée un nouveau passage pour
+   ce même artiste, nom verrouillé. Un passage n'est rattaché à aucun
+   macro-créneau : l'axe de chaque jour se calcule à partir des passages de ce
+   jour, pas des macro-créneaux, pour que la vue reste utilisable même sans
+   aucune mission créée. *(Demande Antoine, 2026-09-22, en suite de la
+   refonte de la grille Missions.)*
 9. **Vue jour J** — ce qui tourne maintenant, absences et remplacements.
 10. **Vue disponibilités** — saisie et correction rapides.
 

@@ -7,7 +7,7 @@
  * l'agenda ; rien n'est réinventé ici.
  */
 
-import type {Artiste, Id} from '../domain/types';
+import type {Artiste, Epoch, Id} from '../domain/types';
 import type {Magasin} from '../store';
 import {epochDepuisDateEtHeure, libelleHeurePlage} from '../temps';
 import {h, ouvrirModal} from './dom';
@@ -30,25 +30,42 @@ function versDatetimeLocal(epochSecondes: number): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+export interface ValeursInitialesArtiste {
+  readonly nom?: string;
+  /** Champ Nom désactivé — cas du clic sur la piste d'une ligne déjà
+   *  associée à un artiste (§8.8) : le nom est déterminé par la ligne
+   *  cliquée, pas à ressaisir ni à modifier par erreur. */
+  readonly nomVerrouille?: boolean;
+  readonly lieu?: Id;
+  readonly debut?: Epoch;
+  readonly fin?: Epoch;
+}
+
 function formulaire(
   m: Magasin, titre: string, texteBouton: string, artisteExistant: Artiste | null,
+  valeursInitiales: ValeursInitialesArtiste | null,
   onValider: (patch: Omit<Artiste, 'id'> & {id?: Id}) => Promise<unknown>,
 ): void {
   const champNom = h('input', {
-    class: 'input', type: 'text', placeholder: 'Nom de l’artiste', value: artisteExistant?.Nom ?? '',
+    class: 'input', type: 'text', placeholder: 'Nom de l’artiste',
+    value: artisteExistant?.Nom ?? valeursInitiales?.nom ?? '',
+    disabled: valeursInitiales?.nomVerrouille ?? false,
   }) as HTMLInputElement;
 
+  const lieuInitial = artisteExistant?.Lieu ?? valeursInitiales?.lieu;
   const champLieu = h('select', {class: 'select'},
-    ...m.lieux.map((l) => h('option', {value: String(l.id), selected: l.id === artisteExistant?.Lieu}, l.Nom)),
+    ...m.lieux.map((l) => h('option', {value: String(l.id), selected: l.id === lieuInitial}, l.Nom)),
   ) as HTMLSelectElement;
 
+  const debutInitial = artisteExistant?.Debut ?? valeursInitiales?.debut;
+  const finInitial = artisteExistant?.Fin ?? valeursInitiales?.fin;
   const champDebut = h('input', {
     class: 'input', type: 'datetime-local',
-    value: artisteExistant ? versDatetimeLocal(artisteExistant.Debut) : '',
+    value: debutInitial != null ? versDatetimeLocal(debutInitial) : '',
   }) as HTMLInputElement;
   const champFin = h('input', {
     class: 'input', type: 'datetime-local',
-    value: artisteExistant ? versDatetimeLocal(artisteExistant.Fin) : '',
+    value: finInitial != null ? versDatetimeLocal(finInitial) : '',
   }) as HTMLInputElement;
 
   const erreur = creerErreur();
@@ -89,12 +106,24 @@ function formulaire(
 }
 
 export function ouvrirModalCreationArtiste(m: Magasin): void {
-  formulaire(m, 'Nouveau passage', 'Créer', null, (patch) => m.enregistrerArtiste(patch));
+  formulaire(m, 'Nouveau passage', 'Créer', null, null, (patch) => m.enregistrerArtiste(patch));
+}
+
+/** Un nouveau passage pour un artiste qui a déjà au moins une ligne dans la
+ *  frise (clic sur sa piste, §8.8) : nom verrouillé sur celui de la ligne,
+ *  horaires suggérés à partir du point cliqué. */
+export function ouvrirModalCreationPassagePourArtiste(
+  m: Magasin, nom: string, valeursInitiales: Omit<ValeursInitialesArtiste, 'nom' | 'nomVerrouille'>,
+): void {
+  formulaire(
+    m, `Nouveau passage — ${nom}`, 'Créer', null, {...valeursInitiales, nom, nomVerrouille: true},
+    (patch) => m.enregistrerArtiste(patch),
+  );
 }
 
 export function ouvrirModalEditionArtiste(m: Magasin, artiste: Artiste): void {
   formulaire(
     m, `Modifier « ${artiste.Nom} » (${libelleHeurePlage(artiste.Debut, artiste.Fin)})`, 'Enregistrer', artiste,
-    (patch) => m.enregistrerArtiste(patch),
+    null, (patch) => m.enregistrerArtiste(patch),
   );
 }

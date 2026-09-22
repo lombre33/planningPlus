@@ -136,6 +136,8 @@ describe('artiste déclaré sans qu’aucune disponibilité n’ait encore été
     });
     expect(() => montrerArtistes(container, m)).not.toThrow();
     expect(container.textContent).toContain('Nuit Blanche');
-    expect(container.textContent).toContain('0 intéressé');
+    const bloc = container.querySelector('[data-bloc-id="1"]');
+    expect(bloc?.textContent).toContain('0');
+    expect(bloc?.getAttribute('title')).toContain('0 intéressé');
   });
 });

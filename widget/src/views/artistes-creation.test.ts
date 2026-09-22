@@ -83,7 +83,7 @@ describe('édition d’un passage existant', () => {
     const m = new Magasin(modeleAvecPassage());
     montrerArtistes(container, m);
 
-    (container.querySelector('button[title="Modifier"]') as HTMLButtonElement).click();
+    (container.querySelector('[data-bloc-id="1"]') as HTMLButtonElement).click();
     const champNom = document.querySelector('input[placeholder="Nom de l’artiste"]') as HTMLInputElement;
     expect(champNom.value).toBe('DJ Test');
 
