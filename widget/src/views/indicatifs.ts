@@ -55,9 +55,15 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
       h('div', {class: 'indicatifs-layout'},
         barreOutils(jours),
         modeCible ? bandeauCible() : null,
-        sousCreneaux.length === 0
-          ? h('p', {class: 'empty'}, 'Aucun sous-créneau ce jour.')
-          : construireGrille(ix, missions, sousCreneaux),
+        jours.length === 0
+          ? h('p', {class: 'empty'}, "Aucun macro-créneau défini pour l'instant. Commencez par l'étape 1 (Agenda), puis définissez des sous-créneaux, avant de positionner des indicatifs ici.")
+          : sousCreneaux.length === 0
+            ? h('p', {class: 'empty'}, 'Aucun sous-créneau ce jour. Définissez-en depuis l’agenda avant de positionner des indicatifs.')
+            : missions.length === 0
+              ? h('p', {class: 'empty'}, equipeFiltre === 'toutes'
+                ? 'Aucune mission définie. Créez vos missions avant de positionner des indicatifs.'
+                : 'Aucune mission pour cette équipe. Changez de filtre ou créez-en une.')
+              : construireGrille(ix, missions, sousCreneaux),
       ),
     );
 
