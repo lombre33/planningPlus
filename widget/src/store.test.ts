@@ -2,6 +2,7 @@ import {describe, expect, it} from 'vitest';
 import type {Id} from './domain/types';
 import {normaliser} from './donnees/normaliser';
 import {Magasin} from './store';
+import {epochDepuisHeureLocale} from './temps';
 
 /** Une paire mission/sous-créneau sans besoin existant, pour tester la
  *  création sans dépendre de la position exacte des données de démo. */
@@ -189,6 +190,76 @@ describe('Magasin.creerMission', () => {
     m.subscribe(() => { notifications += 1; });
 
     await m.creerMission(missionDeTest(m));
+
+    expect(notifications).toBe(1);
+  });
+});
+
+describe('Magasin.redecouperSousCreneaux', () => {
+  function modeleUnMacro(): {m: Magasin; macroId: Id; debut: number; fin: number} {
+    const debut = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 10});
+    const fin = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 12});
+    const m = new Magasin({
+      equipes: [], lieux: [], benevoles: [], missions: [], artistes: [],
+      macroCreneaux: [{id: 1, Nom: 'Journée', Debut: debut, Fin: fin}],
+      sousCreneaux: [], besoins: [], groupes: [], positionsGroupe: [], places: [],
+      disponibilites: [], souhaitsMissions: [], affinites: [],
+    });
+    return {m, macroId: 1, debut, fin};
+  }
+
+  it('découpe toute la plage du macro-créneau par pas de la durée demandée', () => {
+    const {m, macroId, debut, fin} = modeleUnMacro();
+
+    const resultat = m.redecouperSousCreneaux(macroId, 60);
+
+    expect(resultat).toEqual({ok: true});
+    expect(m.sousCreneaux).toHaveLength(2);
+    const [premier, second] = [...m.sousCreneaux].sort((a, b) => a.Debut - b.Debut);
+    expect(premier!.Debut).toBe(debut);
+    expect(premier!.Fin).toBe(debut + 3600);
+    expect(second!.Debut).toBe(debut + 3600);
+    expect(second!.Fin).toBe(fin);
+  });
+
+  it('remplace les sous-créneaux existants plutôt que de les cumuler', () => {
+    const {m, macroId} = modeleUnMacro();
+    m.redecouperSousCreneaux(macroId, 60);
+    expect(m.sousCreneaux).toHaveLength(2);
+
+    m.redecouperSousCreneaux(macroId, 120);
+
+    expect(m.sousCreneaux).toHaveLength(1);
+  });
+
+  it('refuse et ne change rien si un sous-créneau porte déjà une mission (Besoin)', () => {
+    const {m, macroId} = modeleUnMacro();
+    m.redecouperSousCreneaux(macroId, 60);
+    const sousCreneauId = m.sousCreneaux[0]!.id;
+    m.creerBesoin(1, sousCreneauId);
+    const avant = m.sousCreneaux;
+
+    const resultat = m.redecouperSousCreneaux(macroId, 120);
+
+    expect(resultat.ok).toBe(false);
+    if (!resultat.ok) { expect(resultat.raison).toMatch(/déjà rattachées/); }
+    expect(m.sousCreneaux).toBe(avant);
+  });
+
+  it('renvoie une erreur pour un macro-créneau introuvable', () => {
+    const {m} = modeleUnMacro();
+
+    const resultat = m.redecouperSousCreneaux(999, 60);
+
+    expect(resultat.ok).toBe(false);
+  });
+
+  it('notifie les abonnés une seule fois en cas de succès', () => {
+    const {m, macroId} = modeleUnMacro();
+    let notifications = 0;
+    m.subscribe(() => { notifications += 1; });
+
+    m.redecouperSousCreneaux(macroId, 60);
 
     expect(notifications).toBe(1);
   });

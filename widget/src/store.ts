@@ -10,6 +10,7 @@ import type {
   Affinite, Artiste, Benevole, Besoin, Disponibilite, Equipe, Groupe, Id, Lieu, MacroCreneau,
   Mission, Modele, OriginePlace, Place, PositionGroupe, SouhaitMission, SousCreneau,
 } from './domain/types';
+import {libelleHeurePlage} from './temps';
 
 type Listener = () => void;
 
@@ -141,6 +142,34 @@ export class Magasin {
   supprimerSousCreneau(id: Id): void {
     this.data.sousCreneaux = this.data.sousCreneaux.filter((s) => s.id !== id);
     this.notifier();
+  }
+
+  /** Redécoupe automatiquement les sous-créneaux d'un macro-créneau existant
+   *  sur toute sa plage, par pas de `dureeMinutes` (§8 point 3 : « une option
+   *  pour que ça les place tout seul »). Remplace entièrement les
+   *  sous-créneaux actuels du macro-créneau — utile après une création à la
+   *  volée, ou pour changer la durée après coup, mais jamais quand l'un
+   *  d'eux porte déjà une mission (`Besoin`) : on refuse plutôt que
+   *  d'orpheliner silencieusement une affectation en cours. */
+  redecouperSousCreneaux(macroId: Id, dureeMinutes: number): {ok: true} | {ok: false; raison: string} {
+    const macro = this.data.macroCreneaux.find((m) => m.id === macroId);
+    if (!macro) { return {ok: false, raison: 'Macro-créneau introuvable.'}; }
+    const actuels = this.data.sousCreneaux.filter((s) => s.Macro_creneau === macroId);
+    const aUneMission = actuels.some((s) => this.data.besoins.some((b) => b.Sous_creneau === s.id));
+    if (aUneMission) {
+      return {ok: false, raison: 'Des missions sont déjà rattachées à ces sous-créneaux : supprimez-les avant de redécouper.'};
+    }
+    this.data.sousCreneaux = this.data.sousCreneaux.filter((s) => s.Macro_creneau !== macroId);
+    const dureeSec = dureeMinutes * 60;
+    for (let t = macro.Debut; t < macro.Fin; t += dureeSec) {
+      const fin = Math.min(t + dureeSec, macro.Fin);
+      this.data.sousCreneaux.push({
+        id: prochainId(this.data.sousCreneaux), Macro_creneau: macroId, Mission: null,
+        Libelle: libelleHeurePlage(t, fin), Debut: t, Fin: fin,
+      });
+    }
+    this.notifier();
+    return {ok: true};
   }
 
   // --- Écriture : affectations ------------------------------------------------
