@@ -16,6 +16,12 @@ import type {Magasin} from '../store';
 import {fermerPanneau, h, icone, ICONES, ouvrirModal, ouvrirPanneau, vider} from '../ui/dom';
 import {creerErreur} from '../ui/modalCreneau';
 
+/** Couleur posée sur une équipe créée depuis cet écran minimal (pas de
+ *  sélecteur de couleur ici — demande d'Antoine du 2026-09-22 : juste de
+ *  quoi ne plus être bloqué). Une vraie page de gestion des équipes (V0.2)
+ *  laissera la choisir. */
+const COULEUR_EQUIPE_PAR_DEFAUT = '#94a3b8';
+
 export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
   let jourIndex = 0;
   let equipeFiltre: Id | 'toutes' = 'toutes';
@@ -125,12 +131,23 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
    *  sur une case de la grille. En mode connecté, `m.creerMission` écrit
    *  réellement dans le document Grist et attend l'id qu'il attribue avant
    *  de fermer la fenêtre — pas de fermeture optimiste, pour ne jamais
-   *  laisser croire qu'une mission est créée si l'écriture a échoué. */
+   *  laisser croire qu'une mission est créée si l'écriture a échoué.
+   *
+   *  Sur un document sans aucune équipe (premier jour, demande d'Antoine du
+   *  2026-09-22) : pas de blocage vers la table Grist ni de page de gestion
+   *  — un champ nomme l'équipe à créer, créée juste avant la mission qui
+   *  l'utilise. `equipeCreeId` retient l'id réel une fois obtenu pour qu'un
+   *  nouvel essai après un échec de la mission ne recrée pas l'équipe. */
   function ouvrirCreationMission(): void {
     const champNom = h('input', {class: 'input', type: 'text', placeholder: 'Contrôle des bracelets'}) as HTMLInputElement;
-    const champEquipe = h('select', {class: 'select'},
+    const pasDEquipe = m.equipes.length === 0;
+    const champEquipe = pasDEquipe ? null : h('select', {class: 'select'},
       ...m.equipes.map((eq) => h('option', {value: String(eq.id)}, eq.Nom)),
     ) as HTMLSelectElement;
+    const champNouvelleEquipe = pasDEquipe
+      ? h('input', {class: 'input', type: 'text', placeholder: 'Bars'}) as HTMLInputElement
+      : null;
+    let equipeCreeId: Id | null = null;
     const champLieu = h('select', {class: 'select'},
       h('option', {value: ''}, '— aucun —'),
       ...m.lieux.map((l) => h('option', {value: String(l.id)}, l.Nom)),
@@ -142,12 +159,6 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
     ) as HTMLSelectElement;
     const erreur = creerErreur();
 
-    if (m.equipes.length === 0) {
-      erreur.afficher(
-        'Aucune équipe dans ce document. Ajoutez au moins une ligne dans la table Grist « Equipes » avant de créer une mission.',
-      );
-    }
-
     ouvrirModal('Nouvelle mission', (fermer) => {
       const boutonCreer = h('button', {
         class: 'btn btn--primary', type: 'button',
@@ -157,15 +168,24 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
             erreur.afficher('Merci de renseigner un nom.');
             return;
           }
-          if (m.equipes.length === 0) { return; }
+          const nomEquipe = champNouvelleEquipe?.value.trim() ?? '';
+          if (champNouvelleEquipe && equipeCreeId == null && !nomEquipe) {
+            erreur.afficher("Ce document n'a encore aucune équipe : merci de la nommer.");
+            return;
+          }
           boutonCreer.setAttribute('disabled', 'true');
           erreur.effacer();
           try {
+            if (champNouvelleEquipe && equipeCreeId == null) {
+              equipeCreeId = await m.creerEquipe({
+                Nom: nomEquipe, Couleur: COULEUR_EQUIPE_PAR_DEFAUT, Notes: '',
+              });
+            }
             await m.creerMission({
               Nom: nom,
               Description: '',
               Lieu: champLieu.value ? Number(champLieu.value) : 0,
-              Equipe: Number(champEquipe.value),
+              Equipe: equipeCreeId ?? Number(champEquipe!.value),
               Priorite: champPriorite.value as Mission['Priorite'],
               Competences_requises: [],
             });
@@ -180,9 +200,11 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
       return h('div', {style: {display: 'flex', flexDirection: 'column', gap: '14px'}},
         h('div', {class: 'field'}, h('label', null, 'Nom'), champNom),
         h('div', {class: 'modal__row'},
-          h('div', {class: 'field'}, h('label', null, 'Équipe'), champEquipe),
+          h('div', {class: 'field'}, h('label', null, 'Équipe'), champNouvelleEquipe ?? champEquipe!),
           h('div', {class: 'field'}, h('label', null, 'Lieu'), champLieu),
         ),
+        champNouvelleEquipe && h('p', {class: 'topbar__subtitle'},
+          "Ce document n'a encore aucune équipe : elle sera créée avec cette mission."),
         h('div', {class: 'field'}, h('label', null, 'Priorité'), champPriorite),
         erreur.noeud,
         h('div', {class: 'modal__actions'},
