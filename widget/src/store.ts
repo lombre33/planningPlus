@@ -316,13 +316,15 @@ export class Magasin {
    *  pour que ça les place tout seul »). Remplace entièrement les
    *  sous-créneaux actuels du macro-créneau — utile après une création à la
    *  volée, ou pour changer la durée après coup, mais jamais quand l'un
-   *  d'eux porte déjà une mission (`Besoin`) : on refuse plutôt que
-   *  d'orpheliner silencieusement une affectation en cours. */
+   *  d'eux porte déjà une mission : un besoin positionné dessus, ou un
+   *  créneau propre à une mission (`Sous_creneau.Mission`, §8 grille
+   *  Missions, qui n'a pas forcément de `Besoin`) — on refuse dans les deux
+   *  cas plutôt que d'orpheliner ou d'effacer silencieusement ce travail. */
   async redecouperSousCreneaux(macroId: Id, dureeMinutes: number): Promise<{ok: true} | {ok: false; raison: string}> {
     const macro = this.data.macroCreneaux.find((m) => m.id === macroId);
     if (!macro) { return {ok: false, raison: 'Macro-créneau introuvable.'}; }
     const actuels = this.data.sousCreneaux.filter((s) => s.Macro_creneau === macroId);
-    const aUneMission = actuels.some((s) => this.data.besoins.some((b) => b.Sous_creneau === s.id));
+    const aUneMission = actuels.some((s) => s.Mission != null || this.data.besoins.some((b) => b.Sous_creneau === s.id));
     if (aUneMission) {
       return {
         ok: false,
