@@ -68,7 +68,7 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
           )),
         ),
       ),
-      sousCreneaux.length === 0 || !jour
+      !jour
         ? h('p', {class: 'empty'}, 'Aucun sous-créneau ce jour.')
         : construireTable(ix, missions, jour, sousCreneaux),
     );

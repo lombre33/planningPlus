@@ -200,4 +200,32 @@ describe('montrerGrille — trame au quart d’heure et créneau propre à une m
 
     container.remove();
   });
+
+  it("sans aucun découpage commun sur le jour, la ligne de la mission existe déjà et accepte un créneau propre (l'un ne dépend pas de l'autre)", async () => {
+    const {m, macroId, missionId} = modeleAvecMission();
+    // Aucun redecouperSousCreneaux : le jour n'a encore aucun sous-créneau commun.
+    const container = document.createElement('div');
+    document.body.append(container);
+    montrerGrille(container, m);
+
+    expect(container.querySelector('.empty')).toBeNull();
+    const cellulesAvant = Array.from(container.querySelectorAll('tbody td')).slice(1) as HTMLTableCellElement[];
+    expect(cellulesAvant.map((td) => td.colSpan)).toEqual([8]);
+    expect(cellulesAvant[0]!.classList.contains('besoin-cell--horscadre')).toBe(true);
+
+    (Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent === '+ créneau') as HTMLButtonElement).click();
+    const [champDebut, champFin] = Array.from(document.querySelectorAll('input[type="time"]')) as HTMLInputElement[];
+    champDebut!.value = '10:15';
+    champFin!.value = '11:00';
+    (Array.from(document.querySelectorAll('button')).find((b) => b.textContent === 'Créer') as HTMLButtonElement).click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(m.sousCreneaux.filter((sc) => sc.Mission === missionId)).toHaveLength(1);
+    expect(m.sousCreneaux[0]!.Macro_creneau).toBe(macroId);
+    const cellulesApres = Array.from(container.querySelectorAll('tbody td')).slice(1) as HTMLTableCellElement[];
+    expect(cellulesApres.map((td) => td.colSpan)).toEqual([1, 3, 4]);
+
+    container.remove();
+  });
 });
