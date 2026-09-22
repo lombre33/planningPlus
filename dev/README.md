@@ -105,6 +105,19 @@ dix-sept tables existent et sont toutes à zéro ligne — sur le fichier produi
 pas seulement sur l'intention du script : la seule vérification qui compte
 avant de distribuer un fichier à des gens qu'on ne verra jamais.
 
+**Une adresse reste visible dans l'historique du document importé** (table
+interne `_gristsys_ActionHistory`, consultable par exemple via l'onglet
+« Document history ») : Grist retient toujours la dernière action d'un
+document, même en structure seule, et celle-ci porte l'identité du compte
+qui a produit ce fichier localement — `antoine@exemple.test` pour la version
+actuelle, un compte de test sur le domaine réservé `.test` (RFC 2606, ne peut
+désigner personne), sans aucun rapport avec le véritable Antoine du projet.
+Ni une donnée de festival ni une fuite : un résidu du mécanisme natif de
+Grist, présent sur *tout* document ainsi téléchargé, pas quelque chose que
+ce fichier fait de particulier. Il disparaîtra de lui-même le jour où la
+régénération se fera depuis un compte au nom neutre ; rien à construire pour
+ça d'ici là.
+
 ### Procédure d'import, telle qu'exécutée et vérifiée en vrai
 
 1. Récupérer `dev/seed/modele-planningplus.grist`.
