@@ -10,8 +10,39 @@ import type {
   Affinite, Artiste, Benevole, Besoin, Disponibilite, Equipe, Groupe, Id, Lieu, MacroCreneau,
   Mission, Modele, OriginePlace, Place, PositionGroupe, SouhaitMission, SousCreneau,
 } from './domain/types';
+import {libelleHeurePlage} from './temps';
 
 type Listener = () => void;
+
+/**
+ * Le pont générique entre le `Magasin` et le document Grist réel :
+ * une seule interface, une seule méthode `brancherEcriture` pour la
+ * relier, quelle que soit la vue ou le fil à l'origine de la mutation.
+ * Sans écriture branchée (mode démo, ou tant qu'une méthode donnée n'a
+ * pas encore son constructeur d'actions côté `grist/ecriture.ts`), la
+ * mutation correspondante du `Magasin` reste purement locale, exactement
+ * comme aujourd'hui.
+ *
+ * Chaque méthode ici doit écrire réellement dans le document (via
+ * `grist/ecriture.ts` + `appliquerActions`) et ne résoudre qu'une fois
+ * l'écriture confirmée — jamais de succès optimiste : une mutation qui a
+ * l'air d'avoir marché à l'écran mais que Grist a refusée est pire que
+ * pas d'écriture du tout. La méthode du `Magasin` qui l'appelle attend
+ * cette promesse avant de toucher l'état local (voir `creerMission`) ;
+ * si elle rejette, l'appelant (la vue) affiche l'échec au lieu de
+ * l'avaler — voir `views/grille.ts` `ouvrirCreationMission`.
+ *
+ * Nouvelle mutation qui doit persister (macro-créneaux, sous-créneaux,
+ * indicatifs…) : ajouter sa méthode ici plutôt qu'un nouveau champ/
+ * `brancherXxx` séparé, pour ne jamais avoir plusieurs ponts divergents.
+ */
+export interface EcritureGrist {
+  /** Écrit une mission et rend l'id que Grist lui attribue — voir
+   *  `Magasin.creerMission`, qui l'attend avant d'insérer localement,
+   *  pour que le référentiel ne s'écarte jamais du document sur l'id
+   *  d'une mission (un besoin peut aussitôt la référencer). */
+  creerMission(mission: Omit<Mission, 'id'>): Promise<Id>;
+}
 
 function prochainId(lignes: {id: Id}[]): Id {
   return lignes.reduce((max, l) => Math.max(max, l.id), 0) + 1;
@@ -20,6 +51,7 @@ function prochainId(lignes: {id: Id}[]): Id {
 export class Magasin {
   private data: Modele;
   private listeners = new Set<Listener>();
+  private ecriture: EcritureGrist | null = null;
 
   constructor(seed: Modele) {
     this.data = seed;
@@ -28,6 +60,12 @@ export class Magasin {
   subscribe(fn: Listener): () => void {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
+  }
+
+  /** Relie ce magasin au document Grist réel (mode connecté, voir
+   *  `main.ts`) : voir `EcritureGrist` ci-dessus pour le contrat. */
+  brancherEcriture(ecriture: EcritureGrist): void {
+    this.ecriture = ecriture;
   }
 
   private notifier(): void {
@@ -50,6 +88,24 @@ export class Magasin {
   get disponibilites(): Disponibilite[] { return this.data.disponibilites; }
   get souhaitsMissions(): SouhaitMission[] { return this.data.souhaitsMissions; }
   get affinites(): Affinite[] { return this.data.affinites; }
+
+  // --- Écriture : référentiel missions ----------------------------------------
+
+  /** Crée une mission dans le référentiel (§1.1 étape 2 : le "quoi" — nom,
+   *  équipe, lieu, priorité — pas le "où/quand". Un besoin, qui croise une
+   *  mission et un sous-créneau, est un objet différent : voir `creerBesoin`,
+   *  qui suppose la mission déjà là). En mode connecté, écrit d'abord dans
+   *  le document Grist réel et attend l'id qu'il attribue, pour que le
+   *  référentiel local ne s'écarte jamais du document sur l'id d'une
+   *  mission (une mission fraîchement créée peut aussitôt être visée par un
+   *  besoin, qui référence cet id) ; en mode démo, génère un id local comme
+   *  toute autre écriture de ce magasin. */
+  async creerMission(patch: Omit<Mission, 'id'>): Promise<Id> {
+    const id = this.ecriture ? await this.ecriture.creerMission(patch) : prochainId(this.data.missions);
+    this.data.missions.push({...patch, id});
+    this.notifier();
+    return id;
+  }
 
   // --- Écriture : agenda -----------------------------------------------------
 
@@ -86,6 +142,34 @@ export class Magasin {
   supprimerSousCreneau(id: Id): void {
     this.data.sousCreneaux = this.data.sousCreneaux.filter((s) => s.id !== id);
     this.notifier();
+  }
+
+  /** Redécoupe automatiquement les sous-créneaux d'un macro-créneau existant
+   *  sur toute sa plage, par pas de `dureeMinutes` (§8 point 3 : « une option
+   *  pour que ça les place tout seul »). Remplace entièrement les
+   *  sous-créneaux actuels du macro-créneau — utile après une création à la
+   *  volée, ou pour changer la durée après coup, mais jamais quand l'un
+   *  d'eux porte déjà une mission (`Besoin`) : on refuse plutôt que
+   *  d'orpheliner silencieusement une affectation en cours. */
+  redecouperSousCreneaux(macroId: Id, dureeMinutes: number): {ok: true} | {ok: false; raison: string} {
+    const macro = this.data.macroCreneaux.find((m) => m.id === macroId);
+    if (!macro) { return {ok: false, raison: 'Macro-créneau introuvable.'}; }
+    const actuels = this.data.sousCreneaux.filter((s) => s.Macro_creneau === macroId);
+    const aUneMission = actuels.some((s) => this.data.besoins.some((b) => b.Sous_creneau === s.id));
+    if (aUneMission) {
+      return {ok: false, raison: 'Des missions sont déjà rattachées à ces sous-créneaux : supprimez-les avant de redécouper.'};
+    }
+    this.data.sousCreneaux = this.data.sousCreneaux.filter((s) => s.Macro_creneau !== macroId);
+    const dureeSec = dureeMinutes * 60;
+    for (let t = macro.Debut; t < macro.Fin; t += dureeSec) {
+      const fin = Math.min(t + dureeSec, macro.Fin);
+      this.data.sousCreneaux.push({
+        id: prochainId(this.data.sousCreneaux), Macro_creneau: macroId, Mission: null,
+        Libelle: libelleHeurePlage(t, fin), Debut: t, Fin: fin,
+      });
+    }
+    this.notifier();
+    return {ok: true};
   }
 
   // --- Écriture : affectations ------------------------------------------------
