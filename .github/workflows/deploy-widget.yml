@@ -1,0 +1,63 @@
+name: Déployer le widget sur GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'widget/**'
+      - '.github/workflows/deploy-widget.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Une seule publication à la fois ; ne pas annuler celle en cours pour ne
+# jamais laisser Pages sur un déploiement partiel.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: widget
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: widget/package-lock.json
+
+      - run: npm ci
+
+      - run: npm test
+
+      # tsc --noEmit puis vite build (voir widget/package.json) : une
+      # erreur de typage bloque la publication au même titre qu'un test
+      # cassé, plutôt que de la découvrir après coup sur Pages.
+      - run: npm run build
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: widget/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
