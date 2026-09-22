@@ -12,16 +12,8 @@
 
 import type {MacroCreneau} from '../domain/types';
 import type {Magasin} from '../store';
-import {epochDepuisDateEtHeure, epochMinuitLocal, libelleHeure} from '../temps';
+import {epochJourFestivalEtHeure, epochMinuitLocal, libelleHeure} from '../temps';
 import {h, ouvrirModal} from './dom';
-
-/** Texte "HH:MM", éventuellement décalé de 24 h si la case "après minuit"
- *  est cochée, pour rester compatible avec epochDepuisDateEtHeure. */
-function texteHeure(champ: HTMLInputElement, apresMinuit: boolean): string {
-  if (!apresMinuit) { return champ.value; }
-  const [heures, minutes] = champ.value.split(':');
-  return `${Number(heures) + 24}:${minutes}`;
-}
 
 export function creerErreur(): {noeud: HTMLElement; afficher: (texte: string) => void; effacer: () => void} {
   const noeud = h('p', {class: 'field-erreur', hidden: true}) as HTMLElement;
@@ -125,8 +117,8 @@ export function ouvrirModalEditionCreneau(m: Magasin, macro: MacroCreneau): void
       h('button', {
         class: 'btn btn--primary', type: 'button',
         onclick: async () => {
-          const debut = epochDepuisDateEtHeure(dateISO, champDebut.value);
-          const finBrute = epochDepuisDateEtHeure(dateISO, texteHeure(champFin, caseApresMinuit.checked));
+          const debut = epochJourFestivalEtHeure(dateISO, champDebut.value);
+          const finBrute = epochJourFestivalEtHeure(dateISO, champFin.value, caseApresMinuit.checked);
           if (debut == null || finBrute == null) { erreur.afficher('Merci de renseigner des horaires valides.'); return; }
           if (finBrute <= debut) { erreur.afficher("L'heure de fin doit être après l'heure de début."); return; }
           erreur.effacer();
@@ -162,8 +154,8 @@ export function ouvrirModalCreationCreneau(m: Magasin, jourCle: string | null, d
       h('button', {
         class: 'btn btn--primary', type: 'button',
         onclick: async () => {
-          const debut = epochDepuisDateEtHeure(champDate.value, champDebut.value);
-          const fin = epochDepuisDateEtHeure(champDate.value, texteHeure(champFin, caseApresMinuit.checked));
+          const debut = epochJourFestivalEtHeure(champDate.value, champDebut.value);
+          const fin = epochJourFestivalEtHeure(champDate.value, champFin.value, caseApresMinuit.checked);
           if (debut == null || fin == null) { erreur.afficher('Merci de renseigner un jour et des horaires valides.'); return; }
           if (fin <= debut) { erreur.afficher("L'heure de fin doit être après l'heure de début."); return; }
           erreur.effacer();
