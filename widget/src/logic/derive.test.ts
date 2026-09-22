@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'vitest';
 import type {Modele} from '../domain/types';
 import {
-  feuilleBenevole, indexer, indicatifsDeLEquipe, ligneArtistes, regrouperParJourFestival,
+  feuilleBenevole, indexer, indicatifsDeLEquipe, ligneArtistes, lignesGroupeesParArtiste, regrouperParJourFestival,
 } from './derive';
 import {epochDepuisHeureLocale} from '../temps';
 import {Magasin} from '../store';
@@ -177,6 +177,32 @@ describe('ligneArtistes', () => {
     const ix = indexer(m);
     const lignes = ligneArtistes(m, ix);
     expect(lignes.map((l) => l.artiste.Nom)).toEqual(['Nuit Blanche', 'Sans public']);
+  });
+});
+
+describe('lignesGroupeesParArtiste', () => {
+  it("regroupe les passages d'un même artiste sous une seule ligne (§8.8, demande Antoine 2026-09-22)", () => {
+    const modele = modeleDeTest();
+    // « Nuit Blanche » joue une seconde fois, plus tard : même nom, ligne
+    // Artistes distincte (un passage = une ligne, §6), pas un artiste séparé.
+    modele.artistes.push({id: 3, Nom: 'Nuit Blanche', Lieu: 1, Debut: 5000, Fin: 6000});
+    const m = new Magasin(modele);
+    const ix = indexer(m);
+    const groupes = lignesGroupeesParArtiste(m, ix);
+
+    expect(groupes).toHaveLength(2); // « Nuit Blanche » (2 passages) + « Sans public »
+    const nuitBlanche = groupes.find((g) => g.nom === 'Nuit Blanche')!;
+    expect(nuitBlanche.passages).toHaveLength(2);
+    expect(nuitBlanche.passages.map((p) => p.artiste.id)).toEqual([1, 3]); // triés par heure
+
+    const sansPublic = groupes.find((g) => g.nom === 'Sans public')!;
+    expect(sansPublic.passages).toHaveLength(1);
+  });
+
+  it('un artiste sans aucun passage ne produit aucune ligne (rien à regrouper)', () => {
+    const m = new Magasin({...modeleDeTest(), artistes: []});
+    const ix = indexer(m);
+    expect(lignesGroupeesParArtiste(m, ix)).toEqual([]);
   });
 });
 

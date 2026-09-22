@@ -625,3 +625,26 @@ export function ligneArtistes(m: Magasin, ix: Index): LigneArtiste[] {
     };
   }).sort((a, b) => a.artiste.Debut - b.artiste.Debut);
 }
+
+export interface LigneGroupeArtiste {
+  nom: string;
+  passages: LigneArtiste[];
+}
+
+/** Un artiste, tous ses passages (§8.8, demande Antoine 2026-09-22 : « chaque
+ *  groupe [d'artiste] est l'équivalent d'une ligne, leur horaire de passage
+ *  un sous-créneau/besoin », même schéma que la vue Missions). La table
+ *  `Artistes` reste un passage par ligne (§6) : un artiste qui joue
+ *  plusieurs fois n'est pas une entité séparée, juste plusieurs lignes du
+ *  même nom regroupées ici pour l'affichage — aucun changement de modèle. */
+export function lignesGroupeesParArtiste(m: Magasin, ix: Index): LigneGroupeArtiste[] {
+  const parNom = new Map<string, LigneArtiste[]>();
+  for (const ligne of ligneArtistes(m, ix)) {
+    const liste = parNom.get(ligne.artiste.Nom) ?? [];
+    liste.push(ligne);
+    parNom.set(ligne.artiste.Nom, liste);
+  }
+  return [...parNom.entries()]
+    .map(([nom, passages]) => ({nom, passages: passages.sort((a, b) => a.artiste.Debut - b.artiste.Debut)}))
+    .sort((a, b) => a.passages[0]!.artiste.Debut - b.passages[0]!.artiste.Debut);
+}
