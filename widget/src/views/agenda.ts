@@ -47,6 +47,25 @@ export function montrerAgenda(container: HTMLElement, m: Magasin): () => void {
     rafraichir();
   }
 
+  /** Confirmation puis suppression d'un macro-créneau (§8, retour Antoine
+   *  2026-09-22 : rien ne permettait de le faire depuis l'agenda). Même
+   *  garde-fou côté Magasin que `redecouperSousCreneaux` : un refus porte sa
+   *  raison plutôt que d'orpheliner silencieusement un besoin déjà posé. */
+  async function demanderSuppressionMacro(macro: MacroCreneau): Promise<void> {
+    const nSous = m.sousCreneaux.filter((s) => s.Macro_creneau === macro.id).length;
+    const message = nSous === 0
+      ? `Supprimer « ${macro.Nom} » ?`
+      : `Supprimer « ${macro.Nom} » et ${nSous === 1 ? 'son sous-créneau' : `ses ${nSous} sous-créneaux`} ?`;
+    if (!window.confirm(message)) { return; }
+    const resultat = await m.supprimerMacroCreneau(macro.id);
+    if (!resultat.ok) {
+      dernierMessage = {texte: resultat.raison, ton: 'danger'};
+      rafraichir();
+      return;
+    }
+    rafraichir();
+  }
+
   function rafraichir(): void {
     vider(container);
     const jours = regrouperParJour(m.macroCreneaux);
@@ -119,6 +138,10 @@ export function montrerAgenda(container: HTMLElement, m: Magasin): () => void {
         class: 'btn btn--ghost btn--sm', type: 'button', style: {padding: '0 2px'}, title: 'Modifier',
         onclick: (e: Event) => { e.stopPropagation(); ouvrirModalEditionCreneau(m, macro); },
       }, '✎'),
+      h('button', {
+        class: 'btn btn--ghost btn--sm', type: 'button', style: {padding: '0 2px'}, title: 'Supprimer',
+        onclick: (e: Event) => { e.stopPropagation(); void demanderSuppressionMacro(macro); },
+      }, '🗑'),
     );
     const poigneeGauche = h('div', {class: 'macro-bloc__resize macro-bloc__resize--gauche', title: 'Glisser pour changer le début'});
     const poigneeDroite = h('div', {class: 'macro-bloc__resize macro-bloc__resize--droite', title: 'Glisser pour changer la fin'});
