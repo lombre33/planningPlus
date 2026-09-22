@@ -1,5 +1,6 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {LIBELLE_PAR_TABLE} from './grist';
+import {epochDepuisHeureLocale} from './temps';
 
 describe('démarrage du widget', () => {
   afterEach(() => {
@@ -138,6 +139,48 @@ describe('démarrage du widget', () => {
     expect(document.querySelector('.field-erreur:not([hidden])')?.textContent)
       .toContain("Échec de l'écriture");
     expect(document.body.textContent).not.toContain('Contrôle billetterie');
+  });
+
+  it("en mode connecté, un redécoupage automatique crée d'abord les nouveaux sous-créneaux puis supprime les anciens (jamais l'inverse) ; si la suppression échoue après la création, le dit sans prétendre à une annulation", async () => {
+    const debut = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 10});
+    const fin = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 12});
+    const actionsRecues: unknown[][][] = [];
+    window.grist = {
+      ready: () => {},
+      docApi: {
+        listTables: async () => TOUTES_LES_TABLES,
+        fetchTable: async (id: string) => {
+          if (id === LIBELLE_PAR_TABLE.Macro_creneaux) { return {id: [1], Nom: ['Vendredi'], Debut: [debut], Fin: [fin]}; }
+          if (id === LIBELLE_PAR_TABLE.Sous_creneaux) {
+            return {id: [10], Macro_creneau: [1], Mission: [0], Libelle: ['ancien'], Debut: [debut], Fin: [debut + 3600]};
+          }
+          return {id: []};
+        },
+        applyUserActions: async (actions: unknown[][]) => {
+          actionsRecues.push(actions);
+          const type = (actions[0] as unknown[])[0];
+          if (type === 'BulkAddRecord') { return {retValues: [[701, 702]]}; }
+          if (type === 'BulkRemoveRecord') { throw new Error('document indisponible'); }
+          return {retValues: []};
+        },
+      },
+    };
+    await demarrerEtAttendre();
+    expect(document.querySelector('.pill--neutral')?.textContent).toBe('Document Grist connecté');
+
+    const boutonModifier = Array.from(document.querySelectorAll('button')).find((b) => b.title === 'Modifier') as HTMLButtonElement;
+    boutonModifier.click();
+    const boutonRedecouper = Array.from(document.querySelectorAll('button'))
+      .find((b) => b.textContent === 'Redécouper automatiquement') as HTMLButtonElement;
+    boutonRedecouper.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(actionsRecues).toHaveLength(2);
+    expect((actionsRecues[0]![0] as unknown[])[0]).toBe('BulkAddRecord');
+    expect((actionsRecues[1]![0] as unknown[])[0]).toBe('BulkRemoveRecord');
+    const messageErreur = document.querySelector('.field-erreur:not([hidden])')?.textContent;
+    expect(messageErreur).toContain('bien été créés');
+    expect(messageErreur).not.toContain('annulé');
   });
 
   it("si une seule table manque (ex. Macro-créneaux), nomme précisément celle-là plutôt que de démarrer avec un trou silencieux", async () => {

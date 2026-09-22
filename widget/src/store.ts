@@ -60,11 +60,18 @@ export interface EcritureGrist {
    *  jamais côté appelant). */
   modifierMacroCreneau(id: Id, macro: {nom: string; debut: Epoch; fin: Epoch}): Promise<void>;
   /** Remplace tous les sous-créneaux d'un macro-créneau déjà réel (§8 point
-   *  3, redécoupage automatique) : supprime les ids donnés puis crée les
-   *  nouveaux — deux allers-retours liés, jamais un seul batché (un id créé
+   *  3, redécoupage automatique) : crée les nouveaux puis supprime les ids
+   *  donnés — deux allers-retours liés, jamais un seul batché (un id créé
    *  par un appel `applyUserActions` ne peut pas être référencé par une
-   *  action du même appel). Rend les ids réels des nouveaux sous-créneaux,
-   *  dans le même ordre que `nouveaux`. */
+   *  action du même appel). Création d'abord, suppression ensuite plutôt
+   *  que l'inverse : si le second aller-retour échoue après le premier, le
+   *  document se retrouve avec un doublon visible et récupérable (les
+   *  anciens et les nouveaux coexistent), jamais un macro-créneau vidé sans
+   *  que rien ne le signale — voir `SuppressionApresCreationEchouee`, que
+   *  cette méthode lève dans ce cas précis (au lieu d'un rejet ordinaire)
+   *  pour que `Magasin.redecouperSousCreneaux` puisse distinguer les deux
+   *  échecs et refléter l'état réel du document. Rend les ids réels des
+   *  nouveaux sous-créneaux, dans le même ordre que `nouveaux`. */
   remplacerSousCreneaux(
     idsASupprimer: readonly Id[],
     nouveaux: readonly {macroCreneauId: Id; missionId: Id | null; libelle: string; debut: Epoch; fin: Epoch}[],
@@ -89,6 +96,20 @@ export interface EcritureGrist {
   /** Positionne un groupe déjà réel sur un second besoin (« + Ajouter une
    *  position ») et rend l'id réel de cette nouvelle position. */
   ajouterPosition(groupeId: Id, besoinId: Id): Promise<Id>;
+}
+
+/** Levée par `EcritureGrist.remplacerSousCreneaux` quand la création des
+ *  nouveaux sous-créneaux a réussi mais que la suppression des anciens a
+ *  échoué ensuite : les deux jeux existent alors réellement dans le
+ *  document. `idsReelsCrees` porte les ids réels des nouveaux (dans l'ordre
+ *  demandé) pour que `Magasin.redecouperSousCreneaux` les ajoute localement
+ *  sans retirer les anciens, plutôt que de laisser croire — comme un rejet
+ *  ordinaire le ferait — que rien n'a changé dans le document. */
+export class SuppressionApresCreationEchouee extends Error {
+  constructor(readonly idsReelsCrees: readonly Id[]) {
+    super('La suppression des anciens sous-créneaux a échoué après la création des nouveaux.');
+    this.name = 'SuppressionApresCreationEchouee';
+  }
 }
 
 function prochainId(lignes: {id: Id}[]): Id {
@@ -215,7 +236,10 @@ export class Magasin {
     const actuels = this.data.sousCreneaux.filter((s) => s.Macro_creneau === macroId);
     const aUneMission = actuels.some((s) => this.data.besoins.some((b) => b.Sous_creneau === s.id));
     if (aUneMission) {
-      return {ok: false, raison: 'Des missions sont déjà rattachées à ces sous-créneaux : supprimez-les avant de redécouper.'};
+      return {
+        ok: false,
+        raison: 'Des missions sont déjà positionnées sur ces sous-créneaux : le redécoupage automatique n\'est pas possible sans risquer de perdre ce travail. Cette interface ne permet pas encore de les retirer.',
+      };
     }
     const idsASupprimer = actuels.map((s) => s.id);
     const dureeSec = dureeMinutes * 60;
@@ -231,7 +255,24 @@ export class Magasin {
           idsASupprimer,
           plages.map((p) => ({macroCreneauId: macroId, missionId: null, libelle: p.libelle, debut: p.debut, fin: p.fin})),
         );
-      } catch {
+      } catch (erreur) {
+        if (erreur instanceof SuppressionApresCreationEchouee) {
+          // Les nouveaux sous-créneaux existent réellement dans le document
+          // (la création a réussi) ; on les ajoute localement SANS retirer
+          // les anciens, pour que l'écran reflète l'état réel de Grist —
+          // un doublon visible, jamais une perte que rien ne signale.
+          plages.forEach((p, i) => {
+            this.data.sousCreneaux.push({
+              id: erreur.idsReelsCrees[i]!, Macro_creneau: macroId, Mission: null,
+              Libelle: p.libelle, Debut: p.debut, Fin: p.fin,
+            });
+          });
+          this.notifier();
+          return {
+            ok: false,
+            raison: 'Les nouveaux sous-créneaux ont bien été créés dans le document, mais les anciens n\'ont pas pu être retirés : supprimez-les manuellement dans Grist.',
+          };
+        }
         return {ok: false, raison: 'Échec de l\'écriture dans le document Grist : le redécoupage a été annulé.'};
       }
     } else {

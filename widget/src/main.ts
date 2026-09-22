@@ -40,7 +40,7 @@ import {
   actionsDefinirPlaces, actionsDeplacerMacroCreneau, actionsDeplacerPositionGroupe, actionsPositionnerGroupe,
   actionsRenommerMacroCreneau, actionsSupprimerSousCreneaux, appliquerActions, LIBELLE_PAR_TABLE, lireDocument,
 } from './grist';
-import {Magasin, type EcritureGrist} from './store';
+import {type EcritureGrist, Magasin, SuppressionApresCreationEchouee} from './store';
 
 const DELAI_CONNEXION_MS = 1500;
 
@@ -93,11 +93,20 @@ function construireEcritureGrist(docApi: DocApiEcriture, resolution: Record<stri
     async remplacerSousCreneaux(idsASupprimer, nouveaux) {
       // Deux allers-retours liés : un id créé par `actionsCreerSousCreneaux`
       // ne peut pas être référencé dans le même `applyUserActions` que celui
-      // qui le crée, donc suppression puis création ne peuvent pas être
+      // qui le crée, donc création et suppression ne peuvent pas être
       // batchées (vérifié en vrai, voir `Magasin.redecouperSousCreneaux`).
-      await appliquerActions(docApi, actionsSupprimerSousCreneaux(idsASupprimer), resolution);
+      // Création d'abord, suppression ensuite : si le second aller-retour
+      // échoue, le document garde les deux jeux (doublon visible et
+      // récupérable) plutôt que de se retrouver vidé sans que rien ne
+      // le signale — voir `SuppressionApresCreationEchouee`.
       const [ids] = await appliquerActions(docApi, actionsCreerSousCreneaux(nouveaux), resolution);
-      return (ids ?? []) as Id[];
+      const idsReels = (ids ?? []) as Id[];
+      try {
+        await appliquerActions(docApi, actionsSupprimerSousCreneaux(idsASupprimer), resolution);
+      } catch {
+        throw new SuppressionApresCreationEchouee(idsReels);
+      }
+      return idsReels;
     },
     async creerBesoin(besoin) {
       const [id] = await appliquerActions(docApi, actionsCreerBesoin(besoin), resolution);

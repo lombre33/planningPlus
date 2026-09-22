@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'vitest';
 import type {Id} from './domain/types';
 import {normaliser} from './donnees/normaliser';
-import {type EcritureGrist, Magasin} from './store';
+import {type EcritureGrist, Magasin, SuppressionApresCreationEchouee} from './store';
 import {epochDepuisHeureLocale} from './temps';
 
 /** Une écriture Grist de test qui rejette tout par défaut (chaque méthode
@@ -429,7 +429,7 @@ describe('Magasin.redecouperSousCreneaux', () => {
     const resultat = await m.redecouperSousCreneaux(macroId, 120);
 
     expect(resultat.ok).toBe(false);
-    if (!resultat.ok) { expect(resultat.raison).toMatch(/déjà rattachées/); }
+    if (!resultat.ok) { expect(resultat.raison).toMatch(/déjà positionnées/); }
     expect(m.sousCreneaux).toBe(avant);
   });
 
@@ -479,6 +479,25 @@ describe('Magasin.redecouperSousCreneaux', () => {
     expect(resultat.ok).toBe(false);
     if (!resultat.ok) { expect(resultat.raison).toMatch(/Échec de l.écriture/); }
     expect(m.sousCreneaux).toBe(avant);
+  });
+
+  it("en mode connecté, si la suppression échoue après une création réussie côté pont, ajoute les nouveaux sans retirer les anciens (le document a réellement les deux) et le dit", async () => {
+    const {m, macroId} = modeleUnMacro();
+    m.brancherEcriture(ecritureDeTest({
+      remplacerSousCreneaux: async (_idsASupprimer, nouveaux) => {
+        throw new SuppressionApresCreationEchouee(nouveaux.map((_, i) => 701 + i));
+      },
+    }));
+
+    const resultat = await m.redecouperSousCreneaux(macroId, 60);
+
+    expect(resultat.ok).toBe(false);
+    if (!resultat.ok) {
+      expect(resultat.raison).toMatch(/bien été créés/);
+      expect(resultat.raison).not.toMatch(/annulé/);
+    }
+    const ids = m.sousCreneaux.map((s) => s.id).sort((a, b) => a - b);
+    expect(ids).toEqual([701, 702]);
   });
 });
 
