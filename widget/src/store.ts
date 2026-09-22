@@ -380,18 +380,15 @@ export class Magasin {
     return id;
   }
 
-  /** Crée un nouveau besoin (mission × sous-créneau) et lui positionne
-   *  aussitôt un premier binôme (§6.3 : un besoin ne naît jamais sans son
-   *  indicatif de base — sans ça, arrivé à l'étape « placer les indicatifs »
-   *  du parcours, il faudrait poser un binôme à la main sur chaque case
-   *  créée, exactement la corvée que le mécanisme des indicatifs épargne).
-   *  Les places du binôme restent vides (Benevole: null) : seul le
-   *  positionnement est automatique, pas l'affectation d'un bénévole précis.
-   *  Effectif_max reprend la taille du binôme par défaut ; un second binôme
-   *  (donc un effectif plus large) s'ajoute ensuite explicitement via
-   *  `creerGroupeSurBesoin`, comme aujourd'hui. Ne rien créer sur une case
-   *  reste le geste pour une zone volontairement non couverte : cette
-   *  méthode n'est jamais appelée automatiquement. */
+  /** Crée un nouveau besoin (mission × sous-créneau), sans aucun indicatif
+   *  dessus (revirement d'Antoine du 2026-09-22 : il pose ses besoins
+   *  d'abord, puis crée et positionne ses binômes lui-même depuis la vue
+   *  Indicatifs — l'ancienne règle, un binôme par défaut posé aussitôt,
+   *  tombe). `tailleGroupe` ne dimensionne donc plus rien ici ; il ne reste
+   *  que pour donner à `Effectif_max` une valeur par défaut cohérente tant
+   *  qu'aucun binôme n'existe. Ne rien créer sur une case reste le geste
+   *  pour une zone volontairement non couverte : cette méthode n'est
+   *  jamais appelée automatiquement. */
   async creerBesoin(
     missionId: Id, sousCreneauId: Id, params: {effectifMin?: number; tailleGroupe?: number} = {},
   ): Promise<Id> {
@@ -405,15 +402,16 @@ export class Magasin {
       id, Mission: missionId, Sous_creneau: sousCreneauId,
       Effectif_min: effectifMin, Effectif_max: effectifMax, Taille_groupe: tailleGroupe,
     });
-    await this.creerGroupeSurBesoin(id, tailleGroupe);
+    this.notifier();
     return id;
   }
 
   /** Crée un nouvel indicatif (un `Groupe` de `taille` places vides) et le
-   *  positionne sur `besoinId` : c'est le « + binôme » d'un besoin qui a
-   *  déjà son binôme par défaut (§6.3, dimensionnement — un second binôme
-   *  s'ajoute explicitement plutôt que d'agrandir le premier). L'équipe du
-   *  nouvel indicatif reprend celle de la mission du besoin. */
+   *  positionne sur `besoinId` : c'est le « + binôme » d'un besoin, qu'il en
+   *  ait déjà un ou aucun — depuis que `creerBesoin` n'en pose plus
+   *  automatiquement, ce geste explicite est désormais le seul moyen d'en
+   *  poser un premier. L'équipe du nouvel indicatif reprend celle de la
+   *  mission du besoin. */
   async creerGroupeSurBesoin(besoinId: Id, taille = 2): Promise<Id> {
     const besoin = this.data.besoins.find((b) => b.id === besoinId);
     if (!besoin) { return -1; }

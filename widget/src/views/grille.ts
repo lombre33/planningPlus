@@ -232,7 +232,7 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
       ),
       erreur.noeud,
       h('p', {class: 'topbar__subtitle'},
-        'Un premier binôme est positionné aussitôt (§6.3) : vous pourrez ensuite le repositionner ou en ajouter un second.',
+        "Aucun indicatif n'est positionné automatiquement : vous les créerez depuis la vue Indicatifs.",
       ),
       h('div', {class: 'modal__actions'},
         h('button', {class: 'btn btn--ghost', type: 'button', onclick: fermer}, 'Annuler'),
