@@ -38,6 +38,13 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
     vider(container);
     container.append(
       h('div', {class: 'agenda__toolbar'},
+        h('button', {
+          class: 'btn btn--primary btn--sm', type: 'button', onclick: () => ouvrirCreationMission(),
+        }, '+ Nouvelle mission'),
+        h('span', {class: 'view__intro', style: {margin: '0'}},
+          "Le référentiel des missions — pas encore où ni quand : ça se joue case par case, ci-dessous."),
+      ),
+      h('div', {class: 'agenda__toolbar'},
         ...jours.map((j, i) => h('button', {
           class: `btn btn--sm${i === jourIndex ? ' btn--primary' : ''}`, type: 'button',
           onclick: () => { jourIndex = i; rafraichir(); },
@@ -111,6 +118,79 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
     }
     const table = h('table', {class: 'grille'}, thead, tbody);
     return h('div', {class: 'grille-wrap'}, table);
+  }
+
+  /** Crée une mission dans le référentiel — le "quoi" (nom, équipe, lieu,
+   *  priorité), pas encore le "où/quand" : ça, c'est `ouvrirCreationBesoin`,
+   *  sur une case de la grille. En mode connecté, `m.creerMission` écrit
+   *  réellement dans le document Grist et attend l'id qu'il attribue avant
+   *  de fermer la fenêtre — pas de fermeture optimiste, pour ne jamais
+   *  laisser croire qu'une mission est créée si l'écriture a échoué. */
+  function ouvrirCreationMission(): void {
+    const champNom = h('input', {class: 'input', type: 'text', placeholder: 'Contrôle des bracelets'}) as HTMLInputElement;
+    const champEquipe = h('select', {class: 'select'},
+      ...m.equipes.map((eq) => h('option', {value: String(eq.id)}, eq.Nom)),
+    ) as HTMLSelectElement;
+    const champLieu = h('select', {class: 'select'},
+      h('option', {value: ''}, '— aucun —'),
+      ...m.lieux.map((l) => h('option', {value: String(l.id)}, l.Nom)),
+    ) as HTMLSelectElement;
+    const champPriorite = h('select', {class: 'select'},
+      h('option', {value: 'Normale', selected: true}, 'Normale'),
+      h('option', {value: 'Critique'}, 'Critique'),
+      h('option', {value: 'Confort'}, 'Confort'),
+    ) as HTMLSelectElement;
+    const erreur = creerErreur();
+
+    if (m.equipes.length === 0) {
+      erreur.afficher(
+        'Aucune équipe dans ce document. Ajoutez au moins une ligne dans la table Grist « Equipes » avant de créer une mission.',
+      );
+    }
+
+    ouvrirModal('Nouvelle mission', (fermer) => {
+      const boutonCreer = h('button', {
+        class: 'btn btn--primary', type: 'button',
+        onclick: async () => {
+          const nom = champNom.value.trim();
+          if (!nom) {
+            erreur.afficher('Merci de renseigner un nom.');
+            return;
+          }
+          if (m.equipes.length === 0) { return; }
+          boutonCreer.setAttribute('disabled', 'true');
+          erreur.effacer();
+          try {
+            await m.creerMission({
+              Nom: nom,
+              Description: '',
+              Lieu: champLieu.value ? Number(champLieu.value) : 0,
+              Equipe: Number(champEquipe.value),
+              Priorite: champPriorite.value as Mission['Priorite'],
+              Competences_requises: [],
+            });
+            fermer();
+          } catch {
+            erreur.afficher("Échec de l'écriture dans le document Grist connecté. Réessayez.");
+            boutonCreer.removeAttribute('disabled');
+          }
+        },
+      }, 'Créer') as HTMLButtonElement;
+
+      return h('div', {style: {display: 'flex', flexDirection: 'column', gap: '14px'}},
+        h('div', {class: 'field'}, h('label', null, 'Nom'), champNom),
+        h('div', {class: 'modal__row'},
+          h('div', {class: 'field'}, h('label', null, 'Équipe'), champEquipe),
+          h('div', {class: 'field'}, h('label', null, 'Lieu'), champLieu),
+        ),
+        h('div', {class: 'field'}, h('label', null, 'Priorité'), champPriorite),
+        erreur.noeud,
+        h('div', {class: 'modal__actions'},
+          h('button', {class: 'btn btn--ghost', type: 'button', onclick: fermer}, 'Annuler'),
+          boutonCreer,
+        ),
+      );
+    });
   }
 
   /** Crée un besoin sur une case volontairement vide jusque-là (étape 2 du

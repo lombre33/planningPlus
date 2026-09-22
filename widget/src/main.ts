@@ -34,7 +34,7 @@ import './style.css';
 import {demarrerApp} from './app';
 import {normaliser} from './donnees/normaliser';
 import {LIBELLE_PAR_TABLE, lireDocument} from './grist';
-import {Magasin} from './store';
+import {Magasin, type EcritureGrist} from './store';
 
 const DELAI_CONNEXION_MS = 1500;
 
@@ -48,6 +48,29 @@ const TABLES_REQUISES = [
   'Sous_creneaux', 'Besoins', 'Groupes', 'Positions_groupe', 'Places',
   'Disponibilites', 'Souhaits_missions', 'Affinites',
 ] as const;
+
+/**
+ * Le pont Grist réel (voir `EcritureGrist` dans `./store`), branché
+ * uniquement en mode connecté — jamais en démo. `grist/ecriture.ts` ne
+ * construit pas encore les actions pour les missions (V0.1, en cours côté
+ * fil Environnement Grist de test) : en attendant, chaque méthode rejette
+ * explicitement plutôt que de laisser le `Magasin` retomber sur une
+ * génération d'id locale, ce qui ferait *croire* à une création réussie
+ * sans jamais écrire dans le document — précisément le piège à éviter en
+ * connecté (le mode démo, lui, n'appelle jamais ce pont : il garde son
+ * id local, comportement inchangé). Remplacer le corps de `creerMission`
+ * par le vrai `appliquerActions(window.grist.docApi, actionsCreerMission(...),
+ * resultat.resolution)` dès que ce constructeur existe.
+ */
+function construireEcritureGrist(): EcritureGrist {
+  return {
+    creerMission() {
+      return Promise.reject(new Error(
+        "L'écriture des missions dans Grist n'est pas encore disponible dans cette version du widget.",
+      ));
+    },
+  };
+}
 
 function demarrerDemo(racine: HTMLElement): void {
   const magasin = new Magasin(normaliser());
@@ -101,6 +124,7 @@ async function demarrer(): Promise<void> {
       return;
     }
     const magasin = new Magasin(resultat.modele);
+    magasin.brancherEcriture(construireEcritureGrist());
     demarrerApp(racine, magasin, 'Document Grist connecté');
   } catch {
     demarrerDemo(racine);

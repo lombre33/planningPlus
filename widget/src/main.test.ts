@@ -72,6 +72,48 @@ describe('démarrage du widget', () => {
     expect(document.body.textContent).toContain('Équipes');
   });
 
+  /** Le constructeur d'actions Grist pour les missions n'existe pas encore
+   *  (`grist/ecriture.ts`, V0.1 en cours côté fil Environnement Grist de
+   *  test) : tant qu'il manque, une tentative de création en mode connecté
+   *  doit échouer visiblement plutôt que de réussir en apparence sans rien
+   *  écrire dans le document — précisément le piège signalé par le fil Vue
+   *  agenda. Couvre le pont bout en bout, pas seulement `Magasin.creerMission`
+   *  isolément (déjà couvert par `store.test.ts`). */
+  it("en mode connecté, créer une mission échoue visiblement tant que l'écriture Grist n'est pas branchée (pas de faux succès local)", async () => {
+    window.grist = {
+      ready: () => {},
+      docApi: {
+        listTables: async () => TOUTES_LES_TABLES,
+        fetchTable: async (id: string) => (
+          id === LIBELLE_PAR_TABLE.Equipes
+            ? {id: [1], Nom: ['Accueil'], Couleur: ['#ff0000'], Referent: [0], Notes: ['']}
+            : {id: []}
+        ),
+        applyUserActions: async () => ({retValues: []}),
+      },
+    };
+    await demarrerEtAttendre();
+    expect(document.querySelector('.pill--neutral')?.textContent).toBe('Document Grist connecté');
+
+    const ongletMissions = Array.from(document.querySelectorAll('.rail__item'))
+      .find((b) => b.textContent?.includes('Missions')) as HTMLButtonElement;
+    ongletMissions.click();
+    const bouton = Array.from(document.querySelectorAll('button'))
+      .find((b) => b.textContent === '+ Nouvelle mission') as HTMLButtonElement;
+    bouton.click();
+    const champNom = document.querySelector('input[placeholder="Contrôle des bracelets"]') as HTMLInputElement;
+    champNom.value = 'Contrôle billetterie';
+    champNom.dispatchEvent(new Event('input'));
+    const boutonCreer = Array.from(document.querySelectorAll('button'))
+      .find((b) => b.textContent === 'Créer') as HTMLButtonElement;
+    boutonCreer.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(document.querySelector('.field-erreur:not([hidden])')?.textContent)
+      .toContain("Échec de l'écriture");
+    expect(document.body.textContent).not.toContain('Contrôle billetterie');
+  });
+
   it("si une seule table manque (ex. Macro-créneaux), nomme précisément celle-là plutôt que de démarrer avec un trou silencieux", async () => {
     window.grist = {
       ready: () => {},

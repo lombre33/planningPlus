@@ -137,3 +137,59 @@ describe('Magasin.creerBesoin', () => {
     expect(notifications).toBe(1);
   });
 });
+
+describe('Magasin.creerMission', () => {
+  function missionDeTest(m: Magasin) {
+    return {
+      Nom: 'Nouvelle mission de test', Description: '', Lieu: m.lieux[0]!.id,
+      Equipe: m.equipes[0]!.id, Priorite: 'Normale' as const, Competences_requises: [],
+    };
+  }
+
+  it("sans écrivain branché (mode démo), génère un id local et l'ajoute au référentiel", async () => {
+    const m = new Magasin(normaliser());
+    const nbMissionsAvant = m.missions.length;
+
+    const id = await m.creerMission(missionDeTest(m));
+
+    expect(m.missions).toHaveLength(nbMissionsAvant + 1);
+    const mission = m.missions.find((mi) => mi.id === id)!;
+    expect(mission.Nom).toBe('Nouvelle mission de test');
+  });
+
+  it("avec une écriture branchée (mode connecté), attend l'id qu'elle rend avant d'insérer localement", async () => {
+    const m = new Magasin(normaliser());
+    const appels: unknown[] = [];
+    m.brancherEcriture({
+      creerMission: async (patch) => {
+        appels.push(patch);
+        return 999;
+      },
+    });
+
+    const id = await m.creerMission(missionDeTest(m));
+
+    expect(id).toBe(999);
+    expect(appels).toHaveLength(1);
+    expect(m.missions.find((mi) => mi.id === 999)?.Nom).toBe('Nouvelle mission de test');
+  });
+
+  it("ne crée rien localement si l'écriture branchée échoue", async () => {
+    const m = new Magasin(normaliser());
+    const nbMissionsAvant = m.missions.length;
+    m.brancherEcriture({creerMission: async () => { throw new Error('document indisponible'); }});
+
+    await expect(m.creerMission(missionDeTest(m))).rejects.toThrow('document indisponible');
+    expect(m.missions).toHaveLength(nbMissionsAvant);
+  });
+
+  it('notifie les abonnés une seule fois', async () => {
+    const m = new Magasin(normaliser());
+    let notifications = 0;
+    m.subscribe(() => { notifications += 1; });
+
+    await m.creerMission(missionDeTest(m));
+
+    expect(notifications).toBe(1);
+  });
+});
