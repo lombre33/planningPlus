@@ -604,6 +604,13 @@ Liste de travail, à arbitrer (voir le brainstorm dans le fil et la
 6. **Vue bénévole** — la feuille de route individuelle, imprimable.
 7. **Vue équipe** — une équipe sur toute la durée, par groupe.
 8. **Vue artistes** — qui joue quand, et combien de bénévoles veulent le voir.
+   Permet aussi de créer et modifier un passage (nom, lieu, début, fin) : la
+   table `Artistes` est un passage par ligne (§6), donc un artiste qui joue
+   plusieurs fois se déclare en plusieurs lignes du même nom, sans qu'il
+   faille distinguer « artiste » et « passage » dans le modèle. Le passage
+   n'est pas rattaché à un macro-créneau ni à une colonne jour : ses horaires
+   se saisissent en durée libre, sans le découpage en sous-créneaux ni le pas
+   de 15 minutes utilisés pour l'agenda. *(Demande Antoine, 2026-09-22.)*
 9. **Vue jour J** — ce qui tourne maintenant, absences et remplacements.
 10. **Vue disponibilités** — saisie et correction rapides.
 

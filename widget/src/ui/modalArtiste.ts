@@ -11,15 +11,7 @@ import type {Artiste, Id} from '../domain/types';
 import type {Magasin} from '../store';
 import {epochDepuisDateEtHeure, libelleHeurePlage} from '../temps';
 import {h, ouvrirModal} from './dom';
-
-function creerErreur(): {noeud: HTMLElement; afficher: (texte: string) => void; effacer: () => void} {
-  const noeud = h('p', {class: 'field-erreur', hidden: true}) as HTMLElement;
-  return {
-    noeud,
-    afficher: (texte: string) => { noeud.textContent = texte; noeud.hidden = false; },
-    effacer: () => { noeud.hidden = true; },
-  };
-}
+import {creerErreur} from './modalCreneau';
 
 /** Découpe la valeur d'un `<input type="datetime-local">` ("AAAA-MM-JJTHH:MM")
  *  dans le format attendu par `epochDepuisDateEtHeure`. */
@@ -40,7 +32,7 @@ function versDatetimeLocal(epochSecondes: number): string {
 
 function formulaire(
   m: Magasin, titre: string, texteBouton: string, artisteExistant: Artiste | null,
-  onValider: (patch: Omit<Artiste, 'id'> & {id?: Id}) => void,
+  onValider: (patch: Omit<Artiste, 'id'> & {id?: Id}) => Promise<unknown>,
 ): void {
   const champNom = h('input', {
     class: 'input', type: 'text', placeholder: 'Nom de l’artiste', value: artisteExistant?.Nom ?? '',
@@ -73,7 +65,7 @@ function formulaire(
       h('button', {class: 'btn btn--ghost', type: 'button', onclick: fermer}, 'Annuler'),
       h('button', {
         class: 'btn btn--primary', type: 'button',
-        onclick: () => {
+        onclick: async () => {
           const nom = champNom.value.trim();
           const lieuId = Number(champLieu.value);
           const debut = epochDepuisDatetimeLocal(champDebut.value);
@@ -84,8 +76,12 @@ function formulaire(
           if (fin <= debut) { erreur.afficher('La fin doit être après le début.'); return; }
           erreur.effacer();
           const patch = {Nom: nom, Lieu: lieuId, Debut: debut, Fin: fin};
-          onValider(artisteExistant ? {...patch, id: artisteExistant.id} : patch);
-          fermer();
+          try {
+            await onValider(artisteExistant ? {...patch, id: artisteExistant.id} : patch);
+            fermer();
+          } catch {
+            erreur.afficher("Échec de l'écriture dans le document Grist connecté. Réessayez.");
+          }
         },
       }, texteBouton),
     ),
@@ -93,14 +89,12 @@ function formulaire(
 }
 
 export function ouvrirModalCreationArtiste(m: Magasin): void {
-  formulaire(m, 'Nouveau passage', 'Créer', null, (patch) => {
-    m.enregistrerArtiste(patch);
-  });
+  formulaire(m, 'Nouveau passage', 'Créer', null, (patch) => m.enregistrerArtiste(patch));
 }
 
 export function ouvrirModalEditionArtiste(m: Magasin, artiste: Artiste): void {
   formulaire(
     m, `Modifier « ${artiste.Nom} » (${libelleHeurePlage(artiste.Debut, artiste.Fin)})`, 'Enregistrer', artiste,
-    (patch) => { m.enregistrerArtiste(patch); },
+    (patch) => m.enregistrerArtiste(patch),
   );
 }
