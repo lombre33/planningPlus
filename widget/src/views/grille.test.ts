@@ -2,6 +2,7 @@ import {describe, expect, it} from 'vitest';
 import type {Id, Modele} from '../domain/types';
 import {type EcritureGrist, Magasin} from '../store';
 import {epochDepuisHeureLocale} from '../temps';
+import {LARGEUR_QUART_PX} from '../ui/frise';
 import {montrerGrille} from './grille';
 
 /** Document Grist « from scratch » : toutes les tables existent (le fichier
@@ -140,8 +141,6 @@ describe('montrerGrille sur un document vide', () => {
  *  commune au quart d'heure (CSS Grid) — retour d'Antoine du même jour
  *  contre l'ancien tableau à colonne répétée par sous-créneau. */
 describe('montrerGrille — frise commune au quart d’heure et créneau propre à une mission', () => {
-  const LARGEUR_QUART_PX = 22; // src/views/grille.ts, non exporté
-
   function modeleAvecMission(): {m: Magasin; macroId: Id; missionId: Id} {
     const debut = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 10});
     const fin = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 12});
@@ -263,7 +262,7 @@ describe('montrerGrille — frise commune au quart d’heure et créneau propre 
     const container = document.createElement('div');
     montrerGrille(container, m);
 
-    const bloc = container.querySelector<HTMLButtonElement>(`[data-sc-id="${c1}"]`)!;
+    const bloc = container.querySelector<HTMLButtonElement>(`[data-bloc-id="${c1}"]`)!;
     const debutAvant = m.sousCreneaux.find((s) => s.id === c1)!.Debut;
 
     glisser(bloc, 100, 2 * LARGEUR_QUART_PX); // +2 quarts = +30 min, sans ALT
@@ -281,7 +280,7 @@ describe('montrerGrille — frise commune au quart d’heure et créneau propre 
     const container = document.createElement('div');
     montrerGrille(container, m);
 
-    const bloc = container.querySelector<HTMLButtonElement>(`[data-sc-id="${c1}"]`)!;
+    const bloc = container.querySelector<HTMLButtonElement>(`[data-bloc-id="${c1}"]`)!;
     poserRect(bloc, 0, 4 * LARGEUR_QUART_PX); // bord droit saisi (clientX de mousedown dans la moitié droite)
     const [debutAvant, finAvant] = [m.sousCreneaux.find((s) => s.id === c1)!.Debut, m.sousCreneaux.find((s) => s.id === c1)!.Fin];
 
@@ -303,7 +302,7 @@ describe('montrerGrille — frise commune au quart d’heure et créneau propre 
     document.body.append(container);
     montrerGrille(container, m);
 
-    const bloc = container.querySelector<HTMLButtonElement>(`[data-sc-id="${c1}"]`)!;
+    const bloc = container.querySelector<HTMLButtonElement>(`[data-bloc-id="${c1}"]`)!;
     const debutAvant = m.sousCreneaux.find((s) => s.id === c1)!.Debut;
     glisser(bloc, 100, 0);
     bloc.click(); // le navigateur émettrait ce clic après un mousedown/mouseup sans déplacement
