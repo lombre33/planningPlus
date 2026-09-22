@@ -5,7 +5,7 @@
  * candidats à affecter.
  */
 
-import type {Groupe, Id, MacroCreneau, Mission, Place, SousCreneau} from '../domain/types';
+import type {Epoch, Groupe, Id, MacroCreneau, Mission, Place, SousCreneau} from '../domain/types';
 import {TYPE_PLACE_DRAG} from '../logic/dnd-types';
 import {
   type Candidat, type Index, type Jour, couvertureBesoin, indexer, regrouperParJour,
@@ -22,6 +22,15 @@ import {creerErreur} from '../ui/modalCreneau';
  *  quoi ne plus être bloqué). Une vraie page de gestion des équipes (V0.2)
  *  laissera la choisir. */
 const COULEUR_EQUIPE_PAR_DEFAUT = '#94a3b8';
+
+/** Largeur d'un quart d'heure dans la frise (px) — sert à la fois à poser
+ *  les colonnes CSS Grid et à convertir un déplacement en pixels (glisser)
+ *  en un nombre de quarts d'heure. */
+const LARGEUR_QUART_PX = 22;
+
+/** Durée par défaut d'un créneau propre créé au clic sur la frise (même
+ *  valeur que l'ancien redécoupage automatique par défaut). */
+const DUREE_CRENEAU_PAR_DEFAUT_SECONDES = 90 * 60;
 
 export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
   let jourIndex = 0;
@@ -70,7 +79,7 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
       ),
       !jour
         ? h('p', {class: 'empty'}, 'Aucun sous-créneau ce jour.')
-        : construireTable(ix, missions, jour, sousCreneaux),
+        : construireTimeline(ix, missions, jour, sousCreneaux),
     );
   }
 
@@ -108,96 +117,159 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
     return jour.macros.find((ma) => epoch >= ma.Debut && epoch < ma.Fin) ?? jour.macros[0]!;
   }
 
-  function celluleHorsCadre(nbColonnes: number): Node {
-    return h('td', {class: 'besoin-cell besoin-cell--horscadre', colspan: String(nbColonnes)});
+  /** Un glisser vient de déplacer ou redimensionner un bloc : le clic natif
+   *  que le navigateur émet juste après le relâchement (même mousedown et
+   *  mouseup sur le même élément, quel que soit le mouvement entre les
+   *  deux) ne doit pas rouvrir le détail — `demarrerGlisser` pose ce
+   *  drapeau, le bouton concerné le consomme dans son onclick. */
+  let blocVientDeGlisser = false;
+
+  /** Glisser un créneau propre à une mission dans la frise (demande
+   *  d'Antoine du 2026-09-22) : par défaut, déplace le créneau saisi et
+   *  tous ceux de la même mission qui le suivent dans le temps — « une
+   *  suite de créneaux » poussée depuis un bord — par pas de 15 minutes.
+   *  ALT maintenu au relâchement redimensionne à la place le seul créneau
+   *  saisi, depuis le bord le plus proche du point de saisie (raccourcit
+   *  ou rallonge), sans toucher les autres. Un relâchement sans
+   *  déplacement (delta nul) est un simple clic, laissé au onclick du
+   *  bouton — jamais un sous-créneau commun, refusé par le Magasin. */
+  function demarrerGlisser(e: MouseEvent, bouton: HTMLButtonElement, sc: SousCreneau): void {
+    if (e.button !== 0) { return; }
+    e.preventDefault();
+    const xDepart = e.clientX;
+    const rect = bouton.getBoundingClientRect();
+    const depuisDebut = (e.clientX - rect.left) < rect.width / 2;
+    let deltaQuarts = 0;
+
+    function onMove(ev: MouseEvent): void {
+      deltaQuarts = Math.round((ev.clientX - xDepart) / LARGEUR_QUART_PX);
+    }
+    async function onUp(ev: MouseEvent): Promise<void> {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      if (deltaQuarts === 0) { return; }
+      blocVientDeGlisser = true;
+      const deltaSecondes = deltaQuarts * PAS_SECONDES;
+      const resultat = ev.altKey
+        ? await m.redimensionnerCreneauMission(sc.id, depuisDebut, deltaSecondes)
+        : await m.deplacerCreneauxMission(sc.id, deltaSecondes);
+      if (!resultat.ok) {
+        dernierMessage = {texte: resultat.raison, ton: 'danger'};
+        rafraichir();
+      }
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
   }
 
-  function celluleBesoin(ix: Index, mission: Mission, sc: SousCreneau, nbColonnes: number): Node {
-    const colspan = String(nbColonnes);
+  /** Un bloc de la frise : un sous-créneau applicable à une mission (commun
+   *  ou propre), positionné par colonnes CSS Grid plutôt que par colspan de
+   *  table. Propre à la mission → glissable (`demarrerGlisser`) ; commun →
+   *  simple clic, comme avant, jamais glissable (le déplacer affecterait
+   *  toutes les missions qui le partagent). */
+  function blocSousCreneau(
+    ix: Index, mission: Mission, sc: SousCreneau, estPropre: boolean, colStart: number, colEnd: number, ligne: number,
+  ): Node {
     const besoin = m.besoins.find((b) => b.Mission === mission.id && b.Sous_creneau === sc.id);
-    if (!besoin) {
-      return h('td', {class: 'besoin-cell besoin-cell--vide', colspan},
-        h('span', {class: 'besoin-cell__libelle'}, sc.Libelle),
-        h('button', {
-          class: 'besoin-cell__ajouter', type: 'button',
-          title: 'Créer un besoin ici — facultatif, laissez vide pour une zone volontairement non couverte',
-          onclick: () => ouvrirCreationBesoin(mission, sc),
-        }, '+'),
-      );
-    }
-    const c = couvertureBesoin(m, ix, besoin.id);
-    return h('td', {class: 'besoin-cell', colspan},
-      h('span', {class: 'besoin-cell__libelle'}, sc.Libelle),
-      h('button', {
-        class: `besoin besoin--${c.statut}`, type: 'button',
-        onclick: () => { dernierMessage = null; ouvrirDetailBesoin(besoin.id); },
+    const c = besoin ? couvertureBesoin(m, ix, besoin.id) : null;
+    const ouvrir = (): void => {
+      dernierMessage = null;
+      if (besoin) { ouvrirDetailBesoin(besoin.id); } else { ouvrirCreationBesoin(mission, sc); }
+    };
+    const bouton = h('button', {
+      type: 'button',
+      // Seuls les modificateurs de couleur (besoin--*/besoin-cell--vide) sont
+      // repris de la vue Indicatifs, jamais la classe de base `.besoin` :
+      // elle pose une bordure sur les quatre côtés qui écraserait le
+      // border-bottom seul voulu ici (case de frise, pas case de tableau).
+      class: `timeline__bloc${estPropre ? ' timeline__bloc--propre' : ''} ${c ? `besoin--${c.statut}` : 'besoin-cell--vide'}`,
+      style: {gridRow: String(ligne), gridColumn: `${colStart} / ${colEnd}`},
+      'data-sc-id': String(sc.id),
+      title: besoin ? undefined : 'Créer un besoin ici — facultatif, laissez vide pour une zone volontairement non couverte',
+      onclick: () => {
+        if (blocVientDeGlisser) { blocVientDeGlisser = false; return; }
+        ouvrir();
       },
-        h('span', {class: 'besoin__effectif mono'}, `${c.pourvues}/${besoin.Effectif_min}`),
-        h('div', {class: 'besoin__groupes'}, ...c.groupesPositionnes.map((g) => {
-          const incomplet = g.places.some((p) => p.Benevole == null);
-          return h('span', {
-            class: `chip-groupe${incomplet ? ' chip-groupe--incomplet' : ''}`,
-            style: {background: ix.equipe.get(g.groupe.Equipe)?.Couleur ?? '#888'},
-          }, g.groupe.Code);
-        })),
-      ),
-    );
+    },
+      h('span', {class: 'besoin-cell__libelle'}, sc.Libelle),
+      c
+        ? h('span', {class: 'besoin__effectif mono'}, `${c.pourvues}/${besoin!.Effectif_min}`)
+        : h('span', {class: 'besoin-cell__ajouter-icone'}, '+'),
+      c ? h('div', {class: 'besoin__groupes'}, ...c.groupesPositionnes.map((g) => {
+        const incomplet = g.places.some((p) => p.Benevole == null);
+        return h('span', {
+          class: `chip-groupe${incomplet ? ' chip-groupe--incomplet' : ''}`,
+          style: {background: ix.equipe.get(g.groupe.Equipe)?.Couleur ?? '#888'},
+        }, g.groupe.Code);
+      })) : null,
+    ) as HTMLButtonElement;
+    if (estPropre) { bouton.addEventListener('mousedown', (ev) => demarrerGlisser(ev as MouseEvent, bouton, sc)); }
+    return bouton;
   }
 
-  /** Cellules d'une ligne mission, alignées sur l'axe commun : un bloc par
-   *  sous-créneau applicable (colspan = sa durée en quarts d'heure), et une
-   *  case neutre — hors cadre, pas « volontairement vide » puisqu'aucun
-   *  sous-créneau n'existe ici pour cette mission — sur le reste de l'axe. */
-  function construireCellulesLigne(
-    ix: Index, mission: Mission, axe: {debut: number; fin: number}, applicables: SousCreneau[],
-  ): Node[] {
-    const cellules: Node[] = [];
-    let curseur = axe.debut;
-    for (const sc of applicables) {
-      const debutSc = Math.max(sc.Debut, curseur);
-      if (debutSc > curseur) { cellules.push(celluleHorsCadre(Math.round((debutSc - curseur) / PAS_SECONDES))); }
-      const finSc = Math.max(sc.Fin, debutSc);
-      cellules.push(celluleBesoin(ix, mission, sc, Math.max(1, Math.round((finSc - debutSc) / PAS_SECONDES))));
-      curseur = finSc;
-    }
-    if (curseur < axe.fin) { cellules.push(celluleHorsCadre(Math.round((axe.fin - curseur) / PAS_SECONDES))); }
-    return cellules;
-  }
-
-  function construireTable(ix: Index, missions: Mission[], jour: Jour, tousSousCreneaux: SousCreneau[]): Node {
+  /** La frise Missions (demande d'Antoine du 2026-09-22) : une seule trame
+   *  au quart d'heure, commune à toutes les missions et posée une fois en
+   *  en-tête (CSS Grid — `grid-template-columns`, un bloc = un `grid-row`/
+   *  `grid-column` plutôt qu'une ligne de table qui se répète en
+   *  scrollant). Chaque ligne de mission porte une « piste » de fond
+   *  (hachurée, cliquable) qui couvre tout l'axe ; les blocs de sous-créneau
+   *  se posent par-dessus, sur les colonnes qu'ils couvrent — ce qui reste
+   *  visible de la piste EST la zone hors cadre, sans case dédiée à
+   *  calculer. Cliquer la piste (donc hors de tout bloc) ouvre la création
+   *  d'un créneau propre, horaire suggéré à partir du point cliqué. */
+  function construireTimeline(ix: Index, missions: Mission[], jour: Jour, tousSousCreneaux: SousCreneau[]): Node {
     const axe = axeJour(jour);
-    const colonnesEntete: Node[] = [];
+    const items: Node[] = [
+      h('div', {class: 'timeline__coin', style: {gridRow: '1', gridColumn: '1'}}),
+    ];
     for (let i = 0; i < axe.nbColonnes; i++) {
       const texte = libelleHeure(axe.debut + i * PAS_SECONDES);
       const surLHeure = texte.endsWith(':00');
-      colonnesEntete.push(h(
-        'th', {class: `axe-quart${surLHeure ? ' axe-quart--heure' : ''}`}, surLHeure ? texte : '',
-      ));
+      items.push(h('div', {
+        class: `axe-quart${surLHeure ? ' axe-quart--heure' : ''}`,
+        style: {gridRow: '1', gridColumn: `${i + 2} / ${i + 3}`},
+      }, surLHeure ? texte : ''));
     }
-    const thead = h('thead', null, h('tr', null, h('th', {class: 'mission-cell'}, 'Mission'), ...colonnesEntete));
 
-    const tbody = h('tbody');
-    for (const mission of missions) {
+    missions.forEach((mission, indexMission) => {
+      const ligne = indexMission + 2;
       const lieu = ix.lieu.get(mission.Lieu);
       const equipe = ix.equipe.get(mission.Equipe)!;
+      items.push(h('div', {class: 'timeline__label', style: {gridRow: String(ligne), gridColumn: '1'}},
+        h('span', {class: 'dot', style: {background: equipe.Couleur, marginRight: '6px'}}),
+        h('span', {class: 'nom'}, mission.Nom),
+        h('span', {class: 'lieu'}, lieu?.Nom ?? ''),
+      ));
+
+      const piste = h('div', {
+        class: 'timeline__piste',
+        style: {gridRow: String(ligne), gridColumn: `2 / ${axe.nbColonnes + 2}`},
+        title: 'Cliquer pour donner à cette mission un créneau à elle, décalé ou en pause par rapport à la trame commune',
+        onclick: (e: Event) => {
+          const rect = piste.getBoundingClientRect();
+          const quart = Math.max(0, Math.floor(((e as MouseEvent).clientX - rect.left) / LARGEUR_QUART_PX));
+          ouvrirCreationCreneauMission(mission, jour, axe.debut + quart * PAS_SECONDES);
+        },
+      }) as HTMLElement;
+      items.push(piste);
+
       const applicables = sousCreneauxApplicables(mission, tousSousCreneaux);
-      const tr = h('tr', null,
-        h('td', {class: 'mission-cell'},
-          h('span', {class: 'dot', style: {background: equipe.Couleur, marginRight: '6px'}}),
-          h('span', {class: 'nom'}, mission.Nom),
-          h('span', {class: 'lieu'}, lieu?.Nom ?? ''),
-          h('button', {
-            class: 'mission-cell__creneau-propre', type: 'button',
-            title: 'Donner à cette mission un créneau à elle, décalé ou en pause par rapport à la trame commune',
-            onclick: () => ouvrirCreationCreneauMission(mission, jour),
-          }, '+ créneau'),
-        ),
-        ...construireCellulesLigne(ix, mission, axe, applicables),
-      );
-      tbody.append(tr);
-    }
-    const table = h('table', {class: 'grille'}, thead, tbody);
-    return h('div', {class: 'grille-wrap'}, table);
+      const estPropre = applicables[0]?.Mission === mission.id;
+      for (const sc of applicables) {
+        const colStart = Math.round((sc.Debut - axe.debut) / PAS_SECONDES) + 2;
+        const colEnd = Math.round((sc.Fin - axe.debut) / PAS_SECONDES) + 2;
+        items.push(blocSousCreneau(ix, mission, sc, estPropre, colStart, colEnd, ligne));
+      }
+    });
+
+    const timeline = h('div', {
+      class: 'timeline',
+      style: {
+        gridTemplateColumns: `190px repeat(${axe.nbColonnes}, ${LARGEUR_QUART_PX}px)`,
+        gridTemplateRows: `repeat(${missions.length + 1}, auto)`,
+      },
+    }, ...items);
+    return h('div', {class: 'timeline-wrap'}, timeline);
   }
 
   /** Crée une mission dans le référentiel — le "quoi" (nom, équipe, lieu,
@@ -331,14 +403,22 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
    *  B retenue par Antoine le 2026-09-22 pour les missions dont les
    *  horaires ou les pauses sortent de la trame commune) : dès qu'elle a un
    *  sous-créneau à elle, `sousCreneauxApplicables` l'affiche à la place des
-   *  sous-créneaux communs. `epochJourFestivalEtHeure` calcule les bornes en
-   *  gardant le jour de festival saisi, pas le jour civil littéral (même
-   *  règle que le début/la fin d'un macro-créneau). Pas de geste de
-   *  suppression ou d'édition dans cette première version — la vue Grist
-   *  native reste le filet de rattrapage pour une ligne mal créée. */
-  function ouvrirCreationCreneauMission(mission: Mission, jour: Jour): void {
-    const champDebut = h('input', {class: 'input', type: 'time', step: '900', value: '10:00'}) as HTMLInputElement;
-    const champFin = h('input', {class: 'input', type: 'time', step: '900', value: '11:30'}) as HTMLInputElement;
+   *  sous-créneaux communs. Ouverte par un clic sur la piste hors cadre de
+   *  la frise (2026-09-22, suite du retour d'Antoine) : `debutSuggere`
+   *  vient du point cliqué, pré-remplit les champs (durée par défaut
+   *  1h30), et reste modifiable avant validation. `epochJourFestivalEtHeure`
+   *  calcule les bornes en gardant le jour de festival saisi, pas le jour
+   *  civil littéral (même règle que le début/la fin d'un macro-créneau).
+   *  Pas de geste de suppression dans cette première version — la vue
+   *  Grist native reste le filet de rattrapage pour une ligne mal créée. */
+  function ouvrirCreationCreneauMission(mission: Mission, jour: Jour, debutSuggere: Epoch): void {
+    const champDebut = h(
+      'input', {class: 'input', type: 'time', step: '900', value: libelleHeure(debutSuggere)},
+    ) as HTMLInputElement;
+    const champFin = h('input', {
+      class: 'input', type: 'time', step: '900',
+      value: libelleHeure(debutSuggere + DUREE_CRENEAU_PAR_DEFAUT_SECONDES),
+    }) as HTMLInputElement;
     const caseApresMinuit = h('input', {type: 'checkbox'}) as HTMLInputElement;
     const erreur = creerErreur();
 

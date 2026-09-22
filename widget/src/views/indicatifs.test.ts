@@ -117,7 +117,8 @@ describe('planning complet : missions et besoin, mais zone volontairement vide',
       return {
         creerEquipe: refuse(), creerMission: refuse(), creerMacroCreneau: refuse(), modifierMacroCreneau: refuse(),
         supprimerMacroCreneau: refuse(), creerArtiste: refuse(), modifierArtiste: refuse(),
-        remplacerSousCreneaux: refuse(), creerBesoin: refuse(), creerGroupe: refuse(), positionnerGroupe: refuse(),
+        remplacerSousCreneaux: refuse(), modifierSousCreneaux: refuse(),
+        creerBesoin: refuse(), creerGroupe: refuse(), positionnerGroupe: refuse(),
         definirPlaces: refuse(), deplacerPosition: refuse(), ajouterPosition: refuse(),
       };
     }

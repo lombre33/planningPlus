@@ -10,7 +10,7 @@ import type {
   Affinite, Artiste, Benevole, Besoin, Disponibilite, Epoch, Equipe, Groupe, Id, Lieu, MacroCreneau,
   Mission, Modele, OriginePlace, Place, PositionGroupe, SouhaitMission, SousCreneau,
 } from './domain/types';
-import {libelleHeurePlage} from './temps';
+import {libelleHeurePlage, PAS_SECONDES} from './temps';
 
 type Listener = () => void;
 
@@ -97,6 +97,15 @@ export interface EcritureGrist {
     idsASupprimer: readonly Id[],
     nouveaux: readonly {macroCreneauId: Id; missionId: Id | null; libelle: string; debut: Epoch; fin: Epoch}[],
   ): Promise<Id[]>;
+  /** Modifie un ou plusieurs sous-créneaux déjà réels EN PLACE (même id) —
+   *  jamais en supprimant puis recréant, contrairement à
+   *  `remplacerSousCreneaux` : un besoin déjà positionné sur l'un d'eux ne
+   *  référence que l'identifiant du sous-créneau (`Besoins.Sous_creneau`),
+   *  jamais ses horaires — une suppression-recréation l'orphelinerait.
+   *  Sert au déplacement et au redimensionnement d'un créneau propre à une
+   *  mission dans la grille (glisser, glisser+ALT, demande d'Antoine du
+   *  2026-09-22). */
+  modifierSousCreneaux(patches: readonly {id: Id; libelle: string; debut: Epoch; fin: Epoch}[]): Promise<void>;
   /** Écrit un besoin (mission × sous-créneau) et rend son id réel. */
   creerBesoin(besoin: {
     missionId: Id; sousCreneauId: Id; effectifMin: number; effectifMax: number; tailleGroupe: number;
@@ -428,6 +437,77 @@ export class Magasin {
     });
     this.notifier();
     return id;
+  }
+
+  /** Déplace un créneau propre à une mission de `deltaSecondes`, avec tous
+   *  ceux de la même mission qui le suivent dans le temps — « une suite de
+   *  créneaux » qu'on pousse depuis un bord, geste par défaut du glisser
+   *  dans la grille Missions (demande d'Antoine du 2026-09-22). Toujours en
+   *  place, même id : `redimensionnerCreneauMission` et cette méthode
+   *  partagent la même raison de ne jamais supprimer-recréer que
+   *  `EcritureGrist.modifierSousCreneaux`. Refuse un sous-créneau commun
+   *  (`Mission: null`) : le déplacer affecterait toutes les missions qui le
+   *  partagent, un geste que rien n'a demandé. */
+  async deplacerCreneauxMission(
+    sousCreneauId: Id, deltaSecondes: number,
+  ): Promise<{ok: true} | {ok: false; raison: string}> {
+    const sc = this.data.sousCreneaux.find((s) => s.id === sousCreneauId);
+    if (!sc) { return {ok: false, raison: 'Sous-créneau introuvable.'}; }
+    if (sc.Mission == null) { return {ok: false, raison: 'Un sous-créneau commun ne se déplace pas depuis une ligne de mission.'}; }
+    if (deltaSecondes === 0) { return {ok: true}; }
+    const suite = this.data.sousCreneaux.filter((s) => s.Mission === sc.Mission && s.Debut >= sc.Debut);
+    const patches = suite.map((s) => {
+      const debut = s.Debut + deltaSecondes;
+      const fin = s.Fin + deltaSecondes;
+      return {id: s.id, debut, fin, libelle: libelleHeurePlage(debut, fin)};
+    });
+    if (this.ecriture) {
+      try {
+        await this.ecriture.modifierSousCreneaux(patches);
+      } catch {
+        return {ok: false, raison: "Échec de l'écriture dans le document Grist connecté. Réessayez."};
+      }
+    }
+    for (const patch of patches) {
+      const s = this.data.sousCreneaux.find((x) => x.id === patch.id)!;
+      s.Debut = patch.debut;
+      s.Fin = patch.fin;
+      s.Libelle = patch.libelle;
+    }
+    this.notifier();
+    return {ok: true};
+  }
+
+  /** Redimensionne un créneau propre à une mission (glisser en maintenant
+   *  ALT, demande d'Antoine du 2026-09-22) : `depuisDebut` indique le bord
+   *  tiré, la borne opposée ne bouge jamais. En place, même id (voir
+   *  `deplacerCreneauxMission`). Refuse de descendre sous un quart d'heure,
+   *  et un sous-créneau commun pour la même raison que le déplacement. */
+  async redimensionnerCreneauMission(
+    sousCreneauId: Id, depuisDebut: boolean, deltaSecondes: number,
+  ): Promise<{ok: true} | {ok: false; raison: string}> {
+    const sc = this.data.sousCreneaux.find((s) => s.id === sousCreneauId);
+    if (!sc) { return {ok: false, raison: 'Sous-créneau introuvable.'}; }
+    if (sc.Mission == null) { return {ok: false, raison: 'Un sous-créneau commun ne se redimensionne pas depuis une ligne de mission.'}; }
+    if (deltaSecondes === 0) { return {ok: true}; }
+    const debut = depuisDebut ? sc.Debut + deltaSecondes : sc.Debut;
+    const fin = depuisDebut ? sc.Fin : sc.Fin + deltaSecondes;
+    if (fin - debut < PAS_SECONDES) {
+      return {ok: false, raison: "Un créneau ne peut pas durer moins d'un quart d'heure."};
+    }
+    const libelle = libelleHeurePlage(debut, fin);
+    if (this.ecriture) {
+      try {
+        await this.ecriture.modifierSousCreneaux([{id: sousCreneauId, debut, fin, libelle}]);
+      } catch {
+        return {ok: false, raison: "Échec de l'écriture dans le document Grist connecté. Réessayez."};
+      }
+    }
+    sc.Debut = debut;
+    sc.Fin = fin;
+    sc.Libelle = libelle;
+    this.notifier();
+    return {ok: true};
   }
 
   // --- Écriture : affectations ------------------------------------------------

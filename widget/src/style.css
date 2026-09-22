@@ -891,45 +891,126 @@ table.grille .mission-cell .lieu {
   font-size: 11px;
 }
 
-/* Geste discret pour donner à une mission un créneau à elle, décalé ou en
-   pause par rapport à la trame commune (option B, cahier des charges §6.2,
-   demande d'Antoine du 2026-09-22). */
-table.grille .mission-cell__creneau-propre {
-  all: unset;
-  cursor: pointer;
-  display: inline-block;
-  margin-left: 6px;
-  padding: 1px 6px;
-  border-radius: var(--radius-sm);
-  border: 1px dashed var(--border);
-  font-size: 10px;
-  color: var(--text-faint);
+/* ---------- Frise Missions (CSS Grid) ----------
+   Remplace l'ancien tableau à colonnes répétées par sous-créneau (demande
+   d'Antoine du 2026-09-22 : une frise commune, en-tête unique, pas de
+   colonne qui se répète en scrollant). `table.grille`/`.besoin-cell` et
+   compagnie, ci-dessus, restent utilisés tels quels par la vue Indicatifs
+   (même grille, même jour, même filtre) : ne pas les retoucher ici. */
+
+.timeline-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
 }
 
-table.grille .mission-cell__creneau-propre:hover,
-table.grille .mission-cell__creneau-propre:focus-visible {
-  color: var(--text-muted);
-  border-color: var(--text-faint);
+.timeline {
+  display: grid;
+  min-width: 720px;
 }
 
-/* En-tête au quart d'heure (demande d'Antoine du 2026-09-22) : une
-   graduation marquée à l'heure, discrète entre deux, plutôt qu'une colonne
-   par sous-créneau — sans quoi une soirée de dix-huit heures à deux heures
-   ferait trente-deux colonnes identiques. */
-table.grille .axe-quart {
-  min-width: 20px;
-  padding: 8px 2px !important;
+.timeline__coin {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Graduation au quart d'heure : marquée à l'heure, discrète entre deux,
+   plutôt qu'une colonne par sous-créneau — sans quoi une soirée de
+   dix-huit heures à deux heures ferait trente-deux colonnes identiques. */
+.axe-quart {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 2px;
   text-align: center;
   font-size: 9px;
   color: var(--text-faint);
   font-weight: 400;
 }
 
-table.grille .axe-quart--heure {
+.axe-quart--heure {
   font-size: 11px;
   font-weight: 700;
   color: var(--text-muted);
   border-left: 1px solid var(--border);
+}
+
+.timeline__label {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 10px;
+  min-width: 190px;
+  max-width: 220px;
+}
+
+.timeline__label .nom { font-weight: 600; display: block; }
+.timeline__label .lieu { color: var(--text-muted); font-size: 11px; }
+
+/* Le fond de chaque ligne de mission : hachuré et cliquable sur toute la
+   plage (crée un créneau propre à l'horaire cliqué). Ce qui en reste
+   visible une fois les blocs posés par-dessus EST la zone hors cadre —
+   aucune case dédiée à calculer, à la différence de l'ancien tableau. */
+.timeline__piste {
+  grid-row: span 1;
+  border-bottom: 1px solid var(--border);
+  min-height: 40px;
+  cursor: pointer;
+  background: repeating-linear-gradient(
+    135deg, transparent, transparent 5px, var(--surface-muted) 5px, var(--surface-muted) 6px
+  );
+  opacity: .5;
+  transition: opacity .1s;
+}
+
+.timeline__piste:hover { opacity: .8; }
+
+.timeline__bloc {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+  min-height: 30px;
+  border-bottom: 1px solid var(--border);
+  padding: 4px 6px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px 6px;
+  color: var(--text-muted);
+  overflow: hidden;
+}
+
+.timeline__bloc:hover { filter: brightness(0.97); }
+.timeline__bloc:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+
+/* Propre à une mission (option B) : glissable — curseur en grappin, comme
+   n'importe quel objet qu'on déplace à la souris. Un sous-créneau commun
+   n'a pas cette classe : il reste un simple clic, jamais glissable, pour
+   ne pas déplacer silencieusement ce que d'autres missions partagent. */
+.timeline__bloc--propre { cursor: grab; }
+.timeline__bloc--propre:active { cursor: grabbing; }
+
+.besoin-cell__ajouter-icone {
+  color: var(--text-faint);
+  font-size: 15px;
+  line-height: 1;
+  opacity: 0.6;
+}
+
+.timeline__bloc:hover .besoin-cell__ajouter-icone,
+.timeline__bloc:focus-visible .besoin-cell__ajouter-icone {
+  opacity: 1;
 }
 
 .besoin-cell {
@@ -952,45 +1033,6 @@ table.grille .axe-quart--heure {
   background: repeating-linear-gradient(
     45deg, transparent, transparent 6px, var(--bg) 6px, var(--bg) 7px
   );
-}
-
-/* Hors cadre : aucun sous-créneau (commun ou propre) ne couvre cet horaire
-   pour cette mission — à distinguer de .besoin-cell--vide, où un
-   sous-créneau existe mais n'a volontairement reçu aucun besoin. Motif en
-   diagonale inverse pour rester lisiblement différent au premier coup d'œil. */
-.besoin-cell--horscadre {
-  min-width: 0;
-  background: repeating-linear-gradient(
-    135deg, transparent, transparent 5px, var(--surface-muted) 5px, var(--surface-muted) 6px
-  );
-  opacity: .5;
-}
-
-/* Offre discrète pour créer un besoin sur une case volontairement vide :
-   la case hachurée reste l'état par défaut (aucune obligation, aucune
-   anomalie signalée), ce bouton n'est qu'un geste explicite en plus. */
-.besoin-cell__ajouter {
-  all: unset;
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  min-height: 30px;
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-  color: var(--text-faint);
-  font-size: 15px;
-  line-height: 1;
-  opacity: 0.4;
-  transition: opacity .1s;
-}
-
-.besoin-cell__ajouter:hover,
-.besoin-cell__ajouter:focus-visible {
-  opacity: 1;
-  outline: 1px dashed var(--border);
-  outline-offset: -1px;
 }
 
 .besoin {

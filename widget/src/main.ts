@@ -41,9 +41,9 @@ import type {DocApiEcriture} from './grist';
 import {
   actionsCreerArtiste, actionsCreerBesoin, actionsCreerEquipe, actionsCreerGroupe, actionsCreerMacroCreneau,
   actionsCreerMission, actionsCreerSousCreneaux, actionsCreerTablesManquantes, actionsDefinirPlaces,
-  actionsDeplacerMacroCreneau, actionsDeplacerPositionGroupe, actionsModifierArtiste, actionsPositionnerGroupe,
-  actionsReglerAffichage, actionsRenommerMacroCreneau, actionsSupprimerMacroCreneau, actionsSupprimerSousCreneaux,
-  appliquerActions, LIBELLE_PAR_TABLE, lireDocument, zipperTable,
+  actionsDeplacerMacroCreneau, actionsDeplacerPositionGroupe, actionsModifierArtiste, actionsModifierSousCreneaux,
+  actionsPositionnerGroupe, actionsReglerAffichage, actionsRenommerMacroCreneau, actionsSupprimerMacroCreneau,
+  actionsSupprimerSousCreneaux, appliquerActions, LIBELLE_PAR_TABLE, lireDocument, zipperTable,
 } from './grist';
 import {type EcritureGrist, Magasin, SuppressionApresCreationEchouee} from './store';
 
@@ -135,6 +135,9 @@ function construireEcritureGrist(docApi: DocApiEcriture, resolution: Record<stri
         throw new SuppressionApresCreationEchouee(idsReels);
       }
       return idsReels;
+    },
+    async modifierSousCreneaux(patches) {
+      await appliquerActions(docApi, actionsModifierSousCreneaux(patches), resolution);
     },
     async creerBesoin(besoin) {
       const [id] = await appliquerActions(docApi, actionsCreerBesoin(besoin), resolution);

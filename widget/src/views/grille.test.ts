@@ -95,6 +95,7 @@ describe('montrerGrille sur un document vide', () => {
       creerArtiste: async () => 1,
       modifierArtiste: async () => {},
       remplacerSousCreneaux: async () => [],
+      modifierSousCreneaux: async () => {},
       creerBesoin: async () => 1,
       creerGroupe: async () => 1,
       positionnerGroupe: async () => {},
@@ -135,9 +136,12 @@ describe('montrerGrille sur un document vide', () => {
 
 /** Option B (cahier des charges §6.2, décision d'Antoine du 2026-09-22) :
  *  une mission dont le rythme diffère peut se poser ses propres
- *  sous-créneaux, qui remplacent les communs pour elle, sur une trame
- *  d'affichage commune au quart d'heure. */
-describe('montrerGrille — trame au quart d’heure et créneau propre à une mission', () => {
+ *  sous-créneaux, qui remplacent les communs pour elle, sur une frise
+ *  commune au quart d'heure (CSS Grid) — retour d'Antoine du même jour
+ *  contre l'ancien tableau à colonne répétée par sous-créneau. */
+describe('montrerGrille — frise commune au quart d’heure et créneau propre à une mission', () => {
+  const LARGEUR_QUART_PX = 22; // src/views/grille.ts, non exporté
+
   function modeleAvecMission(): {m: Magasin; macroId: Id; missionId: Id} {
     const debut = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 10});
     const fin = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 12});
@@ -154,6 +158,25 @@ describe('montrerGrille — trame au quart d’heure et créneau propre à une m
     return {m, macroId: 1, missionId: 1};
   }
 
+  /** Pose un `getBoundingClientRect` déterministe (jsdom ne fait pas de mise
+   *  en page réelle) : nécessaire pour tout test qui clique ou glisse à une
+   *  position précise. */
+  function poserRect(el: Element, left: number, width: number): void {
+    Object.defineProperty(el, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({left, width, right: left + width, top: 0, bottom: 0, height: 0, x: left, y: 0, toJSON: () => ({})}),
+    });
+  }
+
+  /** Glisse un bloc : mousedown sur `bouton` puis mousemove/mouseup sur
+   *  `document` (mêmes cibles que `demarrerGlisser`), déplacement en pixels
+   *  converti en quarts d'heure par le composant lui-même. */
+  function glisser(bouton: HTMLElement, clientXDepart: number, deltaPx: number, alt = false): void {
+    bouton.dispatchEvent(new MouseEvent('mousedown', {clientX: clientXDepart, button: 0}));
+    document.dispatchEvent(new MouseEvent('mousemove', {clientX: clientXDepart + deltaPx}));
+    document.dispatchEvent(new MouseEvent('mouseup', {clientX: clientXDepart + deltaPx, altKey: alt}));
+  }
+
   it("l'en-tête pose une colonne par quart d'heure sur toute la plage du macro-créneau, marquée à l'heure", async () => {
     const {m, macroId} = modeleAvecMission();
     await m.redecouperSousCreneaux(macroId, 60);
@@ -163,69 +186,131 @@ describe('montrerGrille — trame au quart d’heure et créneau propre à une m
 
     expect(container.querySelectorAll('.axe-quart')).toHaveLength(8); // 2h à 15 min
     expect(container.querySelectorAll('.axe-quart--heure')).toHaveLength(2); // 10h et 11h
+    // Une seule frise (un seul en-tête), jamais une par ligne de mission.
+    expect(container.querySelectorAll('.timeline__coin')).toHaveLength(1);
   });
 
-  it('sans créneau propre, la mission voit les sous-créneaux communs, un bloc par sous-créneau (colspan = sa durée en quarts)', async () => {
+  it('sans créneau propre, la mission voit les sous-créneaux communs, un bloc par sous-créneau (largeur = sa durée en quarts)', async () => {
     const {m, macroId} = modeleAvecMission();
     await m.redecouperSousCreneaux(macroId, 60);
     const container = document.createElement('div');
 
     montrerGrille(container, m);
 
-    const cellules = Array.from(container.querySelectorAll('tbody td')).slice(1) as HTMLTableCellElement[];
-    expect(cellules.map((td) => td.colSpan)).toEqual([4, 4]);
-    expect(cellules.every((td) => td.classList.contains('besoin-cell--vide'))).toBe(true);
+    const blocs = Array.from(container.querySelectorAll<HTMLButtonElement>('.timeline__bloc'));
+    expect(blocs).toHaveLength(2);
+    expect(blocs.every((b) => b.classList.contains('besoin-cell--vide'))).toBe(true);
+    expect(blocs.every((b) => !b.classList.contains('timeline__bloc--propre'))).toBe(true); // commun : jamais glissable
+    expect(blocs.map((b) => b.style.gridColumn)).toEqual(['2 / 6', '6 / 10']);
   });
 
-  it('le geste « + créneau » donne à la mission un créneau propre, qui remplace les sous-créneaux communs pour elle et laisse le reste hors cadre', async () => {
+  it("cliquer la piste (hors de tout bloc) ouvre la création d'un créneau propre, horaire suggéré au point cliqué — remplace les communs pour cette mission", async () => {
     const {m, macroId, missionId} = modeleAvecMission();
     await m.redecouperSousCreneaux(macroId, 60);
     const container = document.createElement('div');
     document.body.append(container);
     montrerGrille(container, m);
 
-    (Array.from(container.querySelectorAll('button'))
-      .find((b) => b.textContent === '+ créneau') as HTMLButtonElement).click();
-    const [champDebut, champFin] = Array.from(document.querySelectorAll('input[type="time"]')) as HTMLInputElement[];
-    champDebut!.value = '10:15';
-    champFin!.value = '11:00';
+    const piste = container.querySelector('.timeline__piste') as HTMLElement;
+    poserRect(piste, 0, 8 * LARGEUR_QUART_PX);
+    // Clic au 5e quart (index 4, entre 22*4=88 et 22*5=110) → 10:15 + 4*15min = 11:00.
+    piste.dispatchEvent(new MouseEvent('click', {bubbles: true, clientX: 4 * LARGEUR_QUART_PX + 5}));
+
+    const champDebut = document.querySelector('input[type="time"]') as HTMLInputElement;
+    expect(champDebut.value).toBe('11:00');
     (Array.from(document.querySelectorAll('button')).find((b) => b.textContent === 'Créer') as HTMLButtonElement).click();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(m.sousCreneaux.filter((sc) => sc.Mission === missionId)).toHaveLength(1);
-    const cellules = Array.from(container.querySelectorAll('tbody td')).slice(1) as HTMLTableCellElement[];
-    expect(cellules.map((td) => td.colSpan)).toEqual([1, 3, 4]);
-    expect(cellules[0]!.classList.contains('besoin-cell--horscadre')).toBe(true);
-    expect(cellules[1]!.classList.contains('besoin-cell--vide')).toBe(true);
-    expect(cellules[2]!.classList.contains('besoin-cell--horscadre')).toBe(true);
+    // Les communs ont disparu pour cette mission : un seul bloc reste, propre à elle.
+    const blocsApres = Array.from(container.querySelectorAll<HTMLButtonElement>('.timeline__bloc'));
+    expect(blocsApres).toHaveLength(1);
+    expect(blocsApres[0]!.classList.contains('timeline__bloc--propre')).toBe(true);
 
     container.remove();
   });
 
-  it("sans aucun découpage commun sur le jour, la ligne de la mission existe déjà et accepte un créneau propre (l'un ne dépend pas de l'autre)", async () => {
-    const {m, macroId, missionId} = modeleAvecMission();
+  it("sans aucun découpage commun sur le jour, la ligne de la mission existe déjà (piste cliquable) et accepte un créneau propre (l'un ne dépend pas de l'autre)", async () => {
+    const {m, missionId} = modeleAvecMission();
     // Aucun redecouperSousCreneaux : le jour n'a encore aucun sous-créneau commun.
     const container = document.createElement('div');
     document.body.append(container);
     montrerGrille(container, m);
 
     expect(container.querySelector('.empty')).toBeNull();
-    const cellulesAvant = Array.from(container.querySelectorAll('tbody td')).slice(1) as HTMLTableCellElement[];
-    expect(cellulesAvant.map((td) => td.colSpan)).toEqual([8]);
-    expect(cellulesAvant[0]!.classList.contains('besoin-cell--horscadre')).toBe(true);
+    expect(container.querySelectorAll('.timeline__bloc')).toHaveLength(0);
+    const piste = container.querySelector('.timeline__piste') as HTMLElement;
+    expect(piste).not.toBeNull();
+    poserRect(piste, 0, 8 * LARGEUR_QUART_PX);
 
-    (Array.from(container.querySelectorAll('button'))
-      .find((b) => b.textContent === '+ créneau') as HTMLButtonElement).click();
-    const [champDebut, champFin] = Array.from(document.querySelectorAll('input[type="time"]')) as HTMLInputElement[];
-    champDebut!.value = '10:15';
-    champFin!.value = '11:00';
+    piste.dispatchEvent(new MouseEvent('click', {bubbles: true, clientX: 4 * LARGEUR_QUART_PX + 5}));
     (Array.from(document.querySelectorAll('button')).find((b) => b.textContent === 'Créer') as HTMLButtonElement).click();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(m.sousCreneaux.filter((sc) => sc.Mission === missionId)).toHaveLength(1);
-    expect(m.sousCreneaux[0]!.Macro_creneau).toBe(macroId);
-    const cellulesApres = Array.from(container.querySelectorAll('tbody td')).slice(1) as HTMLTableCellElement[];
-    expect(cellulesApres.map((td) => td.colSpan)).toEqual([1, 3, 4]);
+    expect(container.querySelectorAll('.timeline__bloc')).toHaveLength(1);
+
+    container.remove();
+  });
+
+  it('glisser un créneau propre (sans ALT) le déplace par pas de 15 minutes, avec ceux qui le suivent — jamais un sous-créneau commun', async () => {
+    const {m, macroId, missionId} = modeleAvecMission();
+    const c1 = await m.creerSousCreneauMission(macroId, missionId, {
+      libelle: '10h-11h',
+      debut: epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 10}),
+      fin: epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 11}),
+    });
+    const container = document.createElement('div');
+    montrerGrille(container, m);
+
+    const bloc = container.querySelector<HTMLButtonElement>(`[data-sc-id="${c1}"]`)!;
+    const debutAvant = m.sousCreneaux.find((s) => s.id === c1)!.Debut;
+
+    glisser(bloc, 100, 2 * LARGEUR_QUART_PX); // +2 quarts = +30 min, sans ALT
+
+    expect(m.sousCreneaux.find((s) => s.id === c1)!.Debut).toBe(debutAvant + 1800);
+  });
+
+  it('glisser un créneau propre en maintenant ALT le redimensionne au lieu de le déplacer', async () => {
+    const {m, macroId, missionId} = modeleAvecMission();
+    const c1 = await m.creerSousCreneauMission(macroId, missionId, {
+      libelle: '10h-11h',
+      debut: epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 10}),
+      fin: epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 11}),
+    });
+    const container = document.createElement('div');
+    montrerGrille(container, m);
+
+    const bloc = container.querySelector<HTMLButtonElement>(`[data-sc-id="${c1}"]`)!;
+    poserRect(bloc, 0, 4 * LARGEUR_QUART_PX); // bord droit saisi (clientX de mousedown dans la moitié droite)
+    const [debutAvant, finAvant] = [m.sousCreneaux.find((s) => s.id === c1)!.Debut, m.sousCreneaux.find((s) => s.id === c1)!.Fin];
+
+    glisser(bloc, 3 * LARGEUR_QUART_PX, LARGEUR_QUART_PX, true); // +1 quart = +15 min, ALT maintenu
+
+    const sc = m.sousCreneaux.find((s) => s.id === c1)!;
+    expect(sc.Debut).toBe(debutAvant); // le début ne bouge pas : bord droit saisi
+    expect(sc.Fin).toBe(finAvant + 900);
+  });
+
+  it("un relâchement sans déplacement (delta nul) est un simple clic : ouvre le détail/la création, ne modifie aucun horaire", async () => {
+    const {m, macroId, missionId} = modeleAvecMission();
+    const c1 = await m.creerSousCreneauMission(macroId, missionId, {
+      libelle: '10h-11h',
+      debut: epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 10}),
+      fin: epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 11}),
+    });
+    const container = document.createElement('div');
+    document.body.append(container);
+    montrerGrille(container, m);
+
+    const bloc = container.querySelector<HTMLButtonElement>(`[data-sc-id="${c1}"]`)!;
+    const debutAvant = m.sousCreneaux.find((s) => s.id === c1)!.Debut;
+    glisser(bloc, 100, 0);
+    bloc.click(); // le navigateur émettrait ce clic après un mousedown/mouseup sans déplacement
+
+    expect(m.sousCreneaux.find((s) => s.id === c1)!.Debut).toBe(debutAvant);
+    // Aucun besoin sur ce sous-créneau : le clic doit ouvrir sa création.
+    expect(document.querySelector('.topbar__subtitle')?.textContent).toBe('10h-11h');
 
     container.remove();
   });
