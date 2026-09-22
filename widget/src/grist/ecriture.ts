@@ -272,6 +272,61 @@ export function actionsModifierSousCreneau(
   return [['UpdateRecord', 'Sous_creneaux', sousCreneauId, valeurs]];
 }
 
+export interface PatchSousCreneau {
+  id: Id;
+  libelle?: string;
+  debut?: Epoch;
+  fin?: Epoch;
+}
+
+const CHAMPS_PATCH_SOUS_CRENEAU = ['libelle', 'debut', 'fin'] as const;
+
+/**
+ * Modifie plusieurs sous-créneaux existants en place, chacun avec ses
+ * propres champs fournis — jamais en supprimant puis recréant
+ * (`actionsSupprimerSousCreneaux` + `actionsCreerSousCreneaux`, réservé au
+ * redécoupage d'une plage entière) : recréer changerait leur identifiant et
+ * casserait la référence d'un besoin déjà positionné sur l'un d'eux
+ * (`Besoins.Sous_creneau` ne porte que l'identifiant, jamais les horaires —
+ * constat du fil Agenda). Sert au redimensionnement d'un sous-créneau avec
+ * poussée des suivants : tous gardent leur identifiant, seuls leurs
+ * horaires (et parfois le libellé) bougent.
+ *
+ * Les patches qui renseignent exactement le même jeu de champs sont groupés
+ * en un seul `BulkUpdateRecord` (une valeur par ligne et par colonne : un
+ * champ absent pour une ligne mais présent pour une autre ne peut pas
+ * cohabiter dans un même appel) ; un patch isolé reste un `UpdateRecord`.
+ * Tout part dans le même aller-retour : ce sont des modifications sur des
+ * lignes déjà existantes, jamais des créations qui se référencent entre
+ * elles.
+ */
+export function actionsModifierSousCreneaux(patches: readonly PatchSousCreneau[]): UserAction[] {
+  const groupes = new Map<string, PatchSousCreneau[]>();
+  for (const patch of patches) {
+    const champs = CHAMPS_PATCH_SOUS_CRENEAU.filter((c) => patch[c] !== undefined);
+    if (champs.length === 0) { continue; }
+    const cle = champs.join(',');
+    const groupe = groupes.get(cle) ?? [];
+    groupe.push(patch);
+    groupes.set(cle, groupe);
+  }
+
+  const actions: UserAction[] = [];
+  for (const [cle, groupe] of groupes) {
+    const champs = cle.split(',') as Array<typeof CHAMPS_PATCH_SOUS_CRENEAU[number]>;
+    if (groupe.length === 1) {
+      actions.push(...actionsModifierSousCreneau(groupe[0]!.id, groupe[0]!));
+      continue;
+    }
+    const colonnes: Record<string, unknown[]> = {};
+    if (champs.includes('libelle')) { colonnes.Libelle = groupe.map((p) => p.libelle); }
+    if (champs.includes('debut')) { colonnes.Debut = groupe.map((p) => p.debut); }
+    if (champs.includes('fin')) { colonnes.Fin = groupe.map((p) => p.fin); }
+    actions.push(['BulkUpdateRecord', 'Sous_creneaux', groupe.map((p) => p.id), colonnes]);
+  }
+  return actions;
+}
+
 /**
  * Supprime un ou plusieurs sous-créneaux (un re-découpage automatique de la
  * plage, par exemple, remplace l'ensemble existant plutôt que de le

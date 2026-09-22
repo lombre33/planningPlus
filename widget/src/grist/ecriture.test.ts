@@ -17,6 +17,7 @@ import {
   actionsModifierGroupe,
   actionsModifierMission,
   actionsModifierSousCreneau,
+  actionsModifierSousCreneaux,
   actionsPositionnerGroupe,
   actionsRenommerMacroCreneau,
   actionsRetirerPositionGroupe,
@@ -178,6 +179,33 @@ describe('actionsModifierSousCreneau', () => {
     expect(actionsModifierSousCreneau(15, {missionId: null})).toEqual([
       ['UpdateRecord', 'Sous_creneaux', 15, {Mission: 0}],
     ]);
+  });
+});
+
+describe('actionsModifierSousCreneaux', () => {
+  it('groupe en un seul BulkUpdateRecord les patches qui partagent le même jeu de champs (redimensionnement avec poussée)', () => {
+    expect(actionsModifierSousCreneaux([
+      {id: 15, debut: 1000, fin: 1900},
+      {id: 16, debut: 1900, fin: 2800},
+    ])).toEqual([
+      ['BulkUpdateRecord', 'Sous_creneaux', [15, 16], {Debut: [1000, 1900], Fin: [1900, 2800]}],
+    ]);
+  });
+
+  it('garde un patch isolé (jeu de champs unique) en UpdateRecord', () => {
+    expect(actionsModifierSousCreneaux([
+      {id: 15, debut: 1000, fin: 1900},
+      {id: 16, debut: 1900, fin: 2800},
+      {id: 17, libelle: 'Renommé'},
+    ])).toEqual([
+      ['BulkUpdateRecord', 'Sous_creneaux', [15, 16], {Debut: [1000, 1900], Fin: [1900, 2800]}],
+      ['UpdateRecord', 'Sous_creneaux', 17, {Libelle: 'Renommé'}],
+    ]);
+  });
+
+  it("ne construit aucune action pour un patch sans champ, ni pour une liste vide", () => {
+    expect(actionsModifierSousCreneaux([{id: 15}])).toEqual([]);
+    expect(actionsModifierSousCreneaux([])).toEqual([]);
   });
 });
 
