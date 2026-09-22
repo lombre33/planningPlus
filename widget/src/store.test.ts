@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import type {Id} from './domain/types';
+import type {Id, Modele} from './domain/types';
 import {normaliser} from './donnees/normaliser';
 import {type EcritureGrist, Magasin, SuppressionApresCreationEchouee} from './store';
 import {epochDepuisHeureLocale} from './temps';
@@ -15,6 +15,8 @@ function ecritureDeTest(partielle: Partial<EcritureGrist> = {}): EcritureGrist {
     creerMission: nonBranchee('creerMission'),
     creerMacroCreneau: nonBranchee('creerMacroCreneau'),
     modifierMacroCreneau: nonBranchee('modifierMacroCreneau'),
+    creerArtiste: nonBranchee('creerArtiste'),
+    modifierArtiste: nonBranchee('modifierArtiste'),
     remplacerSousCreneaux: nonBranchee('remplacerSousCreneaux'),
     creerBesoin: nonBranchee('creerBesoin'),
     creerGroupe: nonBranchee('creerGroupe'),
@@ -39,6 +41,55 @@ function paireLibre(m: Magasin): {missionId: Id; sousCreneauId: Id} {
   throw new Error('aucune paire mission/sous-créneau libre dans le jeu de données de test');
 }
 
+/** Un document réduit à un seul besoin, pour tester la nomenclature des
+ *  codes de binôme sans dépendre du contenu du jeu de démonstration.
+ *  `codesGroupesExistants` seed `m.groupes` pour éprouver la reprise sur un
+ *  document déjà peuplé. */
+function modeleUnBesoin(codesGroupesExistants: readonly string[] = []): Modele {
+  return {
+    equipes: [{id: 1, Nom: 'Bars', Couleur: '#c00', Referent: null, Notes: ''}],
+    lieux: [], benevoles: [], artistes: [],
+    missions: [{
+      id: 1, Nom: 'Buvette', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: [],
+    }],
+    macroCreneaux: [{id: 1, Nom: 'Vendredi', Debut: 1_700_000_000, Fin: 1_700_030_000}],
+    sousCreneaux: [{
+      id: 1, Macro_creneau: 1, Mission: null, Libelle: '10h-11h', Debut: 1_700_000_000, Fin: 1_700_003_600,
+    }],
+    besoins: [{id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 2, Effectif_max: 2, Taille_groupe: 2}],
+    groupes: codesGroupesExistants.map((code, i) => ({id: 100 + i, Code: code, Taille: 2, Equipe: 1, Notes: ''})),
+    positionsGroupe: [], places: [],
+    disponibilites: [], souhaitsMissions: [], affinites: [],
+  };
+}
+
+describe('Magasin.creerGroupeSurBesoin — nomenclature des binômes (A1 à Z1, puis A2 à Z2, …)', () => {
+  it("attribue A1 au premier indicatif d'un document sans aucun groupe (demande d'Antoine du 2026-09-22)", async () => {
+    const m = new Magasin(modeleUnBesoin());
+    const groupeId = await m.creerGroupeSurBesoin(1);
+    expect(m.groupes.find((g) => g.id === groupeId)!.Code).toBe('A1');
+  });
+
+  it('reprend après les codes déjà présents, sans en réattribuer un — reprise sur un document déjà peuplé', async () => {
+    const m = new Magasin(modeleUnBesoin(['C1', 'A1', 'B1']));
+    const groupeId = await m.creerGroupeSurBesoin(1);
+    expect(m.groupes.find((g) => g.id === groupeId)!.Code).toBe('D1');
+  });
+
+  it('passe à A2 une fois A1 à Z1 tous pris', async () => {
+    const alphabet = Array.from({length: 26}, (_, i) => `${String.fromCharCode(65 + i)}1`);
+    const m = new Magasin(modeleUnBesoin(alphabet));
+    const groupeId = await m.creerGroupeSurBesoin(1);
+    expect(m.groupes.find((g) => g.id === groupeId)!.Code).toBe('A2');
+  });
+
+  it("ignore un code hérité de l'ancien format (ex. « BA01 »), qui ne bloque aucun code de la nouvelle séquence", async () => {
+    const m = new Magasin(modeleUnBesoin(['BA01']));
+    const groupeId = await m.creerGroupeSurBesoin(1);
+    expect(m.groupes.find((g) => g.id === groupeId)!.Code).toBe('A1');
+  });
+});
+
 describe('Magasin.creerGroupeSurBesoin', () => {
   it('crée un indicatif de taille 2, ses places vides et sa position sur le besoin visé', async () => {
     const m = new Magasin(normaliser());
@@ -54,7 +105,7 @@ describe('Magasin.creerGroupeSurBesoin', () => {
 
     const groupe = m.groupes.find((g) => g.id === groupeId)!;
     expect(groupe.Taille).toBe(2);
-    expect(groupe.Code).toMatch(/^[A-ZÀ-ÖØ-Þ]{2}\d{2}$/);
+    expect(groupe.Code).toMatch(/^[A-Z][1-9]\d*$/);
 
     const places = m.places.filter((p) => p.Groupe === groupeId).sort((a, b) => a.Rang - b.Rang);
     expect(places.map((p) => p.Rang)).toEqual([1, 2]);
@@ -545,6 +596,104 @@ describe('Magasin.enregistrerMacroCreneau', () => {
     m.subscribe(() => { notifications += 1; });
 
     await m.enregistrerMacroCreneau(macroDeTest());
+
+    expect(notifications).toBe(1);
+  });
+});
+
+describe('Magasin.enregistrerArtiste', () => {
+  function artisteDeTest(lieuId: Id) {
+    return {
+      Nom: 'DJ Set',
+      Lieu: lieuId,
+      Debut: epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 18, heures: 21}),
+      Fin: epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 18, heures: 23}),
+    };
+  }
+
+  it("sans écrivain branché (mode démo), génère un id local et l'ajoute au référentiel", async () => {
+    const m = new Magasin(normaliser());
+    const lieuId = m.lieux[0]!.id;
+    const nbAvant = m.artistes.length;
+
+    const id = await m.enregistrerArtiste(artisteDeTest(lieuId));
+
+    expect(m.artistes).toHaveLength(nbAvant + 1);
+    expect(m.artistes.find((a) => a.id === id)?.Nom).toBe('DJ Set');
+  });
+
+  it("à la création, avec une écriture branchée, attend l'id qu'elle rend avant d'insérer localement", async () => {
+    const m = new Magasin(normaliser());
+    const lieuId = m.lieux[0]!.id;
+    const appels: unknown[] = [];
+    m.brancherEcriture(ecritureDeTest({
+      creerArtiste: async (artiste) => { appels.push(artiste); return 999; },
+    }));
+
+    const id = await m.enregistrerArtiste(artisteDeTest(lieuId));
+
+    expect(id).toBe(999);
+    expect(appels).toEqual([{nom: 'DJ Set', lieuId, debut: artisteDeTest(lieuId).Debut, fin: artisteDeTest(lieuId).Fin}]);
+    expect(m.artistes.find((a) => a.id === 999)?.Nom).toBe('DJ Set');
+  });
+
+  it('sans lieu (0 côté domaine), passe null au pont plutôt que 0', async () => {
+    const m = new Magasin(normaliser());
+    const appels: unknown[] = [];
+    m.brancherEcriture(ecritureDeTest({
+      creerArtiste: async (artiste) => { appels.push(artiste); return 999; },
+    }));
+
+    await m.enregistrerArtiste(artisteDeTest(0));
+
+    expect((appels[0] as {lieuId: Id | null}).lieuId).toBeNull();
+  });
+
+  it("ne crée rien localement si l'écriture branchée échoue à la création", async () => {
+    const m = new Magasin(normaliser());
+    const lieuId = m.lieux[0]!.id;
+    const nbAvant = m.artistes.length;
+    m.brancherEcriture(ecritureDeTest({creerArtiste: async () => { throw new Error('document indisponible'); }}));
+
+    await expect(m.enregistrerArtiste(artisteDeTest(lieuId))).rejects.toThrow('document indisponible');
+    expect(m.artistes).toHaveLength(nbAvant);
+  });
+
+  it("à la modification, avec une écriture branchée, attend la confirmation avant de modifier localement", async () => {
+    const m = new Magasin(normaliser());
+    const lieuId = m.lieux[0]!.id;
+    const artisteId = (await m.enregistrerArtiste(artisteDeTest(lieuId)));
+    const appels: unknown[] = [];
+    m.brancherEcriture(ecritureDeTest({
+      modifierArtiste: async (id, artiste) => { appels.push({id, artiste}); },
+    }));
+
+    const patch = {...artisteDeTest(lieuId), Nom: 'Fanfare', id: artisteId};
+    const id = await m.enregistrerArtiste(patch);
+
+    expect(id).toBe(artisteId);
+    expect(appels).toEqual([{id: artisteId, artiste: {nom: 'Fanfare', lieuId, debut: patch.Debut, fin: patch.Fin}}]);
+    expect(m.artistes.find((a) => a.id === artisteId)?.Nom).toBe('Fanfare');
+  });
+
+  it("ne modifie rien localement si l'écriture branchée échoue à la modification", async () => {
+    const m = new Magasin(normaliser());
+    const lieuId = m.lieux[0]!.id;
+    const artisteId = await m.enregistrerArtiste(artisteDeTest(lieuId));
+    const avant = m.artistes.find((a) => a.id === artisteId)!;
+    m.brancherEcriture(ecritureDeTest({modifierArtiste: async () => { throw new Error('document indisponible'); }}));
+
+    await expect(m.enregistrerArtiste({...artisteDeTest(lieuId), Nom: 'Fanfare', id: artisteId}))
+      .rejects.toThrow('document indisponible');
+    expect(m.artistes.find((a) => a.id === artisteId)).toEqual(avant);
+  });
+
+  it('notifie les abonnés une seule fois', async () => {
+    const m = new Magasin(normaliser());
+    let notifications = 0;
+    m.subscribe(() => { notifications += 1; });
+
+    await m.enregistrerArtiste(artisteDeTest(m.lieux[0]!.id));
 
     expect(notifications).toBe(1);
   });

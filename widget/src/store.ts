@@ -63,6 +63,16 @@ export interface EcritureGrist {
    *  ensemble (voir `Magasin.enregistrerMacroCreneau`, qui ne les sépare
    *  jamais côté appelant). */
   modifierMacroCreneau(id: Id, macro: {nom: string; debut: Epoch; fin: Epoch}): Promise<void>;
+  /** Écrit un artiste (un passage : nom, lieu, horaires) et rend l'id que
+   *  Grist lui attribue — voir `Magasin.enregistrerArtiste`, qui l'attend
+   *  avant d'insérer localement, pour la même raison que `creerMission`.
+   *  `lieuId` suit la même convention que `creerMission` : `null` pour
+   *  aucun lieu, jamais `0` (voir `./grist/valeurs`, `encoderRef`). */
+  creerArtiste(artiste: {nom: string; lieuId: Id | null; debut: Epoch; fin: Epoch}): Promise<Id>;
+  /** Modifie un artiste déjà réel : nom, lieu et horaires, toujours fournis
+   *  ensemble (voir `Magasin.enregistrerArtiste`, qui ne les sépare jamais
+   *  côté appelant, à l'image de `modifierMacroCreneau`). */
+  modifierArtiste(id: Id, artiste: {nom: string; lieuId: Id | null; debut: Epoch; fin: Epoch}): Promise<void>;
   /** Remplace tous les sous-créneaux d'un macro-créneau déjà réel (§8 point
    *  3, redécoupage automatique) : crée les nouveaux puis supprime les ids
    *  donnés — deux allers-retours liés, jamais un seul batché (un id créé
@@ -118,6 +128,22 @@ export class SuppressionApresCreationEchouee extends Error {
 
 function prochainId(lignes: {id: Id}[]): Id {
   return lignes.reduce((max, l) => Math.max(max, l.id), 0) + 1;
+}
+
+/** Prochain code de binôme dans la nomenclature simplifiée voulue par
+ *  Antoine (2026-09-22) : A1 à Z1, puis A2 à Z2, et ainsi de suite — une
+ *  seule séquence pour tout le document, plus un préfixe par équipe.
+ *  Ignore les codes déjà pris (y compris un ancien format hérité) pour ne
+ *  jamais réattribuer un code existant, qu'il vienne d'une suppression ou
+ *  d'une reprise sur un document déjà peuplé. */
+function prochainCodeGroupe(codesExistants: readonly string[]): string {
+  const pris = new Set(codesExistants);
+  for (let numero = 1; ; numero++) {
+    for (let lettre = 0; lettre < 26; lettre++) {
+      const code = `${String.fromCharCode(65 + lettre)}${numero}`;
+      if (!pris.has(code)) { return code; }
+    }
+  }
 }
 
 export class Magasin {
@@ -217,6 +243,34 @@ export class Magasin {
       ? await this.ecriture.creerMacroCreneau({nom: patch.Nom, debut: patch.Debut, fin: patch.Fin})
       : prochainId(this.data.macroCreneaux);
     this.data.macroCreneaux.push({...patch, id});
+    this.notifier();
+    return id;
+  }
+
+  // --- Écriture : artistes ------------------------------------------------
+
+  /** Crée ou modifie un passage d'artiste (nom, lieu, horaires — demande
+   *  d'Antoine du 2026-09-22 : les mêmes gestes que macro-créneaux/
+   *  sous-créneaux, sur des horaires libres plutôt qu'un découpage en
+   *  quart d'heure). Même discipline que `enregistrerMacroCreneau` :
+   *  écrit d'abord dans le document Grist réel et attend confirmation
+   *  avant de toucher l'état local. */
+  async enregistrerArtiste(patch: Omit<Artiste, 'id'> & {id?: Id}): Promise<Id> {
+    if (patch.id != null) {
+      const idx = this.data.artistes.findIndex((a) => a.id === patch.id);
+      if (idx >= 0) {
+        if (this.ecriture) {
+          await this.ecriture.modifierArtiste(patch.id, {nom: patch.Nom, lieuId: patch.Lieu || null, debut: patch.Debut, fin: patch.Fin});
+        }
+        this.data.artistes[idx] = {...this.data.artistes[idx]!, ...patch, id: patch.id};
+        this.notifier();
+        return patch.id;
+      }
+    }
+    const id = this.ecriture
+      ? await this.ecriture.creerArtiste({nom: patch.Nom, lieuId: patch.Lieu || null, debut: patch.Debut, fin: patch.Fin})
+      : prochainId(this.data.artistes);
+    this.data.artistes.push({...patch, id});
     this.notifier();
     return id;
   }
@@ -417,10 +471,7 @@ export class Magasin {
     if (!besoin) { return -1; }
     const mission = this.data.missions.find((mi) => mi.id === besoin.Mission);
     const equipeId = mission?.Equipe ?? this.data.equipes[0]?.id ?? 0;
-    const equipe = this.data.equipes.find((e) => e.id === equipeId);
-    const prefixe = (equipe?.Nom ?? 'XX').slice(0, 2).toUpperCase();
-    const numero = this.data.groupes.length + 1;
-    const code = `${prefixe}${String(numero).padStart(2, '0')}`;
+    const code = prochainCodeGroupe(this.data.groupes.map((g) => g.Code));
 
     // Trois allers-retours liés (`EcritureGrist`, voir son en-tête) : le
     // groupe doit exister côté Grist avant de pouvoir le positionner, qui

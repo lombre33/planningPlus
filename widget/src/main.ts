@@ -39,10 +39,11 @@ import type {Id} from './domain/types';
 import {normaliser} from './donnees/normaliser';
 import type {DocApiEcriture} from './grist';
 import {
-  actionsCreerBesoin, actionsCreerEquipe, actionsCreerGroupe, actionsCreerMacroCreneau, actionsCreerMission,
-  actionsCreerSousCreneaux, actionsCreerTablesManquantes, actionsDefinirPlaces, actionsDeplacerMacroCreneau,
-  actionsDeplacerPositionGroupe, actionsPositionnerGroupe, actionsReglerAffichage, actionsRenommerMacroCreneau,
-  actionsSupprimerSousCreneaux, appliquerActions, LIBELLE_PAR_TABLE, lireDocument, zipperTable,
+  actionsCreerArtiste, actionsCreerBesoin, actionsCreerEquipe, actionsCreerGroupe, actionsCreerMacroCreneau,
+  actionsCreerMission, actionsCreerSousCreneaux, actionsCreerTablesManquantes, actionsDefinirPlaces,
+  actionsDeplacerMacroCreneau, actionsDeplacerPositionGroupe, actionsModifierArtiste, actionsPositionnerGroupe,
+  actionsReglerAffichage, actionsRenommerMacroCreneau, actionsSupprimerSousCreneaux, appliquerActions,
+  LIBELLE_PAR_TABLE, lireDocument, zipperTable,
 } from './grist';
 import {type EcritureGrist, Magasin, SuppressionApresCreationEchouee} from './store';
 
@@ -99,6 +100,13 @@ function construireEcritureGrist(docApi: DocApiEcriture, resolution: Record<stri
         [...actionsRenommerMacroCreneau(id, macro.nom), ...actionsDeplacerMacroCreneau(id, macro.debut, macro.fin)],
         resolution,
       );
+    },
+    async creerArtiste(artiste) {
+      const [id] = await appliquerActions(docApi, actionsCreerArtiste(artiste), resolution);
+      return id as Id;
+    },
+    async modifierArtiste(id, artiste) {
+      await appliquerActions(docApi, actionsModifierArtiste(id, artiste), resolution);
     },
     async remplacerSousCreneaux(idsASupprimer, nouveaux) {
       // Deux allers-retours liés : un id créé par `actionsCreerSousCreneaux`
