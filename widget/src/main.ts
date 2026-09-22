@@ -8,10 +8,11 @@
  * resterait sinon en attente indéfinie, aucune réponse n'arrivant jamais au
  * `postMessage`). Trois situations bien distinctes, pas deux :
  *
- * - pas d'hôte Grist, délai dépassé, ou vrai échec (réseau, accès refusé) :
- *   monte la maquette sur le jeu de données figé (`donnees/festival.json`)
- *   — l'aperçu autonome qu'Antoine a en main tant qu'aucun document Grist
- *   n'est branché, strictement inchangé ;
+ * - pas d'hôte Grist, ou délai dépassé sans la moindre réponse : monte la
+ *   maquette sur le jeu de données figé (`donnees/festival.json`) — l'aperçu
+ *   autonome qu'Antoine a en main tant qu'aucun document Grist n'est
+ *   branché, strictement inchangé. C'est le seul cas où la démo apparaît :
+ *   avant toute preuve qu'un document réel répond ;
  * - connecté, et toutes les tables attendues (`TABLES_REQUISES`) existent
  *   dans le document, vides ou non : lit le document via `lireDocument`
  *   (`./grist`) et monte la même maquette sur le `Modele` qui en sort. Un
@@ -19,10 +20,12 @@
  *   vrai utilisateur, pas une panne — chaque vue sait déjà se montrer vide
  *   et inviter à l'étape 1 (§1.1), pas question d'y substituer la démo, qui
  *   ferait passer de fausses données pour les siennes ;
- * - connecté, mais il manque au moins une des tables attendues : ce n'est
- *   pas un document de planning (ou un schéma incomplet). Ni la démo
- *   (mêmes fausses données trompeuses), ni un silence qui laisserait des
- *   vues vides sans explication — un message nomme ce qui manque.
+ * - connecté, mais il manque au moins une des tables attendues, ou une
+ *   erreur survient après cette connexion confirmée (création de tables,
+ *   pose de l'affichage, lecture) : jamais la démo, qui ferait passer une
+ *   panne pour un premier jour normal — un message nomme ce qui manque ou
+ *   ce qui a échoué (régression du 2026-09-22, corrigée le jour même : le
+ *   repli sur la démo touchait alors aussi ce troisième cas).
  *
  * Les deux premiers modes convergent sur un seul point de bascule,
  * `demarrerApp` : `lireDocument` rend un `Modele` de la même forme que
@@ -175,6 +178,28 @@ function afficherDocumentNonReconnu(racine: HTMLElement, tablesManquantes: reado
   racine.append(note);
 }
 
+/** Une erreur survenue après la confirmation qu'un document Grist réel
+ *  répond (création de tables, pose de l'affichage, lecture) : jamais la
+ *  démo à ce stade, qui ferait passer une panne pour un premier jour normal
+ *  — voir le doc-comment en tête de fichier. Le message ne prétend jamais
+ *  plus que ce qui s'est passé (même règle que `remplacerSousCreneaux`) :
+ *  le texte de l'erreur elle-même, pas une explication devinée. */
+function afficherErreurConnexion(racine: HTMLElement, erreur: unknown): void {
+  racine.textContent = '';
+
+  const titre = document.createElement('h1');
+  titre.textContent = 'Échec de connexion au document Grist';
+  racine.append(titre);
+
+  const message = document.createElement('p');
+  message.textContent = erreur instanceof Error ? erreur.message : String(erreur);
+  racine.append(message);
+
+  const note = document.createElement('p');
+  note.textContent = "Vérifiez que ce widget dispose de l'accès complet au document, puis rechargez la page.";
+  racine.append(note);
+}
+
 /**
  * Crée dans le document les tables PlanningPlus absentes (`tablesManquantes`,
  * identifiants canoniques), à partir de `./grist/schema` — décision
@@ -222,15 +247,32 @@ async function demarrer(): Promise<void> {
   }
 
   window.grist.ready({requiredAccess: 'full'});
+
+  // Avant toute réponse d'un document réel, rien ne distingue une absence
+  // d'hôte Grist d'une lenteur passagère : la démo reste le repli légitime
+  // ici, comportement inchangé. Un échec de `lireDocument` dans cette
+  // fenêtre (accès refusé, etc.) tombe dans le même cas, faute de preuve
+  // qu'un document réel est en face.
+  let resultat: Awaited<ReturnType<typeof lireDocument>> | null;
   try {
-    const resultat = await Promise.race([
+    resultat = await Promise.race([
       lireDocument(window.grist.docApi),
       new Promise<null>((resolve) => setTimeout(() => resolve(null), DELAI_CONNEXION_MS)),
     ]);
-    if (resultat == null) {
-      demarrerDemo(racine);
-      return;
-    }
+  } catch {
+    demarrerDemo(racine);
+    return;
+  }
+  if (resultat == null) {
+    demarrerDemo(racine);
+    return;
+  }
+
+  // À partir d'ici, un document Grist réel a répondu : plus jamais la démo,
+  // qui ferait passer une panne pour un premier jour normal (régression du
+  // 2026-09-22, voir le doc-comment en tête de fichier) — un échec s'affiche
+  // pour ce qu'il est.
+  try {
     let resultatFinal = resultat;
     const tablesManquantes = TABLES_REQUISES.filter((t) => !(t in resultat.resolution));
     if (tablesManquantes.length > 0) {
@@ -247,8 +289,8 @@ async function demarrer(): Promise<void> {
     const magasin = new Magasin(resultatFinal.modele);
     magasin.brancherEcriture(construireEcritureGrist(window.grist.docApi, resultatFinal.resolution));
     demarrerApp(racine, magasin, 'Document Grist connecté');
-  } catch {
-    demarrerDemo(racine);
+  } catch (erreur) {
+    afficherErreurConnexion(racine, erreur);
   }
 }
 
