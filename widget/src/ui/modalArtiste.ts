@@ -52,8 +52,16 @@ function formulaire(
     disabled: valeursInitiales?.nomVerrouille ?? false,
   }) as HTMLInputElement;
 
+  // Facultatif : « les lieux ne servent pas pour l'instant » (Antoine,
+  // 2026-09-23), même geste que le lieu d'une mission dans
+  // `ouvrirCreationMission` (views/grille.ts) — l'option « — aucun — » vaut
+  // `Lieu: 0`, qu'`enregistrerArtiste` convertit déjà en `lieuId: null` côté
+  // écriture, et que `ligneArtistes` (logic/derive.ts) affiche déjà comme un
+  // lieu vide (`?? ''`) : rien d'autre à changer pour que l'absence de lieu
+  // ne bloque ni la création ni l'affichage.
   const lieuInitial = artisteExistant?.Lieu ?? valeursInitiales?.lieu;
   const champLieu = h('select', {class: 'select'},
+    h('option', {value: ''}, '— aucun —'),
     ...m.lieux.map((l) => h('option', {value: String(l.id), selected: l.id === lieuInitial}, l.Nom)),
   ) as HTMLSelectElement;
 
@@ -84,15 +92,13 @@ function formulaire(
         class: 'btn btn--primary', type: 'button',
         onclick: async () => {
           const nom = champNom.value.trim();
-          const lieuId = Number(champLieu.value);
           const debut = epochDepuisDatetimeLocal(champDebut.value);
           const fin = epochDepuisDatetimeLocal(champFin.value);
           if (!nom) { erreur.afficher('Merci de renseigner un nom.'); return; }
-          if (!champLieu.value) { erreur.afficher('Merci de choisir un lieu (aucun lieu disponible pour l’instant).'); return; }
           if (debut == null || fin == null) { erreur.afficher('Merci de renseigner un début et une fin.'); return; }
           if (fin <= debut) { erreur.afficher('La fin doit être après le début.'); return; }
           erreur.effacer();
-          const patch = {Nom: nom, Lieu: lieuId, Debut: debut, Fin: fin};
+          const patch = {Nom: nom, Lieu: champLieu.value ? Number(champLieu.value) : 0, Debut: debut, Fin: fin};
           try {
             await onValider(artisteExistant ? {...patch, id: artisteExistant.id} : patch);
             fermer();

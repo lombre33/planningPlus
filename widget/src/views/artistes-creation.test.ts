@@ -56,6 +56,21 @@ describe('création d’un passage, sans document Grist branché (mode démo)', 
     expect(document.querySelector('.modal-backdrop')).toBeNull();
   });
 
+  it("crée le passage sans lieu (« — aucun — », les lieux ne servent pas encore — demande d'Antoine du 2026-09-23), sans rien casser à l'affichage", async () => {
+    const m = new Magasin({...modeleVide(), lieux: []});
+    montrerArtistes(container, m);
+
+    boutonTexte('+ Nouveau passage').click();
+    remplirFormulaire('Nuit Blanche', '2026-07-18T22:00', '2026-07-19T00:30');
+    boutonTexte('Créer').click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(m.artistes).toHaveLength(1);
+    expect(m.artistes[0]?.Lieu).toBe(0);
+    expect(document.querySelector('.modal-backdrop')).toBeNull();
+    expect(() => container.textContent).not.toThrow();
+  });
+
   it('refuse une fin avant le début, sans rien créer', async () => {
     const m = new Magasin(modeleVide());
     montrerArtistes(container, m);
