@@ -1,9 +1,12 @@
 /**
  * Vue Disponibilités : garde-fou de non-régression sur le comportement
- * d'origine (onglets jour, filtre équipe, recherche, légende, états vides,
- * infobulle, résumé) en plus des nouveaux usages ajoutés le 2026-09-23
- * (panneau de réglages d'import avec menu déroulant sur les colonnes
- * réelles, repli en champ texte, mode édition au clic).
+ * d'origine (filtre équipe, recherche, légende, états vides, infobulle,
+ * résumé) en plus des nouveaux usages ajoutés le 2026-09-23 (panneau de
+ * réglages d'import avec menu déroulant sur les colonnes réelles, repli en
+ * champ texte, mode édition au clic, choix d'un artiste précis). Les
+ * onglets de jour propres à cette vue ont été retirés le même jour au
+ * profit du filtre global par macro-créneau (`m.macroCreneauSelectionne`,
+ * monté par `app.ts` au-dessus de la vue) — voir le test dédié.
  */
 import {beforeEach, describe, expect, it} from 'vitest';
 import type {EcritureGrist} from '../store';
@@ -87,12 +90,54 @@ describe('comportement d’origine (consultation), inchangé', () => {
     expect(container.textContent).toContain('Aucun macro-créneau');
   });
 
-  it('affiche un onglet par jour de festival, sélectionné via aria-selected', () => {
+  it("sans sélection globale, affiche le premier jour (retombe sur `m.macroCreneauSelectionne` nul)", () => {
     const m = new Magasin(modeleDeTest());
     montrerDisponibilites(container, m);
-    const onglets = container.querySelectorAll('.dispos-jour-tab');
-    expect(onglets.length).toBeGreaterThan(0);
-    expect(onglets[0]?.getAttribute('aria-selected')).toBe('true');
+    expect(container.querySelector('.dispos-table')).not.toBeNull();
+    expect(container.textContent).toContain('Alice');
+  });
+
+  it('se scope au jour du macro-créneau sélectionné globalement (`m.selectionnerMacroCreneau`), pas ses propres onglets', () => {
+    const debutSamedi = epochDepuisHeureLocale({...VENDREDI, jour: VENDREDI.jour + 1, heures: 10});
+    const modele = modeleDeTest();
+    modele.macroCreneaux.push({id: 2, Nom: 'Samedi matin', Debut: debutSamedi, Fin: debutSamedi + 1800});
+    const m = new Magasin(modele);
+    m.selectionnerMacroCreneau(2);
+    montrerDisponibilites(container, m);
+
+    // Aucun onglet de jour propre à cette vue : le filtre est désormais
+    // global (bandeau monté par `app.ts`, hors de ce conteneur).
+    expect(container.querySelector('.dispos-jour-tab')).toBeNull();
+    // La grille affiche le créneau du samedi (sélectionné), pas celui du
+    // vendredi par défaut.
+    expect(container.querySelector('th[title="Samedi matin"]')).not.toBeNull();
+  });
+
+  it("change de jour affiché quand `m.selectionnerMacroCreneau` change en cours de vie de la vue (bandeau global, changement d'onglet)", () => {
+    const debutSamedi = epochDepuisHeureLocale({...VENDREDI, jour: VENDREDI.jour + 1, heures: 10});
+    const modele = modeleDeTest();
+    modele.macroCreneaux.push({id: 2, Nom: 'Samedi matin', Debut: debutSamedi, Fin: debutSamedi + 1800});
+    const m = new Magasin(modele);
+    montrerDisponibilites(container, m);
+    expect(container.querySelector('th[title="Vendredi matin"]')).not.toBeNull();
+
+    // Simule le bandeau global (app.ts) changeant la sélection pendant que
+    // la vue est montée — pas un remontage, le même mécanisme qu'un retour
+    // sur cet onglet après être passé par Missions ou Artistes : la
+    // sélection vit dans le magasin, pas dans l'état local de la vue.
+    m.selectionnerMacroCreneau(2);
+    expect(container.querySelector('th[title="Samedi matin"]')).not.toBeNull();
+    expect(container.querySelector('th[title="Vendredi matin"]')).toBeNull();
+  });
+
+  it('macro-créneau sélectionné sans aucune disponibilité déclarée : la grille reste utilisable (tout indisponible), pas de plantage', () => {
+    const debutSamedi = epochDepuisHeureLocale({...VENDREDI, jour: VENDREDI.jour + 1, heures: 10});
+    const modele = modeleDeTest();
+    modele.macroCreneaux.push({id: 2, Nom: 'Samedi matin', Debut: debutSamedi, Fin: debutSamedi + 1800});
+    const m = new Magasin(modele);
+    m.selectionnerMacroCreneau(2); // aucune ligne dans `disponibilites` pour ce macro-créneau
+    expect(() => montrerDisponibilites(container, m)).not.toThrow();
+    expect(container.querySelectorAll('.dispos-cellule--indisponible').length).toBeGreaterThan(0);
   });
 
   it('le filtre équipe restreint les lignes affichées', () => {
@@ -200,6 +245,23 @@ describe('panneau de réglages d’import (nouveau, 2026-09-23)', () => {
     expect(libellesOptions).toContain('Dispo vendredi (Dispo_vendredi)');
   });
 
+  it("aucune colonne éligible (table Bénévoles lue mais sans colonne texte/choix ajoutée par Antoine) : le dit, plutôt qu'un menu vide sans explication", async () => {
+    const m = new Magasin(modeleDeTest());
+    m.brancherEcriture({
+      ...ecritureMuette,
+      colonnesTable: async () => [{colId: 'Quota_heures_max', label: 'Quota heures max', type: 'Numeric'}],
+    });
+    montrerDisponibilites(container, m);
+
+    (Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent === "Réglages d'import") as HTMLButtonElement).click();
+    await attendreMicrotaches();
+
+    expect(container.textContent).toContain('Aucune colonne de ta table Bénévoles ne peut être associée ici');
+    const menu = container.querySelector('select[aria-label="Colonne des souhaits d\'artistes"]');
+    expect(menu).not.toBeNull(); // le menu reste affiché (avec seulement « — aucune — »), pas de repli forcé
+  });
+
   it('repli en champ texte si la lecture des colonnes échoue, avec un message explicite', async () => {
     const m = new Magasin(modeleDeTest());
     m.brancherEcriture({...ecritureMuette, colonnesTable: async () => { throw new Error('document indisponible'); }});
@@ -258,6 +320,28 @@ describe('panneau de réglages d’import (nouveau, 2026-09-23)', () => {
     await attendreMicrotaches();
 
     expect(appels).toContainEqual({cle: 'benevoles.colonne_reponse_macro.1', valeur: 'Dispo_vendredi'});
+  });
+
+  it("un échec d'enregistrement d'un choix de colonne se voit à l'écran, plutôt que de disparaître en silence (table Parametres absente, document déconnecté…)", async () => {
+    const colonnes: ColonneTable[] = [{colId: 'Dispo_vendredi', label: 'Dispo vendredi', type: 'Text'}];
+    const m = new Magasin(modeleDeTest());
+    m.brancherEcriture({
+      ...ecritureMuette,
+      colonnesTable: async () => colonnes,
+      definirParametre: async () => { throw new Error('table Parametres absente de ce document'); },
+    });
+    montrerDisponibilites(container, m);
+
+    (Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent === "Réglages d'import") as HTMLButtonElement).click();
+    await attendreMicrotaches();
+
+    const menu = container.querySelector('select[aria-label="Colonne de réponse pour Vendredi matin"]') as HTMLSelectElement;
+    menu.value = 'Dispo_vendredi';
+    menu.dispatchEvent(new Event('change'));
+    await attendreMicrotaches();
+
+    expect(container.textContent).toContain("Échec de l'enregistrement de ce réglage");
   });
 
   it("l'import refuse de partir si aucune colonne n'est associée", async () => {

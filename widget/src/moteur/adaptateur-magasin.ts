@@ -38,7 +38,7 @@
  */
 
 import type {Anomalie as AnomalieUI, Candidat, Index} from '../logic/derive';
-import {couvertureBesoin} from '../logic/derive';
+import {couvertureBesoin, missionsCouvertesParGroupe, positionsDuGroupe} from '../logic/derive';
 import type {Magasin} from '../store';
 import type {
   Affinite as AffiniteUI,
@@ -174,6 +174,85 @@ export function classerCandidats(m: Magasin, ix: Index, groupeId: Id, options: {
 
   // Déjà trié éligibles-d'abord par score décroissant par le moteur.
   return resultats.slice(0, 8);
+}
+
+// --- proposerPermutation (Jour J) -------------------------------------------
+
+export interface EtapePermutation {
+  benevoleId: Id;
+  benevoleNom: string;
+  place: PlaceUI;
+  groupeCode: string;
+  depuisMissionNom: string | null; // null = candidat frais, ne quitte aucune autre place
+  versMissionNom: string;
+}
+
+/**
+ * Remplace `derive.ts` `proposerPermutation` (déménagé ici le 2026-09-23) :
+ * même signature, même comportement — cherche une permutation à un cran
+ * pour repourvoir `placeVacanteId` quand aucun remplaçant direct propre
+ * n'existe (§7.3), en déplaçant un bénévole déjà affecté ailleurs sur un
+ * besoin qui resterait couvert sans lui, puis en cherchant un candidat
+ * frais pour la place qu'il libère à son tour. Classe désormais ses
+ * candidats via `classerCandidats` ci-dessus (le vrai moteur) plutôt que
+ * via l'ancien mock de `derive.ts` : sans ce déménagement, la chaîne de
+ * permutation proposée en Jour J ignorait l'affinité (priorité 3
+ * d'Antoine) alors que les remplaçants directs la respectent déjà. Ne
+ * modifie rien : c'est à l'appelant de valider.
+ */
+export function proposerPermutation(m: Magasin, ix: Index, placeVacanteId: Id): EtapePermutation[] | null {
+  const placeVacante = m.places.find((p) => p.id === placeVacanteId);
+  if (!placeVacante) { return null; }
+  const groupeCible = ix.groupe.get(placeVacante.Groupe)!;
+  const missionCible = missionsCouvertesParGroupe(m, ix, groupeCible.id)
+    .map((id) => ix.mission.get(id)!)[0];
+
+  const directs = classerCandidats(m, ix, groupeCible.id);
+  const meilleurDirect = directs[0];
+  const direct = meilleurDirect && !meilleurDirect.tags.some((t) => t.sens === 'moins');
+  if (direct) { return null; } // un remplaçant propre existe déjà, inutile de permuter
+
+  for (const donneur of m.places) {
+    if (donneur.Benevole == null || donneur.Verrouillee || donneur.id === placeVacanteId) { continue; }
+    const groupeDonneur = ix.groupe.get(donneur.Groupe)!;
+    if (groupeDonneur.id === groupeCible.id) { continue; }
+
+    // Le groupe donneur ne doit pas tomber sous le minimum une fois ce
+    // bénévole retiré : on vérifie chacun de ses besoins positionnés.
+    const resteAuDessusDuMinimum = positionsDuGroupe(m, ix, groupeDonneur.id).every(({besoin}) => {
+      const c = couvertureBesoin(m, ix, besoin.id);
+      return c.pourvues - 1 >= besoin.Effectif_min;
+    });
+    if (!resteAuDessusDuMinimum) { continue; }
+
+    // Le donneur doit lui-même être un candidat propre (sans motif négatif)
+    // pour la place cible, sans quoi la permutation ne résout rien.
+    const evalCible = classerCandidats(m, ix, groupeCible.id).find((c) => c.benevoleId === donneur.Benevole);
+    if (!evalCible || evalCible.tags.some((t) => t.sens === 'moins')) { continue; }
+
+    const candidatsPourDonneur = classerCandidats(m, ix, groupeDonneur.id, {exclure: donneur.Benevole});
+    if (candidatsPourDonneur.length === 0) { continue; }
+    const remplacant = candidatsPourDonneur[0]!;
+
+    const benevoleDonneur = ix.benevole.get(donneur.Benevole)!;
+    const missionDonneur = missionsCouvertesParGroupe(m, ix, groupeDonneur.id).map((id) => ix.mission.get(id)!)[0];
+
+    return [
+      {
+        benevoleId: benevoleDonneur.id, benevoleNom: benevoleDonneur.Nom, place: placeVacante,
+        groupeCode: groupeCible.Code,
+        depuisMissionNom: missionDonneur?.Nom ?? groupeDonneur.Code,
+        versMissionNom: missionCible?.Nom ?? groupeCible.Code,
+      },
+      {
+        benevoleId: remplacant.benevoleId, benevoleNom: remplacant.nom, place: donneur,
+        groupeCode: groupeDonneur.Code,
+        depuisMissionNom: null,
+        versMissionNom: missionDonneur?.Nom ?? groupeDonneur.Code,
+      },
+    ];
+  }
+  return null;
 }
 
 // --- calculerAnomalies -------------------------------------------------------

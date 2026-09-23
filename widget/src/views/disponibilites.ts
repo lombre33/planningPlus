@@ -23,9 +23,10 @@
 import type {Epoch, Id, MacroCreneau} from '../domain/types';
 import {decoderListe} from '../grist';
 import {indexer} from '../logic/derive';
+import {regrouperParJour} from '../logic/derive';
 import {
   blocsDuJour, contraintesBenevole, estHeurePleine, graviteContraintes, indexerDisponibilitesParBenevole,
-  libelleContraintes, quartsEntre, regrouperParJourCourt, statutCellule,
+  libelleContraintes, quartsEntre, statutCellule,
 } from '../logic/dispos-terrain';
 import {disponibilitesApresBasculement, disponibilitesApresChoixArtiste} from '../logic/edition-disponibilites';
 import {
@@ -61,7 +62,6 @@ function champ(libelle: string, entree: Node): Node {
 }
 
 export function montrerDisponibilites(container: HTMLElement, m: Magasin): () => void {
-  let jourCle: string | null = null;
   let equipeFiltre: Id | 'toutes' = 'toutes';
   let recherche = '';
   let modeEdition = false;
@@ -70,6 +70,22 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
   let importEnCours = false;
   let dernierMessage: {texte: string; ton: 'ok' | 'danger'} | null = null;
   let colonnesBenevoles: ColonneTable[] | 'chargement' | 'erreur' | null = null;
+
+  /** Enregistre un réglage `Parametres`, jamais en tir-et-oublie : un échec
+   *  (table `Parametres` absente sur ce document, document déconnecté…)
+   *  doit se voir à l'écran plutôt que disparaître, sans quoi Antoine
+   *  choisit une colonne, rien ne se passe, et l'import lui répond ensuite
+   *  qu'aucune colonne n'est associée — signalé par Connexion Grist,
+   *  2026-09-23 17h39. Sur succès, `m.definirParametre` notifie déjà et
+   *  redessine tout seul ; ce n'est que l'échec qu'il fallait rattraper ici. */
+  async function definirParametreSurveille(cle: string, valeur: string): Promise<void> {
+    try {
+      await m.definirParametre(cle, valeur);
+    } catch {
+      dernierMessage = {texte: "Échec de l'enregistrement de ce réglage dans le document Grist connecté. Réessaie.", ton: 'danger'};
+      rafraichir();
+    }
+  }
 
   function chargerColonnesSiBesoin(): void {
     if (colonnesBenevoles != null) { return; }
@@ -97,13 +113,13 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
     if (Array.isArray(colonnesBenevoles)) {
       return h('select', {
         class: 'select', 'aria-label': aria,
-        onchange: (e: Event) => { void m.definirParametre(cle, (e.target as HTMLSelectElement).value); },
+        onchange: (e: Event) => { void definirParametreSurveille(cle, (e.target as HTMLSelectElement).value); },
       }, ...optionsColonnes(valeurActuelle));
     }
     return h('input', {
       class: 'input', type: 'text', placeholder: 'identifiant de colonne (ex. Dispo_Vendredi)', 'aria-label': aria,
       value: valeurActuelle ?? '',
-      onchange: (e: Event) => { void m.definirParametre(cle, (e.target as HTMLInputElement).value.trim()); },
+      onchange: (e: Event) => { void definirParametreSurveille(cle, (e.target as HTMLInputElement).value.trim()); },
     });
   }
 
@@ -233,6 +249,12 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
       colonnesBenevoles === 'erreur'
         ? h('p', {class: 'pill pill--warn'}, "Impossible de lire la liste de tes colonnes pour l'instant — tape l'identifiant à la main ci-dessous.")
         : null,
+      Array.isArray(colonnesBenevoles) && colonnesEligibles(colonnesBenevoles).length === 0
+        ? h('p', {class: 'empty'},
+            "Aucune colonne de ta table Bénévoles ne peut être associée ici : ajoute-lui d'abord, dans Grist, une "
+            + 'colonne de texte ou de choix (par exemple les souhaits d\'artistes, ou une réponse de disponibilité).',
+          )
+        : null,
       champ("Colonne des souhaits d'artistes (choix multiple)", champColonne(CLE_COLONNE_SOUHAITS_ARTISTES, "Colonne des souhaits d'artistes")),
       macrosTries.length === 0
         ? h('p', {class: 'empty'}, "Crée d'abord tes macro-créneaux (vue Agenda) pour associer une colonne de réponse par créneau.")
@@ -243,12 +265,12 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
       champ('Libellé "disponible sur tout le créneau"', h('input', {
         class: 'input', type: 'text',
         value: m.parametre(CLE_LIBELLE_TOUT_LE_CRENEAU) ?? LIBELLES_REPONSE_PAR_DEFAUT.toutLeCreneau[0],
-        onchange: (e: Event) => { void m.definirParametre(CLE_LIBELLE_TOUT_LE_CRENEAU, (e.target as HTMLInputElement).value); },
+        onchange: (e: Event) => { void definirParametreSurveille(CLE_LIBELLE_TOUT_LE_CRENEAU, (e.target as HTMLInputElement).value); },
       })),
       champ('Libellé "pas disponible du tout"', h('input', {
         class: 'input', type: 'text',
         value: m.parametre(CLE_LIBELLE_PAS_DISPONIBLE_DU_TOUT) ?? LIBELLES_REPONSE_PAR_DEFAUT.pasDisponibleDuTout[0],
-        onchange: (e: Event) => { void m.definirParametre(CLE_LIBELLE_PAS_DISPONIBLE_DU_TOUT, (e.target as HTMLInputElement).value); },
+        onchange: (e: Event) => { void definirParametreSurveille(CLE_LIBELLE_PAS_DISPONIBLE_DU_TOUT, (e.target as HTMLInputElement).value); },
       })),
       h('button', {
         class: 'btn btn--primary btn--sm', type: 'button', disabled: importEnCours,
@@ -259,22 +281,21 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
 
   function rafraichir(): void {
     const ix = indexer(m);
-    const jours = regrouperParJourCourt(m.macroCreneaux);
-    if (jourCle == null || !jours.some((j) => j.cle === jourCle)) {
-      jourCle = jours[0]?.cle ?? null;
-    }
+    // Le jour affiché vient du filtre global par macro-créneau
+    // (`Magasin.macroCreneauSelectionne`, monté par `app.ts` au-dessus de
+    // cette vue) — plus d'onglets de jour propres à cet écran depuis le
+    // 2026-09-23 (même bascule que `views/grille.ts` : « un filtre macro qui
+    // va servir pour tout »). Retombe sur le premier jour si rien n'est
+    // encore sélectionné ou si la sélection ne correspond plus à aucun
+    // macro-créneau existant (cas transitoire : `app.ts` corrige la
+    // sélection au prochain rendu).
+    const jours = regrouperParJour(m.macroCreneaux);
+    const jour = jours.find((j) => j.macros.some((ma) => ma.id === m.macroCreneauSelectionne)) ?? jours[0];
     vider(container);
 
     if (panneauOuvert) { container.append(construirePanneauReglages()); }
 
     const barre = h('div', {class: 'dispos-barre'},
-      h('div', {class: 'dispos-jours', role: 'tablist', 'aria-label': 'Jour'},
-        ...jours.map((j) => h('button', {
-          class: 'dispos-jour-tab', type: 'button', role: 'tab',
-          'aria-selected': String(j.cle === jourCle),
-          onclick: () => { jourCle = j.cle; rafraichir(); },
-        }, j.libelle)),
-      ),
       h('div', {class: 'dispos-barre__filtres'},
         h('select', {
           class: 'select', 'aria-label': 'Filtrer par équipe',
@@ -332,11 +353,10 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
       container.append(h('p', {class: `pill pill--${dernierMessage.ton}`, style: {marginTop: '8px'}}, dernierMessage.texte));
     }
 
-    if (!jourCle) {
+    if (!jour) {
       container.append(h('p', {class: 'empty'}, 'Aucun macro-créneau : rien à afficher.'));
       return;
     }
-    const jour = jours.find((j) => j.cle === jourCle)!;
     const blocs = blocsDuJour(jour).filter((b) => b.quarts.length > 0);
 
     const benevoles = m.benevoles
