@@ -25,6 +25,7 @@ export type {
   NouvelleEquipe,
   NouvelleMission,
   NouvellePlace,
+  PatchPlace,
   PatchSousCreneau,
   UserAction,
 } from './ecriture';
@@ -36,6 +37,7 @@ export {
   actionsCreerMacroCreneau,
   actionsCreerMission,
   actionsCreerSousCreneaux,
+  actionsDefinirAbsence,
   actionsDefinirCompetencesBenevole,
   actionsDefinirPlaces,
   actionsDeplacerMacroCreneau,
@@ -46,6 +48,7 @@ export {
   actionsModifierArtiste,
   actionsModifierGroupe,
   actionsModifierMission,
+  actionsModifierPlaces,
   actionsModifierSousCreneau,
   actionsModifierSousCreneaux,
   actionsPositionnerGroupe,

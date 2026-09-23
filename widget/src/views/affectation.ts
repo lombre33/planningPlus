@@ -58,9 +58,12 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
     return {texte: parties.join(' — '), ton: diff.creees.length > 0 ? 'danger' : 'ok'};
   }
 
-  function executerAlgorithme(): void {
+  async function executerAlgorithme(): Promise<void> {
     dernierMessage = null;
-    dernierResume = lancerAlgorithme(m);
+    dernierResume = await lancerAlgorithme(m);
+    if (dernierResume.echecEcriture) {
+      dernierMessage = {texte: dernierResume.echecEcriture, ton: 'danger'};
+    }
     rafraichir();
   }
 
@@ -88,17 +91,18 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
     );
   }
 
-  function deposerBenevoleSurPlace(benevoleId: Id, placeId: Id): void {
+  async function deposerBenevoleSurPlace(benevoleId: Id, placeId: Id): Promise<void> {
     const verdict = verifierDepot(m, benevoleId, placeId);
     if (!verdict.ok) { dernierMessage = {texte: verdict.motif, ton: 'danger'}; rafraichir(); return; }
     const diff = apercuAffectation(m, placeId, benevoleId);
-    m.assignerPlace(placeId, benevoleId, 'Manuel');
+    const resultat = await m.assignerPlace(placeId, benevoleId, 'Manuel');
+    if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; rafraichir(); return; }
     const nom = indexer(m).benevole.get(benevoleId)?.Nom ?? 'Bénévole';
     dernierMessage = messageDepuisDiff(`${nom} affecté(e).`, diff);
     rafraichir();
   }
 
-  function deposerPlaceSurPlace(placeSourceId: Id, placeCibleId: Id): void {
+  async function deposerPlaceSurPlace(placeSourceId: Id, placeCibleId: Id): Promise<void> {
     const source = m.places.find((p) => p.id === placeSourceId);
     const cible = m.places.find((p) => p.id === placeCibleId);
     if (!source || !cible || source.Benevole == null) { return; }
@@ -119,20 +123,23 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
     const diff = apercuEchange(m, placeSourceId, placeCibleId);
     const benevoleSource = source.Benevole;
     const benevoleCible = cible.Benevole;
-    m.assignerPlace(placeSourceId, benevoleCible, 'Manuel');
-    m.assignerPlace(placeCibleId, benevoleSource, 'Manuel');
+    const resultat1 = await m.assignerPlace(placeSourceId, benevoleCible, 'Manuel');
+    if (!resultat1.ok) { dernierMessage = {texte: resultat1.raison, ton: 'danger'}; rafraichir(); return; }
+    const resultat2 = await m.assignerPlace(placeCibleId, benevoleSource, 'Manuel');
+    if (!resultat2.ok) { dernierMessage = {texte: resultat2.raison, ton: 'danger'}; rafraichir(); return; }
     dernierMessage = messageDepuisDiff(benevoleCible != null ? 'Échange effectué.' : 'Déplacé.', diff);
     rafraichir();
   }
 
-  function viderPlace(place: Place): void {
+  async function viderPlace(place: Place): Promise<void> {
     if (place.Verrouillee) {
       dernierMessage = {texte: 'Place verrouillée : déverrouillez-la avant de la modifier.', ton: 'danger'};
       rafraichir();
       return;
     }
     const diff = apercuAffectation(m, place.id, null);
-    m.assignerPlace(place.id, null);
+    const resultat = await m.assignerPlace(place.id, null);
+    if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; rafraichir(); return; }
     dernierMessage = messageDepuisDiff('Place vidée.', diff);
     rafraichir();
   }
@@ -184,7 +191,10 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
         h('button', {
           class: 'btn btn--ghost btn--sm', type: 'button',
           title: place.Verrouillee ? 'Déverrouiller cette place' : 'Verrouiller cette place',
-          onclick: () => m.basculerVerrouillage(place.id),
+          onclick: () => { void (async () => {
+            const resultat = await m.basculerVerrouillage(place.id);
+            if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; rafraichir(); }
+          })(); },
         }, icone(ICONES.cadenas)),
         benevole ? h('button', {
           class: 'btn btn--ghost btn--sm', type: 'button', title: 'Vider',

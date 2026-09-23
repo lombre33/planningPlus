@@ -18,6 +18,12 @@ export interface ResumeLancement {
   resultat: ResultatAffectation;
   placesTraitees: number;
   placesRemplies: number;
+  /** Présent seulement si les propositions calculées n'ont pas pu être
+   *  écrites dans le document Grist connecté (`Magasin.appliquerPropositionsAlgorithme`
+   *  a rejeté) : le calcul a bien eu lieu, mais rien n'a été appliqué,
+   *  ni côté document ni localement — l'appelant l'affiche plutôt que de
+   *  laisser croire que le remplissage a réussi. */
+  echecEcriture?: string;
 }
 
 /** Lance l'algorithme sur l'état courant du Magasin et applique aussitôt ses
@@ -25,15 +31,16 @@ export interface ResumeLancement {
  *  validation séparée pour ce premier remplissage — contrairement à un
  *  glisser-déposer manuel, rien ici n'est irréversible puisque rien n'est
  *  verrouillé : un second lancement peut tout reconsidérer). */
-export function lancerAlgorithme(
+export async function lancerAlgorithme(
   m: Magasin, options?: {perimetre?: Perimetre; parametres?: ParametresAlgorithme},
-): ResumeLancement {
+): Promise<ResumeLancement> {
   const donnees = versDonneesPlanning(m);
   const resultat = calculerAffectation(donnees, options);
-  m.appliquerPropositionsAlgorithme(resultat.propositions);
+  const ecriture = await m.appliquerPropositionsAlgorithme(resultat.propositions);
   return {
     resultat,
     placesTraitees: resultat.propositions.length,
     placesRemplies: resultat.propositions.filter((p) => p.benevoleIdApres != null).length,
+    ...(ecriture.ok ? {} : {echecEcriture: ecriture.raison}),
   };
 }

@@ -27,6 +27,9 @@ function ecritureDeTest(partielle: Partial<EcritureGrist> = {}): EcritureGrist {
     definirPlaces: nonBranchee('definirPlaces'),
     deplacerPosition: nonBranchee('deplacerPosition'),
     ajouterPosition: nonBranchee('ajouterPosition'),
+    modifierPlaces: nonBranchee('modifierPlaces'),
+    supprimerPosition: nonBranchee('supprimerPosition'),
+    definirAbsence: nonBranchee('definirAbsence'),
     ...partielle,
   };
 }

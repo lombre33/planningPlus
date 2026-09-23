@@ -433,7 +433,7 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
    *  de deux places — le même geste que la vue Affectation manuelle
    *  (`views/affectation.ts`), disponible ici aussi (§7.5 : le parcours
    *  d'affectation vaut où qu'il s'affiche, y compris dans cette grille). */
-  function deposerEchange(besoinId: Id, placeSourceId: Id, placeCibleId: Id): void {
+  async function deposerEchange(besoinId: Id, placeSourceId: Id, placeCibleId: Id): Promise<void> {
     const source = m.places.find((p) => p.id === placeSourceId);
     const cible = m.places.find((p) => p.id === placeCibleId);
     if (!source || !cible || source.Benevole == null) { return; }
@@ -454,8 +454,10 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
     const diff = apercuEchange(m, placeSourceId, placeCibleId);
     const benevoleSource = source.Benevole;
     const benevoleCible = cible.Benevole;
-    m.assignerPlace(placeSourceId, benevoleCible, 'Manuel');
-    m.assignerPlace(placeCibleId, benevoleSource, 'Manuel');
+    const resultat1 = await m.assignerPlace(placeSourceId, benevoleCible, 'Manuel');
+    if (!resultat1.ok) { dernierMessage = {texte: resultat1.raison, ton: 'danger'}; ouvrirDetailBesoin(besoinId); return; }
+    const resultat2 = await m.assignerPlace(placeCibleId, benevoleSource, 'Manuel');
+    if (!resultat2.ok) { dernierMessage = {texte: resultat2.raison, ton: 'danger'}; ouvrirDetailBesoin(besoinId); return; }
     const base = benevoleCible != null ? 'Échange effectué.' : 'Déplacé.';
     dernierMessage = diff.creees.length > 0
       ? {texte: `${base} ${diff.creees.length} anomalie${diff.creees.length > 1 ? 's' : ''} créée${diff.creees.length > 1 ? 's' : ''}.`, ton: 'danger'}
@@ -503,16 +505,21 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
       h('button', {
         class: 'btn btn--ghost btn--sm', type: 'button',
         title: place.Verrouillee ? 'Déverrouiller cette place' : 'Verrouiller cette place',
-        onclick: () => { m.basculerVerrouillage(place.id); ouvrirDetailBesoin(besoinId); },
+        onclick: () => { void (async () => {
+          const resultat = await m.basculerVerrouillage(place.id);
+          if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; }
+          ouvrirDetailBesoin(besoinId);
+        })(); },
       }, icone(ICONES.cadenas)),
       benevole
         ? h('button', {
           class: 'btn btn--ghost btn--sm', type: 'button',
-          onclick: () => {
+          onclick: () => { void (async () => {
             if (place.Verrouillee) { refuserVerrouillage(); return; }
-            m.assignerPlace(place.id, null);
+            const resultat = await m.assignerPlace(place.id, null);
+            if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; }
             ouvrirDetailBesoin(besoinId);
-          },
+          })(); },
         }, 'Vider')
         : h('button', {
           class: 'btn btn--sm', type: 'button',
@@ -540,10 +547,11 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
       candidats.length === 0
         ? h('p', {class: 'empty'}, 'Aucun candidat ne satisfait les contraintes dures pour cet indicatif.')
         : h('div', {style: {display: 'flex', flexDirection: 'column', gap: '8px'}},
-          ...candidats.map((c) => carteCandidat(c, () => {
-            m.assignerPlace(place.id, c.benevoleId, 'Manuel');
+          ...candidats.map((c) => carteCandidat(c, () => { void (async () => {
+            const resultat = await m.assignerPlace(place.id, c.benevoleId, 'Manuel');
+            if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; ouvrirDetailBesoin(besoinId); return; }
             fermerPanneau();
-          })),
+          })(); })),
         ),
     );
     ouvrirPanneau(panneau);

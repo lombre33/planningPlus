@@ -136,6 +136,30 @@ export interface EcritureGrist {
   /** Positionne un groupe déjà réel sur un second besoin (« + Ajouter une
    *  position ») et rend l'id réel de cette nouvelle position. */
   ajouterPosition(groupeId: Id, besoinId: Id): Promise<Id>;
+  /** Modifie une ou plusieurs places déjà réelles EN PLACE (même id) : les
+   *  quatre champs mutables toujours fournis ensemble, jamais un patch
+   *  partiel (`grist/ecriture.ts` `PatchPlace`, pas de forme à grouper ici,
+   *  contrairement à `modifierSousCreneaux`). Sert l'affectation manuelle
+   *  (dépôt, échange, vidage, verrouillage — `Magasin.assignerPlace`,
+   *  `basculerVerrouillage`) et l'algorithme (`appliquerPropositionsAlgorithme`,
+   *  toutes ses propositions en un seul aller-retour). L'appelant calcule
+   *  toujours la valeur exacte à écrire (`verrouillee` compris — deux champs
+   *  distincts de l'affectation elle-même) avant d'appeler, jamais une
+   *  valeur par défaut : ce qui part ici est ce qui sera ensuite appliqué
+   *  localement, ligne à ligne. */
+  modifierPlaces(patches: readonly {
+    id: Id; benevoleId: Id | null; origine: OriginePlace; verrouillee: boolean; score: number | null;
+  }[]): Promise<void>;
+  /** Retire une position de groupe déjà réelle (et elle seule — Grist ne
+   *  cascade pas, mais une position n'a rien sous elle qui lui soit propre) ;
+   *  voir `Magasin.supprimerPosition`. */
+  supprimerPosition(positionId: Id): Promise<void>;
+  /** Écrit le statut d'un bénévole (absent/actif) et libère, dans le même
+   *  aller-retour, les places déjà filtrées par l'appelant (occupées par lui,
+   *  non verrouillées) — jamais les places verrouillées, jamais recalculées
+   *  ici. `placeIdsLiberees` est toujours vide pour un retour (`absent:
+   *  false`), un retour ne libère jamais rien ; voir `Magasin.definirAbsence`. */
+  definirAbsence(benevoleId: Id, absent: boolean, placeIdsLiberees: readonly Id[]): Promise<void>;
 }
 
 /** Levée par `EcritureGrist.remplacerSousCreneaux` quand la création des
@@ -640,21 +664,44 @@ export class Magasin {
    *  reprendre la main sur une correction humaine sans déverrouillage
    *  explicite. Une proposition d'algorithme (origine `'Algorithme'`) ne
    *  verrouille jamais — voir `appliquerPropositionsAlgorithme`. */
-  assignerPlace(placeId: Id, benevoleId: Id | null, origine: OriginePlace = 'Manuel'): void {
+  async assignerPlace(
+    placeId: Id, benevoleId: Id | null, origine: OriginePlace = 'Manuel',
+  ): Promise<{ok: true} | {ok: false; raison: string}> {
     const place = this.data.places.find((p) => p.id === placeId);
-    if (!place) { return; }
+    if (!place) { return {ok: false, raison: 'Place introuvable.'}; }
+    const score = benevoleId != null ? 1 : 0;
+    const verrouillee = origine === 'Manuel' ? true : place.Verrouillee;
+    if (this.ecriture) {
+      try {
+        await this.ecriture.modifierPlaces([{id: placeId, benevoleId, origine, verrouillee, score}]);
+      } catch {
+        return {ok: false, raison: "Échec de l'écriture dans le document Grist connecté. Réessayez."};
+      }
+    }
     place.Benevole = benevoleId;
     place.Origine = origine;
-    place.Score = benevoleId != null ? 1 : 0;
-    if (origine === 'Manuel') { place.Verrouillee = true; }
+    place.Score = score;
+    place.Verrouillee = verrouillee;
     this.notifier();
+    return {ok: true};
   }
 
-  basculerVerrouillage(placeId: Id): void {
+  async basculerVerrouillage(placeId: Id): Promise<{ok: true} | {ok: false; raison: string}> {
     const place = this.data.places.find((p) => p.id === placeId);
-    if (!place) { return; }
-    place.Verrouillee = !place.Verrouillee;
+    if (!place) { return {ok: false, raison: 'Place introuvable.'}; }
+    const verrouillee = !place.Verrouillee;
+    if (this.ecriture) {
+      try {
+        await this.ecriture.modifierPlaces([{
+          id: placeId, benevoleId: place.Benevole, origine: place.Origine, verrouillee, score: place.Score,
+        }]);
+      } catch {
+        return {ok: false, raison: "Échec de l'écriture dans le document Grist connecté. Réessayez."};
+      }
+    }
+    place.Verrouillee = verrouillee;
     this.notifier();
+    return {ok: true};
   }
 
   /** Marque un bénévole absent ou de retour. Une absence libère ses places à
@@ -662,23 +709,30 @@ export class Magasin {
    *  la vue jour J puisse proposer des remplaçants immédiatement. Une place
    *  verrouillée n'est jamais touchée par l'algorithme (§7.1) : on la laisse
    *  en anomalie plutôt que de la vider silencieusement. */
-  definirAbsence(benevoleId: Id, absent: boolean): Id[] {
+  async definirAbsence(
+    benevoleId: Id, absent: boolean,
+  ): Promise<{ok: true; placesLiberees: Id[]} | {ok: false; raison: string}> {
     const benevole = this.data.benevoles.find((b) => b.id === benevoleId);
-    if (!benevole) { return []; }
-    benevole.Statut = absent ? 'Absent' : 'Actif';
-    const liberees: Id[] = [];
-    if (absent) {
-      for (const place of this.data.places) {
-        if (place.Benevole === benevoleId && !place.Verrouillee) {
-          place.Benevole = null;
-          place.Origine = 'Manuel';
-          place.Score = 0;
-          liberees.push(place.id);
-        }
+    if (!benevole) { return {ok: false, raison: 'Bénévole introuvable.'}; }
+    const liberees = absent
+      ? this.data.places.filter((p) => p.Benevole === benevoleId && !p.Verrouillee)
+      : [];
+    const placeIds = liberees.map((p) => p.id);
+    if (this.ecriture) {
+      try {
+        await this.ecriture.definirAbsence(benevoleId, absent, placeIds);
+      } catch {
+        return {ok: false, raison: "Échec de l'écriture dans le document Grist connecté. Réessayez."};
       }
     }
+    benevole.Statut = absent ? 'Absent' : 'Actif';
+    for (const place of liberees) {
+      place.Benevole = null;
+      place.Origine = 'Manuel';
+      place.Score = 0;
+    }
     this.notifier();
-    return liberees;
+    return {ok: true, placesLiberees: placeIds};
   }
 
   /** Déplace un positionnement d'indicatif vers un autre besoin : ne touche
@@ -764,27 +818,50 @@ export class Magasin {
     return groupeId;
   }
 
-  supprimerPosition(positionId: Id): void {
+  async supprimerPosition(positionId: Id): Promise<{ok: true} | {ok: false; raison: string}> {
+    const position = this.data.positionsGroupe.find((p) => p.id === positionId);
+    if (!position) { return {ok: false, raison: 'Position introuvable.'}; }
+    if (this.ecriture) {
+      try {
+        await this.ecriture.supprimerPosition(positionId);
+      } catch {
+        return {ok: false, raison: "Échec de l'écriture dans le document Grist connecté. Réessayez."};
+      }
+    }
     this.data.positionsGroupe = this.data.positionsGroupe.filter((p) => p.id !== positionId);
     this.notifier();
+    return {ok: true};
   }
 
   /** Applique le résultat d'un calcul d'algorithme (§7.5.1) : chaque place du
    *  périmètre reçoit l'occupant proposé, verrouillée seulement si le moteur
    *  l'a demandé (jamais le cas pour une proposition d'algorithme — seule
    *  une correction manuelle verrouille, voir `logic/moteur-pont.ts`). */
-  appliquerPropositionsAlgorithme(propositions: {
+  async appliquerPropositionsAlgorithme(propositions: {
     placeId: Id; benevoleIdApres: Id | null; origineApres: OriginePlace; verrouilleeApres: boolean; score: number | null;
-  }[]): void {
-    for (const proposition of propositions) {
-      const place = this.data.places.find((p) => p.id === proposition.placeId);
+  }[]): Promise<{ok: true} | {ok: false; raison: string}> {
+    if (propositions.length === 0) { return {ok: true}; }
+    const patches = propositions.map((p) => ({
+      id: p.placeId, benevoleId: p.benevoleIdApres, origine: p.origineApres,
+      verrouillee: p.verrouilleeApres, score: p.score ?? 0,
+    }));
+    if (this.ecriture) {
+      try {
+        await this.ecriture.modifierPlaces(patches);
+      } catch {
+        return {ok: false, raison: "Échec de l'écriture dans le document Grist connecté. Réessayez."};
+      }
+    }
+    for (const patch of patches) {
+      const place = this.data.places.find((p) => p.id === patch.id);
       if (!place) { continue; }
-      place.Benevole = proposition.benevoleIdApres;
-      place.Origine = proposition.origineApres;
-      place.Verrouillee = proposition.verrouilleeApres;
-      place.Score = proposition.score ?? 0;
+      place.Benevole = patch.benevoleId;
+      place.Origine = patch.origine;
+      place.Verrouillee = patch.verrouillee;
+      place.Score = patch.score;
     }
     this.notifier();
+    return {ok: true};
   }
 
   // --- Simulation ------------------------------------------------------------

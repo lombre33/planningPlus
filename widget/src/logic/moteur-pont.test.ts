@@ -31,13 +31,14 @@ describe('versDonneesPlanning', () => {
 });
 
 describe('lancerAlgorithme', () => {
-  it('remplit des places et les écrit dans le Magasin réel (notifie les abonnés)', () => {
+  it('remplit des places et les écrit dans le Magasin réel (notifie les abonnés)', async () => {
     const m = new Magasin(normaliser());
     let notifications = 0;
     m.subscribe(() => { notifications++; });
 
-    const resume = lancerAlgorithme(m);
+    const resume = await lancerAlgorithme(m);
 
+    expect(resume.echecEcriture).toBeUndefined();
     expect(notifications).toBeGreaterThan(0);
     expect(resume.placesTraitees).toBeGreaterThan(0);
     expect(resume.placesRemplies).toBeGreaterThan(0);
@@ -48,25 +49,25 @@ describe('lancerAlgorithme', () => {
     expect(placeAffectee.Verrouillee).toBe(false);
   });
 
-  it("ne touche jamais une place déjà verrouillée manuellement", () => {
+  it("ne touche jamais une place déjà verrouillée manuellement", async () => {
     const m = new Magasin(normaliser());
     const place = m.places.find((p) => p.Benevole != null) ?? m.places[0]!;
-    m.assignerPlace(place.id, m.benevoles[0]!.id, 'Manuel');
+    await m.assignerPlace(place.id, m.benevoles[0]!.id, 'Manuel');
     const benevoleVerrouille = place.Benevole;
     expect(place.Verrouillee).toBe(true);
 
-    lancerAlgorithme(m);
+    await lancerAlgorithme(m);
 
     const placeApres = m.places.find((p) => p.id === place.id)!;
     expect(placeApres.Benevole).toBe(benevoleVerrouille);
     expect(placeApres.Verrouillee).toBe(true);
   });
 
-  it('est déterministe : deux lancements sur le même état de départ donnent le même résultat', () => {
+  it('est déterministe : deux lancements sur le même état de départ donnent le même résultat', async () => {
     const m1 = new Magasin(normaliser());
     const m2 = new Magasin(normaliser());
-    const r1 = lancerAlgorithme(m1);
-    const r2 = lancerAlgorithme(m2);
+    const r1 = await lancerAlgorithme(m1);
+    const r2 = await lancerAlgorithme(m2);
     expect(r1.placesRemplies).toBe(r2.placesRemplies);
     expect(m1.places.map((p) => p.Benevole)).toEqual(m2.places.map((p) => p.Benevole));
   });

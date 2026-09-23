@@ -23,10 +23,11 @@ import type {Id} from './domain/types';
 import type {DocApiEcriture} from './grist';
 import {
   actionsCreerArtiste, actionsCreerBesoin, actionsCreerEquipe, actionsCreerGroupe, actionsCreerMacroCreneau,
-  actionsCreerMission, actionsCreerSousCreneaux, actionsCreerTablesManquantes, actionsDefinirPlaces,
-  actionsDeplacerMacroCreneau, actionsDeplacerPositionGroupe, actionsModifierArtiste, actionsModifierSousCreneaux,
-  actionsPositionnerGroupe, actionsReglerAffichage, actionsRenommerMacroCreneau, actionsRepointerBesoins,
-  actionsRetirerPositionsGroupe, actionsSupprimerBesoins, actionsSupprimerMacroCreneau, actionsSupprimerSousCreneaux,
+  actionsCreerMission, actionsCreerSousCreneaux, actionsCreerTablesManquantes, actionsDefinirAbsence,
+  actionsDefinirPlaces, actionsDeplacerMacroCreneau, actionsDeplacerPositionGroupe, actionsModifierArtiste,
+  actionsModifierPlaces, actionsModifierSousCreneaux, actionsPositionnerGroupe, actionsReglerAffichage,
+  actionsRenommerMacroCreneau, actionsRepointerBesoins, actionsRetirerPositionGroupe, actionsRetirerPositionsGroupe,
+  actionsSupprimerBesoins, actionsSupprimerMacroCreneau, actionsSupprimerSousCreneaux,
   appliquerActions,
   LIBELLE_PAR_TABLE, lireDocument, zipperTable,
 } from './grist';
@@ -159,6 +160,15 @@ function construireEcritureGrist(docApi: DocApiEcriture, resolution: Record<stri
       // constat vérifié en vrai par le fil Environnement Grist de test).
       const [ids] = await appliquerActions(docApi, actionsPositionnerGroupe(groupeId, [besoinId]), resolution);
       return (ids as Id[])[0] as Id;
+    },
+    async modifierPlaces(patches) {
+      await appliquerActions(docApi, actionsModifierPlaces(patches), resolution);
+    },
+    async supprimerPosition(positionId) {
+      await appliquerActions(docApi, actionsRetirerPositionGroupe(positionId), resolution);
+    },
+    async definirAbsence(benevoleId, absent, placeIdsLiberees) {
+      await appliquerActions(docApi, actionsDefinirAbsence(benevoleId, absent, placeIdsLiberees), resolution);
     },
   };
 }

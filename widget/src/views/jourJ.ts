@@ -46,15 +46,18 @@ export function montrerJourJ(container: HTMLElement, m: Magasin): () => void {
             b.Statut === 'Actif'
               ? h('button', {
                 class: 'btn btn--sm', type: 'button',
-                onclick: () => {
-                  benevoleSelectionne = b.id;
-                  placesAVerifier = m.definirAbsence(b.id, true);
+                onclick: () => { void (async () => {
+                  const resultat = await m.definirAbsence(b.id, true);
+                  if (resultat.ok) {
+                    benevoleSelectionne = b.id;
+                    placesAVerifier = resultat.placesLiberees;
+                  }
                   rafraichir();
-                },
+                })(); },
               }, 'Marquer absent')
               : h('button', {
                 class: 'btn btn--sm', type: 'button',
-                onclick: () => { m.definirAbsence(b.id, false); rafraichir(); },
+                onclick: () => { void (async () => { await m.definirAbsence(b.id, false); rafraichir(); })(); },
               }, 'De retour'),
           ),
         );
@@ -104,16 +107,24 @@ export function montrerJourJ(container: HTMLElement, m: Magasin): () => void {
 
     if (candidats.length > 0) {
       carte.append(h('p', {class: 'view__intro', style: {margin: '0 0 8px'}}, 'Remplaçants classés :'));
-      for (const c of candidats) { carte.append(carteCandidatCompacte(c, () => { m.assignerPlace(placeId, c.benevoleId, 'Manuel'); retirerDeLaListe(placeId); })); }
+      for (const c of candidats) {
+        carte.append(carteCandidatCompacte(c, () => { void (async () => {
+          const resultat = await m.assignerPlace(placeId, c.benevoleId, 'Manuel');
+          if (resultat.ok) { retirerDeLaListe(placeId); } else { rafraichir(); }
+        })(); }));
+      }
     } else {
       carte.append(h('p', {class: 'empty'}, 'Aucun remplaçant direct ne satisfait les contraintes dures.'));
     }
 
     if (permutation) {
-      carte.append(permutationCard(permutation, () => {
-        for (const etape of permutation) { m.assignerPlace(etape.place.id, etape.benevoleId, 'Manuel'); }
+      carte.append(permutationCard(permutation, () => { void (async () => {
+        for (const etape of permutation) {
+          const resultat = await m.assignerPlace(etape.place.id, etape.benevoleId, 'Manuel');
+          if (!resultat.ok) { rafraichir(); return; }
+        }
         retirerDeLaListe(placeId);
-      }));
+      })(); }));
     }
 
     return carte;
