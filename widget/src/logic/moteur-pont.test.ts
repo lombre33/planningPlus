@@ -18,9 +18,9 @@ describe('versDonneesPlanning', () => {
     expect(donnees.places).toHaveLength(m.places.length);
     expect(donnees.disponibilites).toHaveLength(m.disponibilites.length);
     expect(donnees.souhaitsMissions).toHaveLength(m.souhaitsMissions.length);
-    // Toujours vide côté moteur, en attente d'une décision d'Antoine sur ce
-    // score — voir l'écart n°3 documenté dans `moteur/adaptateur-magasin.ts`.
-    expect(donnees.affinites).toEqual([]);
+    // Priorité 3 d'Antoine (2026-09-23, binôme souhaité) : câblé pour de vrai
+    // depuis `moteur/adaptateur-magasin.ts`, plus jamais vide par principe.
+    expect(donnees.affinites).toHaveLength(m.affinites.length);
 
     const benevole = m.benevoles[0]!;
     const converti = donnees.benevoles.find((b) => b.id === benevole.id)!;

@@ -53,7 +53,7 @@ function construireModele(): Modele {
       {Benevole: 2, Quart_heure: 2700, Statut: 'Disponible', Artiste: null},
     ],
     souhaitsMissions: [{id: 1, Benevole: 1, Mission: 1, Preference: 'Souhaite fortement'}],
-    affinites: [],
+    affinites: [{id: 1, Benevole_A: 1, Benevole_B: 2, Type: 'Ensemble'}],
   };
 }
 
@@ -64,8 +64,8 @@ describe('versDonneesPlanning', () => {
     expect(donnees.benevoles[0]).toMatchObject({id: 1, nom: 'Alix', equipeId: 1, statut: 'Actif'});
     expect(donnees.besoins).toHaveLength(2);
     expect(donnees.positionsGroupe).toEqual([{id: 1, groupeId: 1, besoinId: 1}]);
-    // Écart documenté en tête de fichier : le Magasin ne porte pas encore les affinités.
-    expect(donnees.affinites).toEqual([]);
+    // Priorité 3 d'Antoine (2026-09-23) : les affinités sont désormais réellement câblées.
+    expect(donnees.affinites).toEqual([{benevoleAId: 1, benevoleBId: 2, type: 'Ensemble'}]);
   });
 });
 

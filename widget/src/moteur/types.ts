@@ -144,13 +144,14 @@ export interface DonneesPlanning {
  * n'est pas paramétrable ici — le cahier des charges le fixe.
  *
  * `affiniteEnsemble`/`affiniteEviter` ne correspondent à AUCUN des six
- * objectifs numérotés du §7.2 actuel : code écrit tôt en miroir de la table
- * `Affinites` de `dev/seed/schema.mjs`, jamais confirmé par Antoine ni
- * ajouté au cahier des charges — repéré et signalé le 2026-09-21 par le fil
- * « Vues disponibilités et terrain ». À garder à l'esprit tant que la
- * question posée à Antoine (garder ce score, ou s'en remettre entièrement
- * au mécanisme des indicatifs comme le fait déjà l'objectif 6 pour la
- * stabilité des binômes) n'est pas tranchée.
+ * objectifs numérotés du §7.2 : code écrit tôt en miroir de la table
+ * `Affinites` de `dev/seed/schema.mjs`, resté longtemps sans confirmation.
+ * Confirmé par Antoine le 2026-09-23 (consigne du fil « Algorithme
+ * d'affectation ») : c'est bien ce score qui porte sa priorité « le fait
+ * qu'il soit avec l'autre bénévole souhaité », câblé pour de vrai depuis
+ * `moteur/adaptateur-magasin.ts` — pas seulement l'objectif 6 (continuité),
+ * qui couvre la stabilité de l'indicatif entier mais pas un souhait de
+ * binôme précis entre deux bénévoles.
  */
 export interface ParametresAlgorithme {
   /** Granularité du planning, en secondes. 900 = quart d'heure. */
