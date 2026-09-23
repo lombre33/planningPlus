@@ -79,6 +79,7 @@ const ONGLETS: DefinitionOnglet[] = [
     titre: 'Disponibilités des bénévoles',
     sousTitre: 'Qui est disponible, indisponible ou veut voir un artiste, au quart d’heure, un jour de festival à la fois.',
     montrer: montrerDisponibilites,
+    filtreJour: true,
     etape: 4,
   },
   {
