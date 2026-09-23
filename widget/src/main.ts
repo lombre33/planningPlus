@@ -20,7 +20,7 @@
 import './style.css';
 import {demarrerApp} from './app';
 import type {Id} from './domain/types';
-import type {DocApiEcriture} from './grist';
+import type {DocApiEcriture, TableBrute} from './grist';
 import {
   actionsCreerArtiste, actionsCreerBesoin, actionsCreerEquipe, actionsCreerGroupe, actionsCreerMacroCreneau,
   actionsCreerMission, actionsCreerSousCreneaux, actionsCreerTablesManquantes, actionsDefinirAbsence,
@@ -51,8 +51,15 @@ const TABLES_REQUISES = [
  * par `lireDocument`) traduit les noms canoniques de table en identifiants
  * réels du document (`grist/tables.ts`) ; `appliquerActions` s'en sert pour
  * chaque action envoyée.
+ *
+ * `docApi` porte ici aussi `fetchTable` (au-delà du strict `DocApiEcriture`,
+ * même élargissement que `reglerAffichageTablesCreees`) : `valeursColonneBrute`
+ * lit une colonne brute directement, sans passer par une action.
  */
-function construireEcritureGrist(docApi: DocApiEcriture, resolution: Record<string, string>): EcritureGrist {
+function construireEcritureGrist(
+  docApi: DocApiEcriture & {fetchTable(tableId: string): Promise<TableBrute>},
+  resolution: Record<string, string>,
+): EcritureGrist {
   return {
     async creerEquipe(equipe) {
       const [id] = await appliquerActions(docApi, actionsCreerEquipe({
@@ -170,6 +177,16 @@ function construireEcritureGrist(docApi: DocApiEcriture, resolution: Record<stri
     async definirAbsence(benevoleId, absent, placeIdsLiberees) {
       await appliquerActions(docApi, actionsDefinirAbsence(benevoleId, absent, placeIdsLiberees), resolution);
     },
+    async valeursColonneBrute(tableId, colId) {
+      // Lecture directe (pas d'`appliquerActions` : rien à écrire), et pas de
+      // résolution canonique — `tableId`/`colId` sont déjà les identifiants
+      // réels du document (voir l'en-tête d'`EcritureGrist.valeursColonneBrute`,
+      // `store.ts`) : ce ne sont jamais nos propres tables.
+      const table = await docApi.fetchTable(tableId);
+      const ids = table.id ?? [];
+      const colonne = table[colId] ?? [];
+      return new Map(ids.map((id, i) => [id as Id, colonne[i]]));
+    },
   };
 }
 
@@ -274,7 +291,7 @@ async function demarrer(): Promise<void> {
       await reglerAffichageTablesCreees(window.grist.docApi, tablesManquantes, relu.resolution);
       resultatFinal = relu;
     }
-    const magasin = new Magasin(resultatFinal.modele);
+    const magasin = new Magasin(resultatFinal.modele, resultatFinal.parametres);
     magasin.brancherEcriture(construireEcritureGrist(window.grist.docApi, resultatFinal.resolution));
     demarrerApp(racine, magasin, 'Document Grist connecté');
   } catch (erreur) {

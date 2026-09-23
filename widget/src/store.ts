@@ -160,6 +160,18 @@ export interface EcritureGrist {
    *  ici. `placeIdsLiberees` est toujours vide pour un retour (`absent:
    *  false`), un retour ne libère jamais rien ; voir `Magasin.definirAbsence`. */
   definirAbsence(benevoleId: Id, absent: boolean, placeIdsLiberees: readonly Id[]): Promise<void>;
+  /** Seule méthode de lecture de cette interface (le reste n'est que de
+   *  l'écriture, voir l'en-tête) : les valeurs brutes d'UNE colonne d'une
+   *  table quelconque du document, id de ligne Grist réel en clé — jamais
+   *  décodées, jamais interprétées. Sert à lire des colonnes qui n'existent
+   *  que dans le document d'Antoine (imports de souhaits, réponses de
+   *  disponibilité en macro-créneau…), jamais nos propres tables : ce sont
+   *  les siennes, on les lit, on ne les modifie ni ne les renomme jamais
+   *  (voir `Magasin.valeursColonneBrute`). `tableId`/`colId` sont les
+   *  identifiants réels du document (pas de résolution canonique ici,
+   *  contrairement au reste de cette interface — ces colonnes n'ont pas de
+   *  nom canonique côté PlanningPlus). */
+  valeursColonneBrute(tableId: string, colId: string): Promise<Map<Id, unknown>>;
 }
 
 /** Levée par `EcritureGrist.remplacerSousCreneaux` quand la création des
@@ -200,9 +212,15 @@ export class Magasin {
   private data: Modele;
   private listeners = new Set<Listener>();
   private ecriture: EcritureGrist | null = null;
+  private parametres: Map<string, string>;
 
-  constructor(seed: Modele) {
+  /** `parametresInitiales` vient de `Parametres` (`Cle`/`Valeur`), lue à part
+   *  de `Modele` par `lireDocument` (`grist/lecture.ts`) — cette table ne
+   *  nourrit pas `Modele`, voir `main.ts`. Vide en mode démo ou tant que le
+   *  document n'a encore aucune ligne. */
+  constructor(seed: Modele, parametresInitiales: readonly {cle: string; valeur: string}[] = []) {
     this.data = seed;
+    this.parametres = new Map(parametresInitiales.map((p) => [p.cle, p.valeur]));
   }
 
   subscribe(fn: Listener): () => void {
@@ -236,6 +254,21 @@ export class Magasin {
   get disponibilites(): Disponibilite[] { return this.data.disponibilites; }
   get souhaitsMissions(): SouhaitMission[] { return this.data.souhaitsMissions; }
   get affinites(): Affinite[] { return this.data.affinites; }
+
+  /** Valeur d'un réglage scalaire de la table `Parametres` (`Cle`/`Valeur`),
+   *  ou `undefined` si cette clé n'y a encore aucune ligne — à l'appelant de
+   *  décider du défaut, comme `parametresAlgorithmeDepuisLignes` le fait
+   *  pour les poids de l'algorithme (`grist/parametres.ts`). */
+  parametre(cle: string): string | undefined {
+    return this.parametres.get(cle);
+  }
+
+  /** Lit une colonne brute d'une table quelconque du document connecté —
+   *  voir `EcritureGrist.valeursColonneBrute` ci-dessus. Map vide sans
+   *  document connecté (démo, tests, clone de simulation) : rien à lire. */
+  async valeursColonneBrute(tableId: string, colId: string): Promise<Map<Id, unknown>> {
+    return this.ecriture ? this.ecriture.valeursColonneBrute(tableId, colId) : new Map();
+  }
 
   // --- Écriture : équipes ------------------------------------------------
 
@@ -870,6 +903,8 @@ export class Magasin {
    *  avant validation, §7.3) sans jamais toucher au magasin réel : les
    *  mutations faites sur le clone n'appellent pas ses abonnés. */
   cloner(): Magasin {
-    return new Magasin(structuredClone(this.data));
+    const clone = new Magasin(structuredClone(this.data));
+    clone.parametres = new Map(this.parametres);
+    return clone;
   }
 }

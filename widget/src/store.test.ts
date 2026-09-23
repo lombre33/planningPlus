@@ -30,6 +30,7 @@ function ecritureDeTest(partielle: Partial<EcritureGrist> = {}): EcritureGrist {
     modifierPlaces: nonBranchee('modifierPlaces'),
     supprimerPosition: nonBranchee('supprimerPosition'),
     definirAbsence: nonBranchee('definirAbsence'),
+    valeursColonneBrute: nonBranchee('valeursColonneBrute'),
     ...partielle,
   };
 }
@@ -1271,5 +1272,45 @@ describe('Magasin.enregistrerArtiste', () => {
     await m.enregistrerArtiste(artisteDeTest(m.lieux[0]!.id));
 
     expect(notifications).toBe(1);
+  });
+});
+
+describe('Magasin.parametre', () => {
+  it('rend la valeur des réglages passés au constructeur', () => {
+    const m = new Magasin(normaliser(), [{cle: 'heure_coupure_jour', valeur: '6'}]);
+    expect(m.parametre('heure_coupure_jour')).toBe('6');
+  });
+
+  it('rend undefined pour une clé absente — au clone/à l\'appelant de décider du défaut', () => {
+    const m = new Magasin(normaliser());
+    expect(m.parametre('inconnue')).toBeUndefined();
+  });
+
+  it('cloner() emporte les réglages déjà connus', () => {
+    const m = new Magasin(normaliser(), [{cle: 'x', valeur: '1'}]);
+    expect(m.cloner().parametre('x')).toBe('1');
+  });
+});
+
+describe('Magasin.valeursColonneBrute', () => {
+  it('sans écrivain branché (mode démo, clone), rend une Map vide', async () => {
+    const m = new Magasin(normaliser());
+    expect(await m.valeursColonneBrute('UneTable', 'UneColonne')).toEqual(new Map());
+  });
+
+  it('avec une écriture branchée, transmet tableId/colId tels quels et rend son résultat', async () => {
+    const appels: unknown[] = [];
+    const m = new Magasin(normaliser());
+    m.brancherEcriture(ecritureDeTest({
+      valeursColonneBrute: async (tableId, colId) => {
+        appels.push({tableId, colId});
+        return new Map([[1, 'a'], [2, 'b']]);
+      },
+    }));
+
+    const valeurs = await m.valeursColonneBrute('Souhaits_artistes', 'Reponse');
+
+    expect(appels).toEqual([{tableId: 'Souhaits_artistes', colId: 'Reponse'}]);
+    expect(valeurs).toEqual(new Map([[1, 'a'], [2, 'b']]));
   });
 });
