@@ -40,6 +40,19 @@ function boutonTexte(texte: string): HTMLButtonElement {
   return Array.from(document.querySelectorAll('button')).find((b) => b.textContent === texte) as HTMLButtonElement;
 }
 
+describe('vue Artistes sans aucun artiste', () => {
+  it("affiche quand même la frise (axe, structure), pas seulement un message — même principe que Missions "
+    + "dont la frise vient des macro-créneaux, indépendants des missions (défaut signalé par Antoine le "
+    + '2026-09-23 : « complètement différent de Missions, pas de timeline »)', () => {
+    const m = new Magasin(modeleVide());
+    montrerArtistes(container, m);
+
+    expect(container.querySelector('.timeline-wrap')).not.toBeNull();
+    expect(container.querySelector('.timeline')).not.toBeNull();
+    expect(container.textContent).toContain('Aucun artiste dans ce jeu de données');
+  });
+});
+
 describe('création d’un passage, sans document Grist branché (mode démo)', () => {
   it('ajoute le passage et referme la modale', async () => {
     const m = new Magasin(modeleVide());

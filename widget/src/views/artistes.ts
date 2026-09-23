@@ -28,7 +28,7 @@ import {
 } from '../logic/derive';
 import type {ResultatEcritureFrise} from '../ui/frise';
 import type {Magasin} from '../store';
-import {cleJourFestival, PAS_SECONDES} from '../temps';
+import {cleJourFestival, epochDebutJourFestival, libelleJourLong, PAS_SECONDES} from '../temps';
 import {h, vider} from '../ui/dom';
 import {type BlocFrise, construireFrise} from '../ui/frise';
 import {
@@ -57,6 +57,18 @@ export function montrerArtistes(container: HTMLElement, m: Magasin): () => void 
   let jourIndex = 0;
   let dernierMessage: {texte: string; ton: 'ok' | 'danger'} | null = null;
 
+  /** Jour de secours quand aucun artiste n'a encore de passage : sans lui,
+   *  cette vue n'a rien pour caler un axe (pas de macro-créneau indépendant
+   *  à interroger, contrairement à Missions, §6) et retombait sur un simple
+   *  message texte à la place de la frise — ce qu'Antoine a signalé comme
+   *  « complètement différent de Missions, pas de timeline » (2026-09-23
+   *  16h29) : Missions affiche sa frise et ses lignes même sans contenu,
+   *  cette vue doit faire pareil. */
+  function jourParDefaut(): JourArtistes {
+    const debut = epochDebutJourFestival(Math.floor(Date.now() / 1000));
+    return {cle: cleJourFestival(debut), libelle: libelleJourLong(debut), items: []};
+  }
+
   function rafraichir(): void {
     const ix = indexer(m);
     const groupes = lignesGroupeesParArtiste(m, ix);
@@ -66,7 +78,7 @@ export function montrerArtistes(container: HTMLElement, m: Magasin): () => void 
     // mission créée (« from scratch », demande d'Antoine du 2026-09-22).
     const jours = regrouperParJourFestival(m.artistes, (a) => a.Debut);
     jourIndex = Math.min(jourIndex, Math.max(jours.length - 1, 0));
-    const jour = jours[jourIndex];
+    const jour = jours[jourIndex] ?? jourParDefaut();
 
     vider(container);
 
@@ -75,39 +87,39 @@ export function montrerArtistes(container: HTMLElement, m: Magasin): () => void 
       onclick: () => ouvrirModalCreationArtiste(m),
     }, '+ Nouveau passage');
 
-    if (groupes.length === 0) {
-      container.append(
-        h('div', {class: 'agenda__toolbar', style: {marginBottom: '14px'}}, boutonNouveau),
-        h('p', {class: 'empty'}, 'Aucun artiste dans ce jeu de données.'),
-      );
-      return;
-    }
-
     container.append(
       h('div', {class: 'agenda__toolbar'},
         boutonNouveau,
         h('span', {class: 'view__intro', style: {margin: '0'}},
-          '« En conflit » compte les bénévoles qui veulent voir l\'artiste mais tiennent déjà une place sur ce '
-          + 'créneau (préférence forte non respectée, §7.2).'),
+          groupes.length === 0
+            ? 'Aucun artiste dans ce jeu de données : utilisez « + Nouveau passage » pour en créer un.'
+            : '« En conflit » compte les bénévoles qui veulent voir l\'artiste mais tiennent déjà une place sur ce '
+              + 'créneau (préférence forte non respectée, §7.2).'),
       ),
-      h('div', {class: 'agenda__toolbar'},
-        ...jours.map((j, i) => h('button', {
-          class: `btn btn--sm${i === jourIndex ? ' btn--primary' : ''}`, type: 'button',
-          onclick: () => { jourIndex = i; rafraichir(); },
-        }, j.libelle.split(' ').slice(0, 1).join(' '))),
-      ),
+      ...(jours.length > 0
+        ? [h('div', {class: 'agenda__toolbar'},
+            ...jours.map((j, i) => h('button', {
+              class: `btn btn--sm${i === jourIndex ? ' btn--primary' : ''}`, type: 'button',
+              onclick: () => { jourIndex = i; rafraichir(); },
+            }, j.libelle.split(' ').slice(0, 1).join(' '))),
+          )]
+        : []),
       ...(dernierMessage
         ? [h('p', {class: `pill pill--${dernierMessage.ton}`, style: {marginBottom: '8px'}}, dernierMessage.texte)]
         : []),
-      !jour
-        ? h('p', {class: 'empty'}, 'Aucun passage ce jour.')
-        : construireTimeline(groupes, jour),
+      construireTimeline(groupes, jour),
     );
   }
 
   /** L'axe du jour vient des passages eux-mêmes (pas de macro-créneau à
-   *  interroger), avec une marge de chaque côté — voir `MARGE_AXE_SECONDES`. */
+   *  interroger), avec une marge de chaque côté — voir `MARGE_AXE_SECONDES`.
+   *  Le jour de secours (`jourParDefaut`, aucun artiste) n'a aucun passage
+   *  pour borner un axe : repli sur le jour de festival courant en entier. */
   function axeJour(jour: JourArtistes): {debut: Epoch; fin: Epoch} {
+    if (jour.items.length === 0) {
+      const debut = epochDebutJourFestival(Math.floor(Date.now() / 1000));
+      return {debut, fin: debut + 24 * 3600};
+    }
     return {
       debut: Math.min(...jour.items.map((a) => a.Debut)) - MARGE_AXE_SECONDES,
       fin: Math.max(...jour.items.map((a) => a.Fin)) + MARGE_AXE_SECONDES,
