@@ -26,7 +26,8 @@ import {
   actionsCreerMission, actionsCreerSousCreneaux, actionsCreerTablesManquantes, actionsDefinirPlaces,
   actionsDeplacerMacroCreneau, actionsDeplacerPositionGroupe, actionsModifierArtiste, actionsModifierSousCreneaux,
   actionsPositionnerGroupe, actionsReglerAffichage, actionsRenommerMacroCreneau, actionsRepointerBesoins,
-  actionsRetirerPositionsGroupe, actionsSupprimerBesoins, actionsSupprimerMacroCreneau, actionsSupprimerSousCreneaux,
+  actionsRetirerPositionGroupe, actionsRetirerPositionsGroupe, actionsSupprimerBesoins, actionsSupprimerMacroCreneau,
+  actionsSupprimerSousCreneaux,
   appliquerActions,
   LIBELLE_PAR_TABLE, lireDocument, zipperTable,
 } from './grist';
@@ -159,6 +160,9 @@ function construireEcritureGrist(docApi: DocApiEcriture, resolution: Record<stri
       // constat vérifié en vrai par le fil Environnement Grist de test).
       const [ids] = await appliquerActions(docApi, actionsPositionnerGroupe(groupeId, [besoinId]), resolution);
       return (ids as Id[])[0] as Id;
+    },
+    async supprimerPosition(positionId) {
+      await appliquerActions(docApi, actionsRetirerPositionGroupe(positionId), resolution);
     },
   };
 }

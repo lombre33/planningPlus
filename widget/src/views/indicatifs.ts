@@ -411,6 +411,14 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
               class: 'btn btn--ghost btn--sm', type: 'button',
               onclick: () => { modeCible = {groupeId, positionId: position.id, mode: 'deplacer'}; rafraichir(); },
             }, 'Déplacer…'),
+            // Retire cette seule étape (demande d'Antoine du 2026-09-23 :
+            // jusqu'ici on ne pouvait que déplacer) — ne touche jamais le
+            // Groupe ni ses Places : le binôme et les bénévoles déjà
+            // affectés restent, seule cette position du jour disparaît.
+            h('button', {
+              class: 'btn btn--ghost btn--sm', type: 'button', title: 'Supprimer cette position',
+              onclick: () => void ecrire(() => m.supprimerPosition(position.id)),
+            }, 'Supprimer'),
           ))),
         h('button', {
           class: 'ajouter-binome', type: 'button', style: {opacity: '1', width: '100%', marginTop: '8px'},

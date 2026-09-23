@@ -104,6 +104,7 @@ describe('montrerGrille sur un document vide', () => {
       definirPlaces: async () => {},
       deplacerPosition: async () => {},
       ajouterPosition: async () => 1,
+      supprimerPosition: async () => {},
     };
     m.brancherEcriture(ecriture);
     montrerGrille(container, m);

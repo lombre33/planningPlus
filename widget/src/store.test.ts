@@ -27,6 +27,7 @@ function ecritureDeTest(partielle: Partial<EcritureGrist> = {}): EcritureGrist {
     definirPlaces: nonBranchee('definirPlaces'),
     deplacerPosition: nonBranchee('deplacerPosition'),
     ajouterPosition: nonBranchee('ajouterPosition'),
+    supprimerPosition: nonBranchee('supprimerPosition'),
     ...partielle,
   };
 }
@@ -346,6 +347,57 @@ describe('Magasin.ajouterPosition', () => {
     await expect(m.ajouterPosition(groupeId, m.besoins[1]!.id)).rejects.toThrow('document indisponible');
 
     expect(m.positionsGroupe).toHaveLength(nbPositionsAvant);
+  });
+});
+
+describe('Magasin.supprimerPosition', () => {
+  it('en mode connecté, appelle le pont puis retire la position localement', async () => {
+    const m = new Magasin(normaliser());
+    const groupeId = await m.creerGroupeSurBesoin(m.besoins[0]!.id);
+    const position = m.positionsGroupe.find((p) => p.Groupe === groupeId)!;
+    const appels: string[] = [];
+    m.brancherEcriture(ecritureDeTest({
+      supprimerPosition: async (positionId) => { appels.push(`supprimerPosition(${positionId})`); },
+    }));
+
+    await m.supprimerPosition(position.id);
+
+    expect(appels).toEqual([`supprimerPosition(${position.id})`]);
+    expect(m.positionsGroupe.find((p) => p.id === position.id)).toBeUndefined();
+  });
+
+  it('ne touche jamais le Groupe ni ses Places : le binôme et ses bénévoles déjà affectés restent', async () => {
+    const m = new Magasin(normaliser());
+    const groupeId = await m.creerGroupeSurBesoin(m.besoins[0]!.id);
+    const position = m.positionsGroupe.find((p) => p.Groupe === groupeId)!;
+    const placesAvant = m.places.filter((p) => p.Groupe === groupeId);
+    m.brancherEcriture(ecritureDeTest({supprimerPosition: async () => {}}));
+
+    await m.supprimerPosition(position.id);
+
+    expect(m.groupes.find((g) => g.id === groupeId)).toBeDefined();
+    expect(m.places.filter((p) => p.Groupe === groupeId)).toEqual(placesAvant);
+  });
+
+  it('en mode connecté, si le pont échoue, la position reste', async () => {
+    const m = new Magasin(normaliser());
+    const groupeId = await m.creerGroupeSurBesoin(m.besoins[0]!.id);
+    const position = m.positionsGroupe.find((p) => p.Groupe === groupeId)!;
+    m.brancherEcriture(ecritureDeTest({supprimerPosition: async () => { throw new Error('document indisponible'); }}));
+
+    await expect(m.supprimerPosition(position.id)).rejects.toThrow('document indisponible');
+
+    expect(m.positionsGroupe.find((p) => p.id === position.id)).toBeDefined();
+  });
+
+  it('ne fait rien pour une position inconnue (le pont n’est pas appelé)', async () => {
+    const m = new Magasin(normaliser());
+    let appele = false;
+    m.brancherEcriture(ecritureDeTest({supprimerPosition: async () => { appele = true; }}));
+
+    await m.supprimerPosition(-1);
+
+    expect(appele).toBe(false);
   });
 });
 

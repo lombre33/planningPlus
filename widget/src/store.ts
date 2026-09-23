@@ -136,6 +136,11 @@ export interface EcritureGrist {
   /** Positionne un groupe déjà réel sur un second besoin (« + Ajouter une
    *  position ») et rend l'id réel de cette nouvelle position. */
   ajouterPosition(groupeId: Id, besoinId: Id): Promise<Id>;
+  /** Retire une position déjà réelle (panneau « Trajectoire du jour »,
+   *  bouton Supprimer). Ne touche jamais `Groupe`/`Places` : le binôme et
+   *  les bénévoles déjà affectés restent inchangés, seule cette étape du
+   *  jour disparaît. */
+  supprimerPosition(positionId: Id): Promise<void>;
 }
 
 /** Levée par `EcritureGrist.remplacerSousCreneaux` quand la création des
@@ -764,7 +769,15 @@ export class Magasin {
     return groupeId;
   }
 
-  supprimerPosition(positionId: Id): void {
+  /** Retire une position (panneau « Trajectoire du jour », bouton
+   *  Supprimer, demande d'Antoine du 2026-09-23 : jusqu'ici on ne pouvait
+   *  que déplacer). Ne touche jamais `Groupe`/`Places` : le binôme garde
+   *  ses bénévoles déjà affectés, seule cette étape de sa trajectoire du
+   *  jour disparaît — à la différence d'une suppression de sous-créneau ou
+   *  de macro-créneau, qui elles retirent le binôme lui-même. */
+  async supprimerPosition(positionId: Id): Promise<void> {
+    if (!this.data.positionsGroupe.some((p) => p.id === positionId)) { return; }
+    if (this.ecriture) { await this.ecriture.supprimerPosition(positionId); }
     this.data.positionsGroupe = this.data.positionsGroupe.filter((p) => p.id !== positionId);
     this.notifier();
   }

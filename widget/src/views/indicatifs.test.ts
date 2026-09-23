@@ -121,6 +121,7 @@ describe('planning complet : missions et besoin, mais zone volontairement vide',
         remplacerSousCreneaux: refuse(), modifierSousCreneaux: refuse(), repointerBesoins: refuse(),
         creerBesoin: refuse(), creerGroupe: refuse(), positionnerGroupe: refuse(),
         definirPlaces: refuse(), deplacerPosition: refuse(), ajouterPosition: refuse(),
+        supprimerPosition: refuse(),
       };
     }
 
@@ -223,6 +224,98 @@ describe('glisser un binôme entre deux besoins (retour Antoine 2026-09-23 : Alt
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(m.positionsGroupe.filter((p) => p.Groupe === groupeId)).toHaveLength(1);
+  });
+});
+
+describe('panneau : supprimer une position (retour Antoine 2026-09-23 : jusqu’ici on ne pouvait que déplacer)', () => {
+  function modele(): Modele {
+    return {
+      ...modeleVide(),
+      equipes: [{id: 1, Nom: 'Bars', Couleur: '#c00', Referent: null, Notes: ''}],
+      missions: [{
+        id: 1, Nom: 'Buvette', Description: '', Lieu: 1, Equipe: 1,
+        Priorite: 'Normale', Competences_requises: [],
+      }],
+      lieux: [{id: 1, Nom: 'Scène A', Description: ''}],
+      macroCreneaux: [{id: 1, Nom: 'Vendredi', Debut: 1_700_000_000, Fin: 1_700_030_000}],
+      sousCreneaux: [
+        {id: 1, Macro_creneau: 1, Mission: null, Libelle: '10h-11h', Debut: 1_700_000_000, Fin: 1_700_003_600},
+        {id: 2, Macro_creneau: 1, Mission: null, Libelle: '11h-12h', Debut: 1_700_003_600, Fin: 1_700_007_200},
+      ],
+    };
+  }
+
+  async function preparerAvecPanneauOuvert(): Promise<{m: Magasin; groupeId: number}> {
+    const m = new Magasin(modele());
+    await m.creerBesoin(1, 1);
+    await m.creerBesoin(1, 2);
+    const groupeId = await m.creerGroupeSurBesoin(m.besoins[0]!.id);
+    await m.ajouterPosition(groupeId, m.besoins[1]!.id);
+    montrerIndicatifs(container, m);
+    container.querySelector<HTMLButtonElement>('.groupe-chip')!.click();
+    return {m, groupeId};
+  }
+
+  function boutonsSupprimer(): HTMLButtonElement[] {
+    return Array.from(document.querySelectorAll<HTMLButtonElement>('#panneau-lateral .trajectoire-etape button'))
+      .filter((b) => b.textContent === 'Supprimer');
+  }
+
+  it('un bouton Supprimer apparaît à côté de Déplacer… pour chaque étape', async () => {
+    const {} = await preparerAvecPanneauOuvert();
+    const etapes = document.querySelectorAll('#panneau-lateral .trajectoire-etape');
+    expect(etapes).toHaveLength(2);
+    expect(boutonsSupprimer()).toHaveLength(2);
+  });
+
+  it('cliquer Supprimer retire cette seule position, garde le groupe et ses places', async () => {
+    const {m, groupeId} = await preparerAvecPanneauOuvert();
+    const placesAvant = m.places.filter((p) => p.Groupe === groupeId);
+
+    boutonsSupprimer()[0]!.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(m.positionsGroupe.filter((p) => p.Groupe === groupeId)).toHaveLength(1);
+    expect(m.groupes.find((g) => g.id === groupeId)).toBeDefined();
+    expect(m.places.filter((p) => p.Groupe === groupeId)).toEqual(placesAvant);
+    expect(document.querySelectorAll('#panneau-lateral .trajectoire-etape')).toHaveLength(1);
+  });
+
+  it('supprimer la dernière position affiche « pas encore positionné », sans supprimer le groupe', async () => {
+    const {m, groupeId} = await preparerAvecPanneauOuvert();
+
+    // Les deux boutons capturés ici restent valides même après le
+    // redessin synchrone déclenché par le premier clic (mode démo : sans
+    // écriture branchée, `supprimerPosition` n'attend rien de réel, donc
+    // `notifier()` — et le redessin qu'il déclenche — s'exécute avant que
+    // ce clic ne retourne) : chaque bouton garde sa propre position en
+    // fermeture, indépendamment de son détachement du DOM.
+    for (const bouton of boutonsSupprimer()) { bouton.click(); }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(m.positionsGroupe.filter((p) => p.Groupe === groupeId)).toHaveLength(0);
+    expect(m.groupes.find((g) => g.id === groupeId)).toBeDefined();
+    expect(document.querySelector('#panneau-lateral .empty')?.textContent).toContain('Pas encore positionné');
+  });
+
+  it('en mode connecté, si le pont refuse, affiche un message d’échec et garde la position', async () => {
+    const {m} = await preparerAvecPanneauOuvert();
+    m.brancherEcriture({
+      creerEquipe: async () => 1, creerMission: async () => 1, creerMacroCreneau: async () => 1,
+      modifierMacroCreneau: async () => {}, supprimerMacroCreneau: async () => {},
+      creerArtiste: async () => 1, modifierArtiste: async () => {},
+      remplacerSousCreneaux: async () => [], modifierSousCreneaux: async () => {}, repointerBesoins: async () => {},
+      creerBesoin: async () => 1, creerGroupe: async () => 1, positionnerGroupe: async () => {},
+      definirPlaces: async () => {}, deplacerPosition: async () => {}, ajouterPosition: async () => 1,
+      supprimerPosition: async () => { throw new Error('document indisponible'); },
+    });
+    const nbPositionsAvant = m.positionsGroupe.length;
+
+    boutonsSupprimer()[0]!.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(m.positionsGroupe).toHaveLength(nbPositionsAvant);
+    expect(container.querySelector('.pill--danger')?.textContent).toContain("Échec de l'écriture");
   });
 });
 
