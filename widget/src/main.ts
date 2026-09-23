@@ -1,42 +1,25 @@
 /**
- * Point d'entrée du widget.
+ * Point d'entrée du widget — ne vise que l'intérieur d'un document Grist
+ * (décision d'Antoine du 2026-09-23 : plus de mode démonstration, plus de
+ * jeu de données figé, et aucun écran dédié hors d'un hôte Grist — un tel
+ * usage n'a pas lieu d'être, autant ne pas alourdir ce fichier pour lui).
  *
- * `public/vendor/grist-plugin-api.js` définit `window.grist` de façon
- * inconditionnelle, même hors d'un document Grist : on ne peut donc pas
- * distinguer une vraie connexion d'une absence de connexion sans tenter un
- * appel et le borner dans le temps (sans host Grist en face, un appel
- * resterait sinon en attente indéfinie, aucune réponse n'arrivant jamais au
- * `postMessage`). Trois situations bien distinctes, pas deux :
+ * Deux issues, une fois connecté :
  *
- * - pas d'hôte Grist, ou délai dépassé sans la moindre réponse : monte la
- *   maquette sur le jeu de données figé (`donnees/festival.json`) — l'aperçu
- *   autonome qu'Antoine a en main tant qu'aucun document Grist n'est
- *   branché, strictement inchangé. C'est le seul cas où la démo apparaît :
- *   avant toute preuve qu'un document réel répond ;
- * - connecté, et toutes les tables attendues (`TABLES_REQUISES`) existent
- *   dans le document, vides ou non : lit le document via `lireDocument`
- *   (`./grist`) et monte la même maquette sur le `Modele` qui en sort. Un
- *   document flambant neuf, sans aucune ligne, est le premier jour d'un
- *   vrai utilisateur, pas une panne — chaque vue sait déjà se montrer vide
- *   et inviter à l'étape 1 (§1.1), pas question d'y substituer la démo, qui
- *   ferait passer de fausses données pour les siennes ;
- * - connecté, mais il manque au moins une des tables attendues, ou une
- *   erreur survient après cette connexion confirmée (création de tables,
- *   pose de l'affichage, lecture) : jamais la démo, qui ferait passer une
- *   panne pour un premier jour normal — un message nomme ce qui manque ou
- *   ce qui a échoué (régression du 2026-09-22, corrigée le jour même : le
- *   repli sur la démo touchait alors aussi ce troisième cas).
- *
- * Les deux premiers modes convergent sur un seul point de bascule,
- * `demarrerApp` : `lireDocument` rend un `Modele` de la même forme que
- * `normaliser()`, donc rien dans la coquille ni dans les vues ne distingue
- * une donnée réelle d'une donnée de démonstration.
+ * - toutes les tables attendues (`TABLES_REQUISES`) existent dans le
+ *   document, vides ou non : lit le document via `lireDocument` (`./grist`)
+ *   et monte la maquette sur le `Modele` qui en sort. Un document flambant
+ *   neuf, sans aucune ligne, est le premier jour d'un vrai utilisateur, pas
+ *   une panne — chaque vue sait déjà se montrer vide et inviter à l'étape 1
+ *   (§1.1) ;
+ * - il manque au moins une des tables attendues, ou une erreur survient
+ *   (création de tables, pose de l'affichage, lecture) : un message nomme
+ *   ce qui manque ou ce qui a échoué plutôt que de le masquer.
  */
 
 import './style.css';
 import {demarrerApp} from './app';
 import type {Id} from './domain/types';
-import {normaliser} from './donnees/normaliser';
 import type {DocApiEcriture} from './grist';
 import {
   actionsCreerArtiste, actionsCreerBesoin, actionsCreerEquipe, actionsCreerGroupe, actionsCreerMacroCreneau,
@@ -47,8 +30,6 @@ import {
   LIBELLE_PAR_TABLE, lireDocument, zipperTable,
 } from './grist';
 import {type EcritureGrist, Magasin, SuppressionApresCreationEchouee} from './store';
-
-const DELAI_CONNEXION_MS = 1500;
 
 /** Les 14 tables que lit `construireModele` (`./grist/modele.ts`) — tout ce
  *  dont le `Modele` de l'UI a besoin. `Versions`, `Parametres` et `Journal`
@@ -178,14 +159,8 @@ function construireEcritureGrist(docApi: DocApiEcriture, resolution: Record<stri
   };
 }
 
-function demarrerDemo(racine: HTMLElement): void {
-  const magasin = new Magasin(normaliser());
-  demarrerApp(racine, magasin, 'Démonstration — jeu de données figé');
-}
-
 /** Un document connecté dont la création automatique des tables manquantes
- *  a échoué (droits insuffisants, écriture refusée) — jamais la démo
- *  (fausses données dans le contexte d'un vrai document) ni des vues
+ *  a échoué (droits insuffisants, écriture refusée) — jamais des vues
  *  silencieusement vides. */
 function afficherDocumentNonReconnu(racine: HTMLElement, tablesManquantes: readonly string[]): void {
   racine.textContent = '';
@@ -202,7 +177,7 @@ function afficherDocumentNonReconnu(racine: HTMLElement, tablesManquantes: reado
   racine.append(message);
 
   const note = document.createElement('p');
-  note.textContent = "Vérifiez que ce widget dispose de l'accès complet au document, puis rechargez la page — ou ouvrez ce widget hors de Grist pour la démonstration interactive.";
+  note.textContent = "Vérifiez que ce widget dispose de l'accès complet au document, puis rechargez la page.";
   racine.append(note);
 }
 
@@ -269,40 +244,11 @@ async function demarrer(): Promise<void> {
   const racine = document.getElementById('app');
   if (!racine) { return; }
 
-  if (typeof window.grist === 'undefined') {
-    demarrerDemo(racine);
-    return;
-  }
-
   window.grist.ready({requiredAccess: 'full'});
 
-  // Avant toute réponse d'un document réel, rien ne distingue une absence
-  // d'hôte Grist d'une lenteur passagère : la démo reste le repli légitime
-  // ici, comportement inchangé. Un échec de `lireDocument` dans cette
-  // fenêtre (accès refusé, etc.) tombe dans le même cas, faute de preuve
-  // qu'un document réel est en face.
-  let resultat: Awaited<ReturnType<typeof lireDocument>> | null;
   try {
-    resultat = await Promise.race([
-      lireDocument(window.grist.docApi),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), DELAI_CONNEXION_MS)),
-    ]);
-  } catch {
-    demarrerDemo(racine);
-    return;
-  }
-  if (resultat == null) {
-    demarrerDemo(racine);
-    return;
-  }
-
-  // À partir d'ici, un document Grist réel a répondu : plus jamais la démo,
-  // qui ferait passer une panne pour un premier jour normal (régression du
-  // 2026-09-22, voir le doc-comment en tête de fichier) — un échec s'affiche
-  // pour ce qu'il est.
-  try {
-    let resultatFinal = resultat;
-    const tablesManquantes = TABLES_REQUISES.filter((t) => !(t in resultat.resolution));
+    let resultatFinal = await lireDocument(window.grist.docApi);
+    const tablesManquantes = TABLES_REQUISES.filter((t) => !(t in resultatFinal.resolution));
     if (tablesManquantes.length > 0) {
       await creerTablesManquantes(window.grist.docApi, tablesManquantes);
       const relu = await lireDocument(window.grist.docApi);
