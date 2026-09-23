@@ -10,7 +10,7 @@ import type {
   Affinite, Artiste, Benevole, Besoin, Disponibilite, Epoch, Equipe, Groupe, Id, Lieu, MacroCreneau,
   Mission, Modele, OriginePlace, Place, PositionGroupe, SouhaitMission, SousCreneau,
 } from './domain/types';
-import type {ColonneTable} from './logic/parametres-benevoles';
+import type {ColonneTable, TableDocument} from './logic/parametres-benevoles';
 import {cleJourFestival, libelleHeurePlage, PAS_SECONDES} from './temps';
 
 type Listener = () => void;
@@ -178,6 +178,11 @@ export interface EcritureGrist {
    *  qu'il a lui-même ajoutées, sans jamais y toucher (voir
    *  `Magasin.colonnesTable`, `grist/colonnesDeTable`). */
   colonnesTable(tableId: string): Promise<ColonneTable[]>;
+  /** Les tables du document (identifiant réel seulement), tables système
+   *  Grist exclues — sert à laisser Antoine désigner lui-même où vivent ses
+   *  bénévoles, plutôt que d'en deviner une (voir `Magasin.tablesDocument`,
+   *  `grist/tablesDuDocument`). */
+  tablesDocument(): Promise<TableDocument[]>;
   /** Enregistre un réglage scalaire quelconque de `Parametres` (upsert par
    *  clé) — voir `Magasin.definirParametre`. Clé libre, non fixée ici : ce
    *  pont ne connaît pas les réglages eux-mêmes, seulement comment les
@@ -313,6 +318,12 @@ export class Magasin {
    *  connecté (démo, tests, clone de simulation) : rien à lire. */
   async colonnesTable(tableId: string): Promise<ColonneTable[]> {
     return this.ecriture ? this.ecriture.colonnesTable(tableId) : [];
+  }
+
+  /** Liste les tables du document connecté — voir `EcritureGrist.tablesDocument`
+   *  ci-dessus. Tableau vide sans document connecté : rien à lire. */
+  async tablesDocument(): Promise<TableDocument[]> {
+    return this.ecriture ? this.ecriture.tablesDocument() : [];
   }
 
   /** Enregistre un réglage scalaire de `Parametres` (upsert par clé) — voir

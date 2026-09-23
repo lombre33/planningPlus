@@ -32,7 +32,7 @@ import {
   appliquerActions,
   colonnesDeTable,
   decoderNombre,
-  LIBELLE_PAR_TABLE, lireDocument, zipperTable,
+  LIBELLE_PAR_TABLE, lireDocument, tablesDuDocument, zipperTable,
 } from './grist';
 import {type EcritureGrist, Magasin, SuppressionApresCreationEchouee} from './store';
 
@@ -212,6 +212,14 @@ function construireEcritureGrist(
         docApi.fetchTable('_grist_Tables_column').then(zipperTable),
       ]);
       return colonnesDeTable(lignesTables, lignesColonnes, tableId);
+    },
+    async tablesDocument() {
+      // Même source que `colonnesTable` juste au-dessus (`_grist_Tables`
+      // seule ici, pas besoin des colonnes) — sert à laisser Antoine
+      // désigner lui-même la table où sont ses bénévoles plutôt que d'en
+      // deviner une (2026-09-23, `TABLE_BENEVOLES` en dur jamais vérifié).
+      const lignesTables = await docApi.fetchTable('_grist_Tables').then(zipperTable);
+      return tablesDuDocument(lignesTables);
     },
     async definirParametre(cle, valeur) {
       const [retVal] = await appliquerActions(docApi, actionsDefinirParametre(cle, valeur, lignesParametres), resolution);

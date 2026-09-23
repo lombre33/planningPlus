@@ -43,3 +43,23 @@ export function colonnesDeTable(
       type: String(c.type ?? ''),
     }));
 }
+
+/** Une table quelconque du document — juste son identifiant réel, à
+ *  proposer à Antoine pour qu'il désigne lui-même où sont ses bénévoles
+ *  (2026-09-23 : `colonnesTable` visait jusqu'ici une table de schéma
+ *  supposée, jamais vérifiée sur son document réel — ses bénévoles vivent
+ *  dans une table à lui, dont ni le nom ni même l'existence ne nous sont
+ *  connus d'avance). */
+export interface TableDocument {
+  tableId: string;
+}
+
+/** Les tables du document, telles que `_grist_Tables` les liste — tables
+ *  système Grist (`_grist_*`) exclues, ce ne sont jamais des tables de
+ *  données. Ordre alphabétique, pour un menu stable et prévisible. */
+export function tablesDuDocument(lignesTables: readonly LigneBrute[]): TableDocument[] {
+  return lignesTables
+    .map((t): TableDocument => ({tableId: String(t.tableId)}))
+    .filter((t) => !t.tableId.startsWith('_grist_'))
+    .sort((a, b) => a.tableId.localeCompare(b.tableId, 'fr'));
+}

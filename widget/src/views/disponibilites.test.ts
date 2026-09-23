@@ -10,7 +10,7 @@
  */
 import {beforeEach, describe, expect, it} from 'vitest';
 import type {EcritureGrist} from '../store';
-import type {ColonneTable} from '../logic/parametres-benevoles';
+import {CLE_TABLE_BENEVOLES, type ColonneTable} from '../logic/parametres-benevoles';
 import type {Modele} from '../domain/types';
 import {Magasin} from '../store';
 import {epochDepuisHeureLocale} from '../temps';
@@ -72,6 +72,7 @@ const ecritureMuette: EcritureGrist = {
   definirAbsence: async () => {},
   valeursColonneBrute: async () => new Map(),
   colonnesTable: async () => [],
+  tablesDocument: async () => [],
   definirParametre: async () => {},
   remplacerDisponibilites: async () => {},
 };
@@ -225,12 +226,103 @@ describe('panneau de réglages d’import (nouveau, 2026-09-23)', () => {
     expect(container.querySelector('.card')).toBeNull();
   });
 
-  it('propose un menu déroulant sur les colonnes réelles de la table Bénévoles une fois lues', async () => {
+  it("propose un menu déroulant sur les tables du document, avant même qu'aucune ne soit choisie (bug réel signalé par Antoine le 2026-09-23 : le sélecteur visait une table en dur jamais vérifiée)", async () => {
+    const m = new Magasin(modeleDeTest());
+    m.brancherEcriture({
+      ...ecritureMuette,
+      tablesDocument: async () => [{tableId: 'Benevoles_festival_2026'}, {tableId: 'Equipes'}],
+    });
+    montrerDisponibilites(container, m);
+
+    (Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent === "Réglages d'import") as HTMLButtonElement).click();
+    await attendreMicrotaches();
+
+    const menu = container.querySelector('select[aria-label="Table où sont tes bénévoles"]') as HTMLSelectElement;
+    expect(menu).not.toBeNull();
+    const libellesOptions = Array.from(menu.querySelectorAll('option')).map((o) => o.textContent);
+    expect(libellesOptions).toContain('Benevoles_festival_2026');
+    expect(libellesOptions).toContain('Equipes');
+  });
+
+  it('choisir une table l’enregistre via définirParametre', async () => {
+    const appels: {cle: string; valeur: string}[] = [];
+    const m = new Magasin(modeleDeTest());
+    m.brancherEcriture({
+      ...ecritureMuette,
+      tablesDocument: async () => [{tableId: 'Benevoles_festival_2026'}],
+      definirParametre: async (cle, valeur) => { appels.push({cle, valeur}); },
+    });
+    montrerDisponibilites(container, m);
+
+    (Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent === "Réglages d'import") as HTMLButtonElement).click();
+    await attendreMicrotaches();
+
+    const menu = container.querySelector('select[aria-label="Table où sont tes bénévoles"]') as HTMLSelectElement;
+    menu.value = 'Benevoles_festival_2026';
+    menu.dispatchEvent(new Event('change'));
+    await attendreMicrotaches();
+
+    expect(appels).toContainEqual({cle: 'benevoles.table_benevoles', valeur: 'Benevoles_festival_2026'});
+  });
+
+  it("tant qu'aucune table n'est choisie, le menu de colonnes propose celles de tout le document, jamais une liste vide (demande explicite d'Antoine)", async () => {
+    const m = new Magasin(modeleDeTest());
+    m.brancherEcriture({
+      ...ecritureMuette,
+      tablesDocument: async () => [{tableId: 'Benevoles'}, {tableId: 'Equipes'}],
+      colonnesTable: async (tableId: string) => tableId === 'Benevoles'
+        ? [{colId: 'Souhaits_artistes', label: 'Souhaits artistes', type: 'ChoiceList'}]
+        : [{colId: 'Nom_equipe', label: 'Nom équipe', type: 'Text'}],
+    });
+    montrerDisponibilites(container, m);
+
+    (Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent === "Réglages d'import") as HTMLButtonElement).click();
+    await attendreMicrotaches();
+    await attendreMicrotaches();
+
+    const menu = container.querySelector('select[aria-label="Colonne des souhaits d\'artistes"]');
+    expect(menu).not.toBeNull();
+    const libellesOptions = Array.from(menu!.querySelectorAll('option')).map((o) => o.textContent);
+    expect(libellesOptions).toContain('Benevoles · Souhaits artistes (Souhaits_artistes)');
+    expect(libellesOptions).toContain('Equipes · Nom équipe (Nom_equipe)');
+  });
+
+  it('choisir une colonne dans le repli "tout le document" enregistre la table ET la colonne, jamais l’une sans l’autre', async () => {
+    const appels: {cle: string; valeur: string}[] = [];
+    const m = new Magasin(modeleDeTest());
+    m.brancherEcriture({
+      ...ecritureMuette,
+      tablesDocument: async () => [{tableId: 'Benevoles_festival_2026'}],
+      colonnesTable: async () => [{colId: 'Souhaits_artistes', label: 'Souhaits artistes', type: 'ChoiceList'}],
+      definirParametre: async (cle, valeur) => { appels.push({cle, valeur}); },
+    });
+    montrerDisponibilites(container, m);
+
+    (Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent === "Réglages d'import") as HTMLButtonElement).click();
+    await attendreMicrotaches();
+    await attendreMicrotaches();
+
+    const menu = container.querySelector('select[aria-label="Colonne des souhaits d\'artistes"]') as HTMLSelectElement;
+    const option = Array.from(menu.querySelectorAll('option'))
+      .find((o) => o.textContent === 'Benevoles_festival_2026 · Souhaits artistes (Souhaits_artistes)') as HTMLOptionElement;
+    menu.value = option.value;
+    menu.dispatchEvent(new Event('change'));
+    await attendreMicrotaches();
+
+    expect(appels).toContainEqual({cle: 'benevoles.table_benevoles', valeur: 'Benevoles_festival_2026'});
+    expect(appels).toContainEqual({cle: 'benevoles.colonne_souhaits_artistes', valeur: 'Souhaits_artistes'});
+  });
+
+  it('une fois la table choisie, propose un menu déroulant sur les colonnes réelles de cette table', async () => {
     const colonnes: ColonneTable[] = [
       {colId: 'Souhaits_artistes', label: 'Souhaits artistes', type: 'ChoiceList'},
       {colId: 'Dispo_vendredi', label: 'Dispo vendredi', type: 'Text'},
     ];
-    const m = new Magasin(modeleDeTest());
+    const m = new Magasin(modeleDeTest(), [{cle: CLE_TABLE_BENEVOLES, valeur: 'Benevoles'}]);
     m.brancherEcriture({...ecritureMuette, colonnesTable: async () => colonnes});
     montrerDisponibilites(container, m);
 
@@ -245,8 +337,8 @@ describe('panneau de réglages d’import (nouveau, 2026-09-23)', () => {
     expect(libellesOptions).toContain('Dispo vendredi (Dispo_vendredi)');
   });
 
-  it("aucune colonne éligible (table Bénévoles lue mais sans colonne texte/choix ajoutée par Antoine) : le dit, plutôt qu'un menu vide sans explication", async () => {
-    const m = new Magasin(modeleDeTest());
+  it("aucune colonne éligible (table choisie et lue mais sans colonne texte/choix ajoutée par Antoine) : le dit, plutôt qu'un menu vide sans explication", async () => {
+    const m = new Magasin(modeleDeTest(), [{cle: CLE_TABLE_BENEVOLES, valeur: 'Benevoles'}]);
     m.brancherEcriture({
       ...ecritureMuette,
       colonnesTable: async () => [{colId: 'Quota_heures_max', label: 'Quota heures max', type: 'Numeric'}],
@@ -262,8 +354,8 @@ describe('panneau de réglages d’import (nouveau, 2026-09-23)', () => {
     expect(menu).not.toBeNull(); // le menu reste affiché (avec seulement « — aucune — »), pas de repli forcé
   });
 
-  it('repli en champ texte si la lecture des colonnes échoue, avec un message explicite', async () => {
-    const m = new Magasin(modeleDeTest());
+  it('repli en champ texte si la lecture des colonnes de la table choisie échoue, avec un message explicite', async () => {
+    const m = new Magasin(modeleDeTest(), [{cle: CLE_TABLE_BENEVOLES, valeur: 'Benevoles'}]);
     m.brancherEcriture({...ecritureMuette, colonnesTable: async () => { throw new Error('document indisponible'); }});
     montrerDisponibilites(container, m);
 
@@ -279,6 +371,7 @@ describe('panneau de réglages d’import (nouveau, 2026-09-23)', () => {
 
   it('les valeurs déjà enregistrées apparaissent réellement dans les champs (pas seulement en attribut inerte)', async () => {
     const m = new Magasin(modeleDeTest(), [
+      {cle: CLE_TABLE_BENEVOLES, valeur: 'Benevoles'},
       {cle: 'benevoles.colonne_souhaits_artistes', valeur: 'Souhaits_deja_enregistres'},
       {cle: 'benevoles.libelle_tout_le_creneau', valeur: 'Toute la journée'},
     ]);
@@ -302,7 +395,7 @@ describe('panneau de réglages d’import (nouveau, 2026-09-23)', () => {
   it('un choix de colonne est enregistré via définirParametre', async () => {
     const colonnes: ColonneTable[] = [{colId: 'Dispo_vendredi', label: 'Dispo vendredi', type: 'Text'}];
     const appels: {cle: string; valeur: string}[] = [];
-    const m = new Magasin(modeleDeTest());
+    const m = new Magasin(modeleDeTest(), [{cle: CLE_TABLE_BENEVOLES, valeur: 'Benevoles'}]);
     m.brancherEcriture({
       ...ecritureMuette,
       colonnesTable: async () => colonnes,
@@ -324,7 +417,7 @@ describe('panneau de réglages d’import (nouveau, 2026-09-23)', () => {
 
   it("un échec d'enregistrement d'un choix de colonne se voit à l'écran, plutôt que de disparaître en silence (table Parametres absente, document déconnecté…)", async () => {
     const colonnes: ColonneTable[] = [{colId: 'Dispo_vendredi', label: 'Dispo vendredi', type: 'Text'}];
-    const m = new Magasin(modeleDeTest());
+    const m = new Magasin(modeleDeTest(), [{cle: CLE_TABLE_BENEVOLES, valeur: 'Benevoles'}]);
     m.brancherEcriture({
       ...ecritureMuette,
       colonnesTable: async () => colonnes,
@@ -344,8 +437,26 @@ describe('panneau de réglages d’import (nouveau, 2026-09-23)', () => {
     expect(container.textContent).toContain("Échec de l'enregistrement de ce réglage");
   });
 
-  it("l'import refuse de partir si aucune colonne n'est associée", async () => {
+  it("l'import refuse de partir si aucune table de bénévoles n'est choisie", async () => {
     const m = new Magasin(modeleDeTest());
+    let appele = false;
+    m.brancherEcriture({...ecritureMuette, valeursColonneBrute: async () => { appele = true; return new Map(); }});
+    montrerDisponibilites(container, m);
+
+    (Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent === "Réglages d'import") as HTMLButtonElement).click();
+    await attendreMicrotaches();
+
+    (Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent === 'Importer les disponibilités') as HTMLButtonElement).click();
+    await attendreMicrotaches();
+
+    expect(appele).toBe(false);
+    expect(container.textContent).toContain('Choisis la table où sont tes bénévoles ci-dessus avant d\'importer.');
+  });
+
+  it("l'import refuse de partir si une table est choisie mais aucune colonne n'est associée", async () => {
+    const m = new Magasin(modeleDeTest(), [{cle: CLE_TABLE_BENEVOLES, valeur: 'Benevoles'}]);
     let appele = false;
     m.brancherEcriture({...ecritureMuette, valeursColonneBrute: async () => { appele = true; return new Map(); }});
     montrerDisponibilites(container, m);

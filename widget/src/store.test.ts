@@ -32,6 +32,7 @@ function ecritureDeTest(partielle: Partial<EcritureGrist> = {}): EcritureGrist {
     definirAbsence: nonBranchee('definirAbsence'),
     valeursColonneBrute: nonBranchee('valeursColonneBrute'),
     colonnesTable: nonBranchee('colonnesTable'),
+    tablesDocument: nonBranchee('tablesDocument'),
     definirParametre: nonBranchee('definirParametre'),
     remplacerDisponibilites: nonBranchee('remplacerDisponibilites'),
     ...partielle,

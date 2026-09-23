@@ -188,6 +188,7 @@ describe('document connecté : échec d’écriture puis nouvel essai', () => {
       modifierPlaces: async () => {}, supprimerPosition: async () => {}, definirAbsence: async () => {},
       valeursColonneBrute: async () => new Map(),
       colonnesTable: async () => [],
+      tablesDocument: async () => [],
       definirParametre: async () => {},
       remplacerDisponibilites: async () => {},
     };

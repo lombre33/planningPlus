@@ -35,7 +35,7 @@ import {
 } from '../logic/import-disponibilites';
 import {
   CLE_COLONNE_SOUHAITS_ARTISTES, CLE_LIBELLE_PAS_DISPONIBLE_DU_TOUT, CLE_LIBELLE_TOUT_LE_CRENEAU,
-  cleColonneReponseMacroCreneau, type ColonneTable, colonnesEligibles,
+  CLE_TABLE_BENEVOLES, cleColonneReponseMacroCreneau, type ColonneTable, colonnesEligibles,
 } from '../logic/parametres-benevoles';
 import type {Magasin} from '../store';
 import {libelleHeure} from '../temps';
@@ -46,13 +46,6 @@ const LIBELLE_STATUT: Record<'Disponible' | 'Indisponible' | 'Artiste', string> 
   Indisponible: 'indisponible',
   Artiste: 'veut voir un artiste',
 };
-
-/** Identifiant réel de la table Bénévoles côté document Grist. Le nom de
- *  schéma sert de repli en l'absence de résolution exposée à cette couche
- *  (même convention que `main.ts:215`, `resolution.Disponibilites ??
- *  'Disponibilites'`) : ne casse que si Antoine renomme la TABLE elle-même
- *  (pas une de ses colonnes, toujours supporté). */
-const TABLE_BENEVOLES = 'Benevoles';
 
 function champ(libelle: string, entree: Node): Node {
   return h('div', {style: {marginBottom: '10px'}},
@@ -69,7 +62,23 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
   let panneauOuvert = false;
   let importEnCours = false;
   let dernierMessage: {texte: string; ton: 'ok' | 'danger'} | null = null;
+  /** Colonnes de la table de bénévoles choisie (`CLE_TABLE_BENEVOLES`),
+   *  rechargées si la table choisie change (`tableChargee` garde la trace
+   *  de la table pour laquelle `colonnesBenevoles` est valide). */
+  let tableChargee: string | null = null;
   let colonnesBenevoles: ColonneTable[] | 'chargement' | 'erreur' | null = null;
+  /** Tables du document, pour le sélecteur — jamais de nom en dur ici
+   *  (2026-09-23, après coup : `TABLE_BENEVOLES` visait notre propre table
+   *  sans jamais vérifier que ses vrais bénévoles y étaient, signalé par
+   *  Antoine). */
+  let tablesDisponibles: {tableId: string}[] | 'chargement' | 'erreur' | null = null;
+  /** Repli tant qu'aucune table n'est choisie : les colonnes éligibles de
+   *  TOUTES les tables du document plutôt qu'une liste vide (demande
+   *  explicite d'Antoine : « il faut que toutes les colonnes du document
+   *  s'affichent »). Choisir une de ces colonnes désigne du même coup sa
+   *  table dans `CLE_TABLE_BENEVOLES` — les deux choix ne peuvent pas
+   *  diverger. */
+  let colonnesTousDocuments: {tableId: string; colonne: ColonneTable}[] | 'chargement' | 'erreur' | null = null;
 
   /** Enregistre un réglage `Parametres`, jamais en tir-et-oublie : un échec
    *  (table `Parametres` absente sur ce document, document déconnecté…)
@@ -87,40 +96,123 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
     }
   }
 
-  function chargerColonnesSiBesoin(): void {
-    if (colonnesBenevoles != null) { return; }
+  function chargerTablesSiBesoin(): void {
+    if (tablesDisponibles != null) { return; }
+    tablesDisponibles = 'chargement';
+    m.tablesDocument()
+      .then((tables) => { tablesDisponibles = tables; rafraichir(); })
+      .catch(() => { tablesDisponibles = 'erreur'; rafraichir(); });
+  }
+
+  /** Menu déroulant pour désigner la table où sont les bénévoles d'Antoine
+   *  (2026-09-23, demande directe : « un premier choix pour définir la
+   *  table dans laquelle sont les bénévoles »). Une fois choisie, les
+   *  colonnes proposées ci-dessous se restreignent à cette seule table. */
+  function champTableBenevoles(): Node {
+    chargerTablesSiBesoin();
+    const valeurActuelle = m.parametre(CLE_TABLE_BENEVOLES) ?? '';
+    if (!Array.isArray(tablesDisponibles)) {
+      return h('p', {class: tablesDisponibles === 'erreur' ? 'pill pill--warn' : 'empty'},
+        tablesDisponibles === 'erreur'
+          ? "Impossible de lire la liste des tables de ton document pour l'instant."
+          : 'Lecture des tables de ton document…',
+      );
+    }
+    return h('select', {
+      class: 'select', 'aria-label': 'Table où sont tes bénévoles',
+      onchange: (e: Event) => { void definirParametreSurveille(CLE_TABLE_BENEVOLES, (e.target as HTMLSelectElement).value); },
+    },
+      h('option', {value: '', selected: valeurActuelle === ''}, '— choisir —'),
+      ...tablesDisponibles.map((t) => h('option', {value: t.tableId, selected: t.tableId === valeurActuelle}, t.tableId)),
+    );
+  }
+
+  function chargerColonnesSiBesoin(tableId: string): void {
+    if (tableChargee === tableId && colonnesBenevoles != null) { return; }
+    tableChargee = tableId;
     colonnesBenevoles = 'chargement';
-    m.colonnesTable(TABLE_BENEVOLES)
+    m.colonnesTable(tableId)
       .then((colonnes) => { colonnesBenevoles = colonnes; rafraichir(); })
       .catch(() => { colonnesBenevoles = 'erreur'; rafraichir(); });
   }
 
-  function optionsColonnes(valeurActuelle: string | undefined): Node[] {
-    const options = [h('option', {value: ''}, '— aucune —')];
-    if (Array.isArray(colonnesBenevoles)) {
-      for (const c of colonnesEligibles(colonnesBenevoles)) {
-        options.push(h('option', {value: c.colId, selected: c.colId === valeurActuelle}, `${c.label} (${c.colId})`));
-      }
-    }
-    return options;
+  /** Repli tant qu'aucune table n'est choisie (voir `colonnesTousDocuments`
+   *  ci-dessus) : jamais une liste vide, toujours quelque chose à
+   *  regarder — au prix d'une lecture de chaque table du document. */
+  function chargerColonnesTousDocumentsSiBesoin(): void {
+    if (colonnesTousDocuments != null || !Array.isArray(tablesDisponibles)) { return; }
+    colonnesTousDocuments = 'chargement';
+    Promise.all(tablesDisponibles.map(async (t) => {
+      const colonnes = await m.colonnesTable(t.tableId);
+      return colonnesEligibles(colonnes).map((colonne) => ({tableId: t.tableId, colonne}));
+    }))
+      .then((parTable) => { colonnesTousDocuments = parTable.flat(); rafraichir(); })
+      .catch(() => { colonnesTousDocuments = 'erreur'; rafraichir(); });
   }
 
-  /** Menu déroulant sur les colonnes réelles de la table Bénévoles quand
-   *  elles ont pu être lues ; repli en champ texte sinon (échec de lecture,
-   *  ou le temps du chargement), jamais un écran bloqué. */
+  /** Encode la table et la colonne dans une seule valeur d'option, pour le
+   *  repli "toutes les tables" : choisir une colonne y désigne aussi sa
+   *  table du même geste (`CLE_TABLE_BENEVOLES` et `cle` s'enregistrent
+   *  ensemble), jamais une colonne sans savoir de quelle table elle vient. */
+  const SEPARATEUR_OPTION_TOUS_DOCUMENTS = '\u0000';
+
+  /** Menu déroulant sur les colonnes réelles de la table choisie ; tant
+   *  qu'aucune table n'est choisie, propose les colonnes de tout le
+   *  document (`colonnesTousDocuments`) plutôt qu'une liste vide ; repli en
+   *  champ texte seulement si la lecture échoue, jamais un écran bloqué. */
   function champColonne(cle: string, aria: string): Node {
     const valeurActuelle = m.parametre(cle);
-    if (Array.isArray(colonnesBenevoles)) {
+    const tableChoisie = m.parametre(CLE_TABLE_BENEVOLES);
+
+    if (tableChoisie) {
+      chargerColonnesSiBesoin(tableChoisie);
+      if (Array.isArray(colonnesBenevoles) && tableChargee === tableChoisie) {
+        const options = [h('option', {value: '', selected: !valeurActuelle}, '— aucune —')];
+        for (const c of colonnesEligibles(colonnesBenevoles)) {
+          options.push(h('option', {value: c.colId, selected: c.colId === valeurActuelle}, `${c.label} (${c.colId})`));
+        }
+        return h('select', {
+          class: 'select', 'aria-label': aria,
+          onchange: (e: Event) => { void definirParametreSurveille(cle, (e.target as HTMLSelectElement).value); },
+        }, ...options);
+      }
+      if (colonnesBenevoles === 'erreur') {
+        return h('input', {
+          class: 'input', type: 'text', placeholder: 'identifiant de colonne (ex. Dispo_Vendredi)', 'aria-label': aria,
+          value: valeurActuelle ?? '',
+          onchange: (e: Event) => { void definirParametreSurveille(cle, (e.target as HTMLInputElement).value.trim()); },
+        });
+      }
+      return h('p', {class: 'empty'}, 'Lecture de tes colonnes…');
+    }
+
+    chargerColonnesTousDocumentsSiBesoin();
+    if (Array.isArray(colonnesTousDocuments)) {
+      const valeurEncodee = valeurActuelle ? colonnesTousDocuments.find((c) => c.colonne.colId === valeurActuelle) : undefined;
+      const options = [h('option', {value: '', selected: !valeurActuelle}, '— aucune —')];
+      for (const {tableId, colonne} of colonnesTousDocuments) {
+        const value = `${tableId}${SEPARATEUR_OPTION_TOUS_DOCUMENTS}${colonne.colId}`;
+        options.push(h('option', {
+          value, selected: valeurEncodee?.tableId === tableId && valeurEncodee.colonne.colId === colonne.colId,
+        }, `${tableId} · ${colonne.label} (${colonne.colId})`));
+      }
       return h('select', {
         class: 'select', 'aria-label': aria,
-        onchange: (e: Event) => { void definirParametreSurveille(cle, (e.target as HTMLSelectElement).value); },
-      }, ...optionsColonnes(valeurActuelle));
+        onchange: (e: Event) => {
+          const [tableId, colId] = (e.target as HTMLSelectElement).value.split(SEPARATEUR_OPTION_TOUS_DOCUMENTS);
+          if (!tableId || !colId) { return; }
+          void definirParametreSurveille(CLE_TABLE_BENEVOLES, tableId).then(() => definirParametreSurveille(cle, colId));
+        },
+      }, ...options);
     }
-    return h('input', {
-      class: 'input', type: 'text', placeholder: 'identifiant de colonne (ex. Dispo_Vendredi)', 'aria-label': aria,
-      value: valeurActuelle ?? '',
-      onchange: (e: Event) => { void definirParametreSurveille(cle, (e.target as HTMLInputElement).value.trim()); },
-    });
+    if (colonnesTousDocuments === 'erreur') {
+      return h('input', {
+        class: 'input', type: 'text', placeholder: 'identifiant de colonne (ex. Dispo_Vendredi)', 'aria-label': aria,
+        value: valeurActuelle ?? '',
+        onchange: (e: Event) => { void definirParametreSurveille(cle, (e.target as HTMLInputElement).value.trim()); },
+      });
+    }
+    return h('p', {class: 'empty'}, 'Lecture des colonnes de ton document…');
   }
 
   async function basculerCellule(benevoleId: Id, macro: MacroCreneau, quart: Epoch): Promise<void> {
@@ -177,6 +269,7 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
    *  reconnue ("disponible mais…") n'écrit rien : elle reste à saisir à la
    *  main, en mode édition. */
   async function importerDisponibilites(): Promise<void> {
+    const tableBenevoles = m.parametre(CLE_TABLE_BENEVOLES);
     const colSouhaits = m.parametre(CLE_COLONNE_SOUHAITS_ARTISTES);
     const libelles = {
       toutLeCreneau: [m.parametre(CLE_LIBELLE_TOUT_LE_CRENEAU) ?? LIBELLES_REPONSE_PAR_DEFAUT.toutLeCreneau[0]!],
@@ -188,6 +281,11 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
       .map((macro) => ({macro, colId: m.parametre(cleColonneReponseMacroCreneau(macro.id))}))
       .filter((x): x is {macro: MacroCreneau; colId: string} => Boolean(x.colId));
 
+    if (!tableBenevoles) {
+      dernierMessage = {texte: 'Choisis la table où sont tes bénévoles ci-dessus avant d\'importer.', ton: 'danger'};
+      rafraichir();
+      return;
+    }
     if (macrosMappes.length === 0 && !colSouhaits) {
       dernierMessage = {texte: "Associe au moins une colonne ci-dessus avant d'importer.", ton: 'danger'};
       rafraichir();
@@ -199,11 +297,11 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
     rafraichir();
     try {
       const valeursSouhaits = colSouhaits
-        ? await m.valeursColonneBrute(TABLE_BENEVOLES, colSouhaits)
+        ? await m.valeursColonneBrute(tableBenevoles, colSouhaits)
         : new Map<Id, unknown>();
       const valeursParMacro = new Map<Id, Map<Id, unknown>>();
       for (const {macro, colId} of macrosMappes) {
-        valeursParMacro.set(macro.id, await m.valeursColonneBrute(TABLE_BENEVOLES, colId));
+        valeursParMacro.set(macro.id, await m.valeursColonneBrute(tableBenevoles, colId));
       }
 
       let nbManuels = 0;
@@ -236,7 +334,7 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
   }
 
   function construirePanneauReglages(): Node {
-    chargerColonnesSiBesoin();
+    const tableChoisie = m.parametre(CLE_TABLE_BENEVOLES);
     const macrosTries = [...m.macroCreneaux].sort((a, b) => a.Debut - b.Debut);
 
     return h('div', {class: 'card', style: {marginBottom: '12px'}},
@@ -245,11 +343,13 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
         "Associe les colonnes que tu as toi-même ajoutées à ta table Bénévoles. Elles ne sont jamais modifiées, "
         + 'seulement lues.',
       ),
-      colonnesBenevoles === 'chargement' ? h('p', {class: 'empty'}, 'Lecture des colonnes de ta table Bénévoles…') : null,
-      colonnesBenevoles === 'erreur'
+      champ('Table où sont tes bénévoles', champTableBenevoles()),
+      tableChoisie && colonnesBenevoles === 'chargement'
+        ? h('p', {class: 'empty'}, 'Lecture des colonnes de ta table Bénévoles…') : null,
+      tableChoisie && colonnesBenevoles === 'erreur'
         ? h('p', {class: 'pill pill--warn'}, "Impossible de lire la liste de tes colonnes pour l'instant — tape l'identifiant à la main ci-dessous.")
         : null,
-      Array.isArray(colonnesBenevoles) && colonnesEligibles(colonnesBenevoles).length === 0
+      tableChoisie && tableChargee === tableChoisie && Array.isArray(colonnesBenevoles) && colonnesEligibles(colonnesBenevoles).length === 0
         ? h('p', {class: 'empty'},
             "Aucune colonne de ta table Bénévoles ne peut être associée ici : ajoute-lui d'abord, dans Grist, une "
             + 'colonne de texte ou de choix (par exemple les souhaits d\'artistes, ou une réponse de disponibilité).',

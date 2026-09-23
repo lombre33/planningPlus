@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import type {LigneBrute} from './brut';
-import {colonnesDeTable} from './colonnes';
+import {colonnesDeTable, tablesDuDocument} from './colonnes';
 
 const lignesTables: LigneBrute[] = [
   {id: 3, tableId: 'Benevoles'},
@@ -38,5 +38,25 @@ describe('colonnesDeTable', () => {
       lignesTables, [{id: 33, parentId: 3, colId: 'Sans_label', type: 'Text'}], 'Benevoles',
     );
     expect(resultat).toEqual([{colId: 'Sans_label', label: 'Sans_label', type: 'Text'}]);
+  });
+});
+
+describe('tablesDuDocument', () => {
+  it('liste les tables de données du document, triées, sans les tables système Grist', () => {
+    const resultat = tablesDuDocument([
+      {id: 3, tableId: 'Benevoles'},
+      {id: 7, tableId: 'Artistes'},
+      {id: 9, tableId: '_grist_Views'},
+    ]);
+    expect(resultat).toEqual([{tableId: 'Artistes'}, {tableId: 'Benevoles'}]);
+  });
+
+  it("inclut une table qui n'est pas la nôtre (celle où vivent réellement les bénévoles d'Antoine, par exemple)", () => {
+    const resultat = tablesDuDocument([{id: 1, tableId: 'Benevoles_festival_2026'}]);
+    expect(resultat).toEqual([{tableId: 'Benevoles_festival_2026'}]);
+  });
+
+  it('tableau vide sur un document sans aucune table de données', () => {
+    expect(tablesDuDocument([])).toEqual([]);
   });
 });

@@ -26,6 +26,21 @@ export interface ColonneTable {
   type: string;
 }
 
+/** Une table quelconque du document, telle que rendue par la future
+ *  `tablesDuDocument` (grist/, Connexion Grist) — même raison d'être ici
+ *  que `ColonneTable` juste au-dessus. */
+export interface TableDocument {
+  tableId: string;
+}
+
+/** Clé `Parametres` pour la table où vivent réellement les bénévoles
+ *  d'Antoine (2026-09-23, après coup : `TABLE_BENEVOLES` en dur dans la vue
+ *  visait notre propre table, jamais vérifié sur son document réel — ses
+ *  bénévoles peuvent vivre dans une table à lui, de nom quelconque). Tant
+ *  qu'elle n'est pas choisie, l'écran propose les colonnes de tout le
+ *  document plutôt qu'une liste vide. */
+export const CLE_TABLE_BENEVOLES = 'benevoles.table_benevoles';
+
 /** Clé `Parametres` pour la colonne "souhaits d'artistes" (choix multiple,
  *  table Bénévoles). */
 export const CLE_COLONNE_SOUHAITS_ARTISTES = 'benevoles.colonne_souhaits_artistes';
