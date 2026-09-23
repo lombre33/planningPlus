@@ -36,6 +36,7 @@ function ecritureDeTest(partielle: Partial<EcritureGrist> = {}): EcritureGrist {
     definirParametre: nonBranchee('definirParametre'),
     remplacerDisponibilites: nonBranchee('remplacerDisponibilites'),
     peuplerBenevoles: nonBranchee('peuplerBenevoles'),
+    creerAffinites: nonBranchee('creerAffinites'),
     ...partielle,
   };
 }

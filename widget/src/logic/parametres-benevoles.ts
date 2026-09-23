@@ -45,6 +45,13 @@ export const CLE_TABLE_BENEVOLES = 'benevoles.table_benevoles';
  *  table Bénévoles). */
 export const CLE_COLONNE_SOUHAITS_ARTISTES = 'benevoles.colonne_souhaits_artistes';
 
+/** Clé `Parametres` pour la colonne "binôme souhaité" (texte, table
+ *  Bénévoles) : le nom, saisi tel quel dans SA table, du bénévole avec qui
+ *  celui-ci veut être — demande du 2026-09-23, point 4. Alimente
+ *  `Affinites` (`Type = 'Ensemble'`), que l'algorithme fait déjà primer sur
+ *  l'artiste souhaité (§ priorités du 2026-09-23 17h49). */
+export const CLE_COLONNE_BINOME_SOUHAITE = 'benevoles.colonne_binome_souhaite';
+
 /** Clés `Parametres` pour peupler notre table Bénévoles depuis la table
  *  externe d'Antoine (§6.4, demande du 2026-09-23) : la colonne du nom
  *  complet (obligatoire pour peupler) et celle du téléphone (facultative,

@@ -128,6 +128,7 @@ describe('planning complet : missions et besoin, mais zone volontairement vide',
         definirParametre: refuse(),
         remplacerDisponibilites: refuse(),
         peuplerBenevoles: refuse(),
+        creerAffinites: refuse(),
       };
     }
 

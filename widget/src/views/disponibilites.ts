@@ -21,7 +21,6 @@
  */
 
 import type {Epoch, Id, MacroCreneau} from '../domain/types';
-import {decoderListe} from '../grist';
 import {indexer} from '../logic/derive';
 import {regrouperParJour} from '../logic/derive';
 import {
@@ -31,10 +30,10 @@ import {
 import {disponibilitesApresBasculement, disponibilitesApresChoixArtiste} from '../logic/edition-disponibilites';
 import {
   disponibilitesDepuisReponseMacroCreneau, disponibilitesDepuisSouhaitsArtistes, fusionnerDisponibilites,
-  LIBELLES_REPONSE_PAR_DEFAUT,
+  LIBELLES_REPONSE_PAR_DEFAUT, nomsArtistesNonReconnus, nomsSouhaitesDepuisValeurBrute, resoudreBinomeSouhaite,
 } from '../logic/import-disponibilites';
 import {
-  CLE_COLONNE_CONTACT_BENEVOLES, CLE_COLONNE_NOM_BENEVOLES, CLE_COLONNE_SOUHAITS_ARTISTES,
+  CLE_COLONNE_BINOME_SOUHAITE, CLE_COLONNE_CONTACT_BENEVOLES, CLE_COLONNE_NOM_BENEVOLES, CLE_COLONNE_SOUHAITS_ARTISTES,
   CLE_LIBELLE_PAS_DISPONIBLE_DU_TOUT, CLE_LIBELLE_TOUT_LE_CRENEAU,
   CLE_TABLE_BENEVOLES, cleColonneReponseMacroCreneau, type ColonneTable, colonnesEligibles,
   colonnesEligiblesTableExterne,
@@ -325,6 +324,7 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
   async function importerDisponibilites(): Promise<void> {
     const tableBenevoles = m.parametre(CLE_TABLE_BENEVOLES);
     const colSouhaits = m.parametre(CLE_COLONNE_SOUHAITS_ARTISTES);
+    const colBinome = m.parametre(CLE_COLONNE_BINOME_SOUHAITE);
     const libelles = {
       toutLeCreneau: [m.parametre(CLE_LIBELLE_TOUT_LE_CRENEAU) ?? LIBELLES_REPONSE_PAR_DEFAUT.toutLeCreneau[0]!],
       pasDisponibleDuTout: [
@@ -340,7 +340,7 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
       rafraichir();
       return;
     }
-    if (macrosMappes.length === 0 && !colSouhaits) {
+    if (macrosMappes.length === 0 && !colSouhaits && !colBinome) {
       dernierMessage = {texte: "Associe au moins une colonne ci-dessus avant d'importer.", ton: 'danger'};
       rafraichir();
       return;
@@ -353,12 +353,24 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
       const valeursSouhaits = colSouhaits
         ? await m.valeursColonneBrute(tableBenevoles, colSouhaits)
         : new Map<Id, unknown>();
+      const valeursBinome = colBinome
+        ? await m.valeursColonneBrute(tableBenevoles, colBinome)
+        : new Map<Id, unknown>();
       const valeursParMacro = new Map<Id, Map<Id, unknown>>();
       for (const {macro, colId} of macrosMappes) {
         valeursParMacro.set(macro.id, await m.valeursColonneBrute(tableBenevoles, colId));
       }
 
+      // Paires déjà connues (n'importe quel sens) : un ré-import n'en
+      // recrée jamais, `Magasin.creerAffinites` ne filtre rien lui-même.
+      const pairesConnues = new Set(
+        m.affinites.filter((a) => a.Type === 'Ensemble').map((a) => [a.Benevole_A, a.Benevole_B].sort().join('-')),
+      );
+      const aCreerAffinites: {benevoleAId: Id; benevoleBId: Id}[] = [];
+      const nomsBinomeNonReconnus = new Set<string>();
+
       let nbManuels = 0;
+      const nomsNonReconnus = new Set<string>();
       for (const benevole of m.benevoles) {
         // La réponse brute se lit dans SA table à lui, indexée par l'id de la
         // ligne d'origine (`Id_source`, posé par le peuplement ci-dessus) —
@@ -367,8 +379,23 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
         // bénévole sans `Id_source` (saisi nativement, ou créé avant ce
         // mécanisme) ne trouve simplement aucune réponse, comme avant.
         const idSource = benevole.Id_source;
-        const nomsSouhaites = decoderListe(idSource != null ? valeursSouhaits.get(idSource) : undefined);
+        const nomsSouhaites = nomsSouhaitesDepuisValeurBrute(idSource != null ? valeursSouhaits.get(idSource) : undefined);
+        for (const nom of nomsArtistesNonReconnus(nomsSouhaites, m.artistes)) { nomsNonReconnus.add(nom); }
         const surcharges = disponibilitesDepuisSouhaitsArtistes(benevole.id, nomsSouhaites, m.artistes);
+
+        if (colBinome) {
+          const {benevoleBId, nomNonReconnu} = resoudreBinomeSouhaite(
+            idSource != null ? valeursBinome.get(idSource) : undefined, m.benevoles,
+          );
+          if (nomNonReconnu) { nomsBinomeNonReconnus.add(nomNonReconnu); }
+          if (benevoleBId != null && benevoleBId !== benevole.id) {
+            const cle = [benevole.id, benevoleBId].sort().join('-');
+            if (!pairesConnues.has(cle)) {
+              pairesConnues.add(cle);
+              aCreerAffinites.push({benevoleAId: benevole.id, benevoleBId});
+            }
+          }
+        }
         for (const {macro} of macrosMappes) {
           const brut = idSource != null ? valeursParMacro.get(macro.id)!.get(idSource) : undefined;
           const reponse = typeof brut === 'string' ? brut : null;
@@ -380,11 +407,32 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
           );
         }
       }
+      if (aCreerAffinites.length > 0) { await m.creerAffinites(aCreerAffinites); }
+
+      const morceaux: string[] = ['Import terminé.'];
+      if (nbManuels > 0) {
+        morceaux.push(
+          `${nbManuels} réponse${nbManuels > 1 ? 's' : ''} non reconnue${nbManuels > 1 ? 's' : ''} — à saisir à la main (mode édition, ci-dessus).`,
+        );
+      }
+      if (nomsNonReconnus.size > 0) {
+        morceaux.push(
+          `${nomsNonReconnus.size} nom${nomsNonReconnus.size > 1 ? 's' : ''} d'artiste dans la colonne souhaits `
+          + `ne correspond${nomsNonReconnus.size > 1 ? 'ent' : ''} à aucun artiste connu : ${[...nomsNonReconnus].join(', ')}.`,
+        );
+      }
+      if (aCreerAffinites.length > 0) {
+        morceaux.push(`${aCreerAffinites.length} binôme${aCreerAffinites.length > 1 ? 's' : ''} souhaité${aCreerAffinites.length > 1 ? 's' : ''} enregistré${aCreerAffinites.length > 1 ? 's' : ''}.`);
+      }
+      if (nomsBinomeNonReconnus.size > 0) {
+        morceaux.push(
+          `${nomsBinomeNonReconnus.size} nom${nomsBinomeNonReconnus.size > 1 ? 's' : ''} dans la colonne binôme `
+          + `ne correspond${nomsBinomeNonReconnus.size > 1 ? 'ent' : ''} à aucun bénévole connu : ${[...nomsBinomeNonReconnus].join(', ')}.`,
+        );
+      }
       dernierMessage = {
-        texte: nbManuels > 0
-          ? `Import terminé. ${nbManuels} réponse${nbManuels > 1 ? 's' : ''} non reconnue${nbManuels > 1 ? 's' : ''} — à saisir à la main (mode édition, ci-dessus).`
-          : 'Import terminé.',
-        ton: nbManuels > 0 ? 'danger' : 'ok',
+        texte: morceaux.join(' '),
+        ton: nbManuels > 0 || nomsNonReconnus.size > 0 || nomsBinomeNonReconnus.size > 0 ? 'danger' : 'ok',
       };
     } catch {
       dernierMessage = {texte: "Échec de l'import. Vérifie les colonnes associées puis réessaie.", ton: 'danger'};
@@ -431,6 +479,10 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
           )
         : null,
       champ("Colonne des souhaits d'artistes (choix multiple)", champColonne(CLE_COLONNE_SOUHAITS_ARTISTES, "Colonne des souhaits d'artistes")),
+      champ(
+        'Colonne du binôme souhaité (le nom exact du bénévole)',
+        champColonne(CLE_COLONNE_BINOME_SOUHAITE, 'Colonne du binôme souhaité'),
+      ),
       macrosTries.length === 0
         ? h('p', {class: 'empty'}, "Crée d'abord tes macro-créneaux (vue Agenda) pour associer une colonne de réponse par créneau.")
         : h('div', null, ...macrosTries.map((macro) => champ(
@@ -466,6 +518,16 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
     // sélection au prochain rendu).
     const jours = regrouperParJour(m.macroCreneaux);
     const jour = jours.find((j) => j.macros.some((ma) => ma.id === m.macroCreneauSelectionne)) ?? jours[0];
+    // Chaque clic en mode édition réécrit une disponibilité, ce qui repasse
+    // par `m.subscribe(rafraichir)` : toute la grille (`.dispos-scroll`) est
+    // reconstruite, donc un nouveau `<div>` qui démarre scrollé en haut à
+    // gauche — sans ça, éditer une case hors du coin remontait le défilement
+    // à chaque clic (Antoine, 2026-09-23 19h47). On retient la position
+    // avant de vider le conteneur, on la réapplique sur le nouveau `<div>`.
+    const ancienDefilement = container.querySelector<HTMLElement>('.dispos-scroll');
+    const defilementConserve = ancienDefilement
+      ? {haut: ancienDefilement.scrollTop, gauche: ancienDefilement.scrollLeft}
+      : null;
     vider(container);
 
     if (panneauOuvert) { container.append(construirePanneauReglages()); }
@@ -595,17 +657,26 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
       );
     });
 
-    container.append(
-      h('div', {class: 'dispos-scroll'},
-        h('table', {class: 'dispos-table'},
-          h('thead', null, h('tr', null, ...theadCellules)),
-          h('tbody', null, ...lignes),
-        ),
+    const nouveauDefilement = h('div', {class: 'dispos-scroll'},
+      h('table', {class: 'dispos-table'},
+        h('thead', null, h('tr', null, ...theadCellules)),
+        h('tbody', null, ...lignes),
       ),
+    ) as HTMLElement;
+
+    container.append(
+      nouveauDefilement,
       h('p', {class: 'view__intro', style: {marginTop: '10px', marginBottom: '0'}},
         `${benevoles.length} bénévole${benevoles.length > 1 ? 's' : ''} affiché${benevoles.length > 1 ? 's' : ''}. Une case sans donnée vaut indisponible (§6.4 du cahier des charges) : seule une disponibilité déclarée ouvre la possibilité d'une affectation.`,
       ),
     );
+    // Ne s'applique qu'une fois le `<div>` attaché au document : posé sur un
+    // nœud détaché, `scrollTop`/`scrollLeft` seraient ignorés (rien à
+    // défiler avant la mise en page).
+    if (defilementConserve) {
+      nouveauDefilement.scrollTop = defilementConserve.haut;
+      nouveauDefilement.scrollLeft = defilementConserve.gauche;
+    }
   }
 
   const desabonner = m.subscribe(rafraichir);

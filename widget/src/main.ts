@@ -20,11 +20,12 @@
 import './style.css';
 import {demarrerApp} from './app';
 import type {Id} from './domain/types';
-import type {Benevole} from './domain/types';
+import type {Affinite, Benevole} from './domain/types';
 import type {DocApiEcriture, LigneParametre, NouvelleDisponibilite, TableBrute} from './grist';
 import {
   actionsActualiserBenevolesSource,
   actionsAjouterColonneManquante,
+  actionsCreerAffinites,
   actionsCreerArtiste, actionsCreerBenevolesSource, actionsCreerBesoin, actionsCreerEquipe, actionsCreerGroupe,
   actionsCreerMacroCreneau,
   actionsCreerMission, actionsCreerSousCreneaux, actionsCreerTablesManquantes, actionsDefinirAbsence,
@@ -331,6 +332,15 @@ function construireEcritureGrist(
       const lignesRelues = zipperTable(await docApi.fetchTable(idBenevoles));
       const benevoles: Benevole[] = lignesRelues.map(benevoleDepuisLigne);
       return {benevoles, crees: aCreer.length, actualises: aActualiser.length};
+    },
+    async creerAffinites(paires) {
+      // `actionsCreerAffinites` est un `BulkAddRecord` : son retValue est le
+      // tableau des ids créés, dans le même ordre que `paires` (même
+      // discipline qu'`ajouterPosition` ci-dessus).
+      const [ids] = await appliquerActions(docApi, actionsCreerAffinites(paires), resolution);
+      return paires.map((p, i): Affinite => ({
+        id: (ids as Id[])[i] as Id, Benevole_A: p.benevoleAId, Benevole_B: p.benevoleBId, Type: 'Ensemble',
+      }));
     },
   };
 }

@@ -214,6 +214,13 @@ export interface EcritureGrist {
   peuplerBenevoles(
     tableSourceId: string, colNomId: string, colContactId: string | null, equipeParDefautId: Id,
   ): Promise<{benevoles: Benevole[]; crees: number; actualises: number}>;
+  /** Ajoute des affinités "Ensemble" (binôme souhaité, import §6.4 point 4,
+   *  2026-09-23) : l'appelant (`Magasin.creerAffinites`) a déjà écarté les
+   *  paires déjà connues, cette méthode crée sans vérifier — jamais de
+   *  suppression, jamais un autre type qu'"Ensemble" ici. Retourne les
+   *  lignes créées, ids réels compris, pour que le `Magasin` les ajoute à
+   *  son cache local sans les reconstruire à la main. */
+  creerAffinites(paires: readonly {benevoleAId: Id; benevoleBId: Id}[]): Promise<Affinite[]>;
 }
 
 /** Levée par `EcritureGrist.remplacerSousCreneaux` quand la création des
@@ -386,6 +393,18 @@ export class Magasin {
     this.data.benevoles = resultat.benevoles;
     this.notifier();
     return {crees: resultat.crees, actualises: resultat.actualises};
+  }
+
+  /** Ajoute des affinités "Ensemble" (binôme souhaité, import) — voir
+   *  `EcritureGrist.creerAffinites` ci-dessus. Rien sans document connecté
+   *  (démo, tests), comme `peuplerBenevoles` : rien à créer qui persiste.
+   *  L'appelant (la vue) a déjà écarté les paires déjà connues de
+   *  `this.affinites`. */
+  async creerAffinites(paires: readonly {benevoleAId: Id; benevoleBId: Id}[]): Promise<void> {
+    if (paires.length === 0 || !this.ecriture) { return; }
+    const nouvelles = await this.ecriture.creerAffinites(paires);
+    this.data.affinites.push(...nouvelles);
+    this.notifier();
   }
 
   // --- Écriture : équipes ------------------------------------------------

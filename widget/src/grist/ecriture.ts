@@ -642,6 +642,31 @@ export function actionsActualiserBenevolesSource(benevoles: readonly BenevoleSou
   ]];
 }
 
+// --- Affinités (binôme souhaité, import, §6.4 point 4, 2026-09-23) ---------
+
+export interface NouvelleAffiniteEnsemble {
+  benevoleAId: Id;
+  benevoleBId: Id;
+}
+
+/**
+ * Crée des lignes `Affinites` de type "Ensemble" (binôme souhaité) —
+ * l'algorithme les fait déjà primer sur l'artiste souhaité, voir
+ * `moteur/adaptateur-magasin.ts`. L'appelant filtre déjà les paires qui
+ * existent déjà (upsert, voir la vue) : cette fonction crée sans vérifier.
+ */
+export function actionsCreerAffinites(paires: readonly NouvelleAffiniteEnsemble[]): UserAction[] {
+  if (paires.length === 0) { return []; }
+  return [[
+    'BulkAddRecord', 'Affinites', paires.map(() => null),
+    {
+      Benevole_A: paires.map((p) => encoderRef(p.benevoleAId)),
+      Benevole_B: paires.map((p) => encoderRef(p.benevoleBId)),
+      Type: paires.map(() => 'Ensemble'),
+    },
+  ]];
+}
+
 /**
  * Marque un bénévole absent ou de retour, et libère dans le même
  * aller-retour les places qu'une absence rend vacantes (§7.4,

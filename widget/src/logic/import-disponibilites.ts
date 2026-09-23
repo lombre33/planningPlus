@@ -20,7 +20,7 @@
  * quart d'heure ailleurs.
  */
 
-import type {Artiste, Disponibilite, Epoch, Id, MacroCreneau} from '../domain/types';
+import type {Artiste, Benevole, Disponibilite, Epoch, Id, MacroCreneau} from '../domain/types';
 import {quartsEntre} from './dispos-terrain';
 
 export interface LibellesReponseMacroCreneau {
@@ -85,7 +85,9 @@ export function disponibilitesDepuisReponseMacroCreneau(
  * à choix multiple, valeurs en texte) en lignes `Disponibilite` sur les
  * quarts d'heure de leurs passages déjà saisis (panel Artistes). Un nom qui
  * ne correspond à aucun artiste connu est ignoré (pas d'erreur bloquante :
- * la colonne brute peut contenir des noms pas encore créés côté Artistes).
+ * la colonne brute peut contenir des noms pas encore créés côté Artistes) —
+ * voir `nomsArtistesNonReconnus` pour signaler ces noms plutôt que les
+ * laisser disparaître en silence.
  *
  * Ces lignes priment sur une disponibilité "tout le créneau" au même quart
  * d'heure — voir `fusionnerDisponibilites`, qui applique cette priorité.
@@ -98,6 +100,56 @@ export function disponibilitesDepuisSouhaitsArtistes(
   return passages.flatMap((a) => quartsEntre(a.Debut, a.Fin).map((quart): Disponibilite => ({
     Benevole: benevoleId, Quart_heure: quart, Statut: 'Artiste', Artiste: a.id,
   })));
+}
+
+/** Noms de `nomsSouhaites` qui ne correspondent à aucun artiste connu, selon
+ *  la même comparaison normalisée que `disponibilitesDepuisSouhaitsArtistes`
+ *  — pour signaler à Antoine une faute de frappe ou un artiste pas encore
+ *  saisi côté vue Artistes, plutôt qu'un souhait qui disparaît en silence. */
+export function nomsArtistesNonReconnus(nomsSouhaites: readonly string[], artistes: readonly Artiste[]): string[] {
+  const connus = new Set(artistes.map((a) => normaliser(a.Nom)));
+  return nomsSouhaites.filter((n) => n.trim() !== '' && !connus.has(normaliser(n)));
+}
+
+/**
+ * Convertit la valeur brute d'une colonne "artistes souhaités" en liste de
+ * noms. Chez Antoine, c'est une colonne Texte contenant une liste séparée
+ * par des virgules (export de formulaire amont — ex. "SHOW Vibration
+ * Urbaines - Jeudi, BONNE NUIT - Vendredi"), jamais une vraie `ChoiceList`
+ * Grist native ; prend quand même en charge cette dernière (`['L', ...]`)
+ * si la colonne choisie en est une. Valeur absente, vide, ou d'un type
+ * inattendu : aucun souhait, jamais une erreur.
+ */
+export function nomsSouhaitesDepuisValeurBrute(valeur: unknown): string[] {
+  if (Array.isArray(valeur) && valeur[0] === 'L') { return valeur.slice(1).map(String); }
+  if (typeof valeur === 'string') {
+    return valeur.split(',').map((n) => n.trim()).filter((n) => n !== '');
+  }
+  return [];
+}
+
+export interface ResultatBinomeSouhaite {
+  /** Id du bénévole visé (`Affinite.Benevole_B`), si son nom a été reconnu. */
+  benevoleBId: Id | null;
+  /** Nom importé, brut, seulement s'il ne correspond à aucun bénévole connu
+   *  — pour le signaler à Antoine plutôt que le laisser disparaître en
+   *  silence (faute de frappe, ou binôme pas encore importé lui-même). */
+  nomNonReconnu: string | null;
+}
+
+/**
+ * Résout la valeur brute de la colonne "binôme souhaité" (colonne Texte
+ * chez Antoine, le nom exact du bénévole visé) en id de bénévole, par la
+ * même comparaison normalisée que les souhaits d'artiste. Ne construit pas
+ * l'`Affinite` elle-même (ordre des deux bénévoles, table cible) : ça reste
+ * du ressort de l'appelant, qui connaît le bénévole A.
+ */
+export function resoudreBinomeSouhaite(valeurBrute: unknown, benevoles: readonly Benevole[]): ResultatBinomeSouhaite {
+  const nom = typeof valeurBrute === 'string' ? valeurBrute.trim() : '';
+  if (nom === '') { return {benevoleBId: null, nomNonReconnu: null}; }
+  const cible = normaliser(nom);
+  const trouve = benevoles.find((b) => normaliser(b.Nom) === cible);
+  return trouve ? {benevoleBId: trouve.id, nomNonReconnu: null} : {benevoleBId: null, nomNonReconnu: nom};
 }
 
 /**

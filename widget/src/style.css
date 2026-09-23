@@ -2060,9 +2060,13 @@ table.dispos-table td {
   top: 0;
   z-index: 2;
   background: var(--surface);
-  width: 11px;
-  min-width: 11px;
-  max-width: 11px;
+  /* Doublé de 11 à 22px (= `LARGEUR_QUART_PX`, `ui/frise.ts`, déjà éprouvé
+     lisible ailleurs dans l'app) : trop étroit pour être lisible au clic,
+     demande explicite d'Antoine le 2026-09-23. La grille défile déjà
+     horizontalement (`.dispos-scroll`), s'allonger n'a pas d'autre effet. */
+  width: 22px;
+  min-width: 22px;
+  max-width: 22px;
   font-family: var(--font-mono);
   font-size: 9px;
   font-weight: 400;
@@ -2089,8 +2093,8 @@ table.dispos-table td {
 }
 
 .dispos-cellule {
-  width: 11px;
-  min-width: 11px;
+  width: 22px;
+  min-width: 22px;
   height: 18px;
   padding: 0;
 }
@@ -2101,7 +2105,10 @@ table.dispos-table td {
 
 .dispos-cellule--disponible { background: var(--brand-tint); }
 .dispos-cellule--indisponible { background: var(--surface-muted); }
-.dispos-cellule--artiste { background: var(--accent-2-tint); }
+/* Teinte pleine, pas `--accent-2-tint` : sur une cellule de 11×18px, deux
+   pastels pâles (bleu/violet) ne se distinguent pas assez au survol rapide
+   de la grille — demande explicite d'Antoine le 2026-09-23. */
+.dispos-cellule--artiste { background: var(--accent-2); }
 
 .contrainte-badge {
   display: inline-flex;

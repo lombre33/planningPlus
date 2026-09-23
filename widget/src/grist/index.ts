@@ -23,6 +23,7 @@ export type {
   NouveauMacroCreneau,
   NouveauSousCreneau,
   NouvelArtiste,
+  NouvelleAffiniteEnsemble,
   NouvelleDisponibilite,
   NouvelleEquipe,
   NouvelleMission,
@@ -33,6 +34,7 @@ export type {
 } from './ecriture';
 export {
   actionsActualiserBenevolesSource,
+  actionsCreerAffinites,
   actionsCreerArtiste,
   actionsCreerBenevolesSource,
   actionsCreerBesoin,

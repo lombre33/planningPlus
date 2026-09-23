@@ -76,6 +76,7 @@ const ecritureMuette: EcritureGrist = {
   definirParametre: async () => {},
   remplacerDisponibilites: async () => {},
   peuplerBenevoles: async () => ({benevoles: [], crees: 0, actualises: 0}),
+  creerAffinites: async () => [],
 };
 
 let container: HTMLElement;
@@ -667,6 +668,28 @@ describe('mode édition (nouveau, 2026-09-23)', () => {
 
     expect(appels).toHaveLength(1);
     expect(appels[0]?.benevoleId).toBe(1);
+  });
+
+  it('un clic en mode édition conserve la position de défilement de la grille (retour d’Antoine, 2026-09-23 19h47)', async () => {
+    const m = new Magasin(modeleDeTest());
+    m.brancherEcriture({...ecritureMuette, remplacerDisponibilites: async () => {}});
+    montrerDisponibilites(container, m);
+
+    const case_ = container.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    case_.checked = true;
+    case_.dispatchEvent(new Event('change'));
+
+    const defilement = container.querySelector('.dispos-scroll') as HTMLElement;
+    defilement.scrollTop = 123;
+    defilement.scrollLeft = 45;
+
+    const cellule = container.querySelector('td.dispos-cellule') as HTMLTableCellElement;
+    cellule.click();
+    await attendreMicrotaches();
+
+    const nouveauDefilement = container.querySelector('.dispos-scroll') as HTMLElement;
+    expect(nouveauDefilement.scrollTop).toBe(123);
+    expect(nouveauDefilement.scrollLeft).toBe(45);
   });
 
   it('« Choisir un artiste au clic » reste désactivée tant que le mode édition ne l’est pas', () => {
