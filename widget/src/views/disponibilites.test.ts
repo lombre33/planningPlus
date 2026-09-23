@@ -33,7 +33,9 @@ function modeleDeTest(): Modele {
       {id: 1, Nom: 'Alice', Contact: '', Equipe: 1, Competences: [], Quota_heures_min: 0, Quota_heures_max: 40, Statut: 'Actif', Notes: ''},
       {id: 2, Nom: 'Bob', Contact: '', Equipe: 1, Competences: [], Quota_heures_min: 0, Quota_heures_max: 40, Statut: 'Actif', Notes: ''},
     ],
-    artistes: [{id: 1, Nom: 'Marée Haute', Lieu: 1, Debut: debut, Fin: fin}],
+    // Ne joue que sur le premier quart d'heure du macro-créneau de test (10h00–10h15),
+    // pas sur le second (10h15–10h30) : sert à distinguer un quart avec/sans artiste.
+    artistes: [{id: 1, Nom: 'Marée Haute', Lieu: 1, Debut: debut, Fin: debut + 900}],
     macroCreneaux: [{id: 1, Nom: 'Vendredi matin', Debut: debut, Fin: fin}],
     disponibilites: [
       {Benevole: 1, Quart_heure: debut, Statut: 'Disponible', Artiste: null},
@@ -286,5 +288,61 @@ describe('mode édition (nouveau, 2026-09-23)', () => {
 
     expect(appels).toHaveLength(1);
     expect(appels[0]?.benevoleId).toBe(1);
+  });
+
+  it('« Choisir un artiste au clic » reste désactivée tant que le mode édition ne l’est pas', () => {
+    const m = new Magasin(modeleDeTest());
+    montrerDisponibilites(container, m);
+    const cases = container.querySelectorAll('input[type="checkbox"]');
+    expect((cases[1] as HTMLInputElement).disabled).toBe(true);
+  });
+
+  it("un clic sur une cellule dont le quart d'heure ne porte aucun artiste ne bascule rien et le dit", async () => {
+    const appels: unknown[] = [];
+    const m = new Magasin(modeleDeTest());
+    m.brancherEcriture({...ecritureMuette, remplacerDisponibilites: async () => { appels.push(1); }});
+    montrerDisponibilites(container, m);
+
+    const cases = container.querySelectorAll('input[type="checkbox"]');
+    (cases[0] as HTMLInputElement).checked = true;
+    (cases[0] as HTMLInputElement).dispatchEvent(new Event('change'));
+    const casesApresRafraichissement = container.querySelectorAll('input[type="checkbox"]');
+    (casesApresRafraichissement[1] as HTMLInputElement).checked = true;
+    (casesApresRafraichissement[1] as HTMLInputElement).dispatchEvent(new Event('change'));
+
+    const cellule = container.querySelectorAll('td.dispos-cellule')[1] as HTMLTableCellElement; // 2e quart : hors passage de Marée Haute
+    cellule.click();
+    await attendreMicrotaches();
+
+    expect(appels).toHaveLength(0);
+    expect(container.textContent).toContain("Aucun artiste ne joue à ce quart d'heure.");
+  });
+
+  it("un clic sur une cellule dont le quart d'heure porte un artiste l'assigne (Statut Artiste)", async () => {
+    const appels: {statut: string; artiste: number | null}[] = [];
+    const m = new Magasin(modeleDeTest());
+    m.brancherEcriture({
+      ...ecritureMuette,
+      remplacerDisponibilites: async (_benevoleId, _debut, _fin, nouvelles) => {
+        for (const d of nouvelles) { appels.push({statut: d.Statut, artiste: d.Artiste}); }
+      },
+    });
+    montrerDisponibilites(container, m);
+
+    const cases = container.querySelectorAll('input[type="checkbox"]');
+    (cases[0] as HTMLInputElement).checked = true;
+    (cases[0] as HTMLInputElement).dispatchEvent(new Event('change'));
+    const casesApresRafraichissement = container.querySelectorAll('input[type="checkbox"]');
+    (casesApresRafraichissement[1] as HTMLInputElement).checked = true;
+    (casesApresRafraichissement[1] as HTMLInputElement).dispatchEvent(new Event('change'));
+
+    // Le premier quart d'heure du macro-créneau de test est aussi le début
+    // du passage de « Marée Haute » (fixture) : un artiste y joue bien.
+    const cellule = container.querySelector('td.dispos-cellule') as HTMLTableCellElement;
+    expect(cellule.title).toContain('cliquer pour choisir un artiste');
+    cellule.click();
+    await attendreMicrotaches();
+
+    expect(appels.some((a) => a.statut === 'Artiste' && a.artiste === 1)).toBe(true);
   });
 });

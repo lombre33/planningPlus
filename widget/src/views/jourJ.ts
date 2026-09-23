@@ -7,8 +7,9 @@
 
 import type {Id} from '../domain/types';
 import {
-  type Candidat, type EtapePermutation, classerCandidats, indexer, proposerPermutation,
+  type Candidat, type EtapePermutation, indexer, proposerPermutation,
 } from '../logic/derive';
+import {classerCandidats} from '../moteur/adaptateur-magasin';
 import type {Magasin} from '../store';
 import {h, vider} from '../ui/dom';
 

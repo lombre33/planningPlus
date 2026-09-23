@@ -68,6 +68,14 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
   }
 
   function resumeAlgorithmeVue(resume: ResumeLancement): Node {
+    if (resume.placesTraitees === 0) {
+      const aucunePlace = m.places.length === 0;
+      return h('div', {class: 'card', style: {marginBottom: '12px'}},
+        h('p', {class: 'view__intro', style: {margin: '0'}}, aucunePlace
+          ? "Rien à affecter : aucune place n'est encore positionnée sur un besoin. Positionnez des indicatifs (binômes) depuis la vue Indicatifs, puis relancez l'algorithme."
+          : "Rien à affecter : toutes les places existantes sont verrouillées (affectées à la main). Déverrouillez-en pour que l'algorithme puisse les reprendre."),
+      );
+    }
     const groupes = new Map<CodeAnomalie, {gravite: GraviteAnomalie; nombre: number}>();
     for (const a of resume.resultat.anomalies) {
       const entree = groupes.get(a.code);
@@ -263,8 +271,8 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
       ? new Set(m.sousCreneaux.filter((sc) => jour.macros.some((ma) => ma.id === sc.Macro_creneau)).map((sc) => sc.id))
       : new Set<Id>();
 
-    const besoinsDuJour = m.besoins
-      .filter((b) => sousCreneauxDuJour.has(b.Sous_creneau))
+    const besoinsExistantsDuJour = m.besoins.filter((b) => sousCreneauxDuJour.has(b.Sous_creneau));
+    const besoinsDuJour = besoinsExistantsDuJour
       .map((besoin) => ({besoin, c: couvertureBesoin(m, ix, besoin.id)}))
       .filter(({c}) => voirTout || c.statut !== 'ok')
       .sort((a, b) => {
@@ -328,7 +336,9 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
         ),
         h('div', {class: 'affectation__board'},
           besoinsDuJour.length === 0
-            ? h('p', {class: 'empty'}, voirTout ? 'Aucun besoin ce jour.' : "Rien à traiter ce jour : tous les besoins sont couverts. Cochez « afficher aussi les besoins déjà couverts » pour les revoir.")
+            ? h('p', {class: 'empty'}, besoinsExistantsDuJour.length === 0
+              ? "Aucun besoin positionné ce jour : créez-en depuis la vue Missions."
+              : "Rien à traiter ce jour : tous les besoins sont couverts. Cochez « afficher aussi les besoins déjà couverts » pour les revoir.")
             : besoinsDuJour.map(({besoin}) => besoinCarte(ix, besoin)),
         ),
       ),
