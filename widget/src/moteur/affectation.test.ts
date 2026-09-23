@@ -9,7 +9,7 @@ import {
   previsualiserDeplacement,
   repositionnerGroupe,
 } from './affectation';
-import type {DonneesPlanning, SouhaitMission} from './types';
+import type {DonneesPlanning, Id, SouhaitMission} from './types';
 import {
   creerAffinite,
   creerBenevole,
@@ -195,6 +195,50 @@ describe('calculerAffectation — priorité 3 : binôme souhaité (affinité)', 
   });
 });
 
+/**
+ * Preuve, par opposition deux à deux, de l'ordre de priorités qu'Antoine a
+ * donné le 2026-09-23 17h40 : mission > disponibilité > binôme souhaité >
+ * artiste à voir. Chaque test isole une seule frontière en gardant tout le
+ * reste égal entre les deux candidats.
+ *
+ * La « disponibilité » de ce classement n'est PAS un critère de score : le
+ * §7.2 (précisé le 2026-09-23) la range hors de la liste des objectifs
+ * pondérés, comme contrainte dure (§7.1 règle 2) — un bénévole indisponible
+ * n'est même pas candidat, il ne perd pas seulement un point de score. La
+ * frontière « disponibilité > binôme souhaité » est donc déjà prouvée par
+ * `cède devant la disponibilité...` ci-dessus (scénario binôme, ligne 183) :
+ * le binôme souhaité mais indisponible en est exclu, pas seulement mal noté.
+ * La frontière « mission > disponibilité » se lit alors comme : à
+ * disponibilité strictement égale (les deux candidats sont éligibles), le
+ * choix de mission décide — il n'existe pas de « mieux disponible » entre
+ * deux candidats déjà disponibles.
+ */
+describe("calculerAffectation — ordre des priorités d'Antoine (2026-09-23)", () => {
+  it('à disponibilité égale (les deux sont éligibles), le bénévole qui a choisi la mission passe devant celui qui est seulement présent, sans préférence exprimée', () => {
+    const mission = creerMission();
+    const sousCreneau = creerSousCreneau(h(0, 10), h(0, 11));
+    const besoin = creerBesoin(mission.id, sousCreneau.id, {effectifMin: 1, effectifMax: 1});
+    const groupe = creerGroupe();
+    const position = creerPositionGroupe(groupe.id, besoin.id);
+    const place = creerPlace(groupe.id, 1);
+    const aChoisi = creerBenevole();
+    const simplementPresent = creerBenevole();
+
+    const resultat = calculerAffectation(donnees({
+      benevoles: [aChoisi, simplementPresent], missions: [mission], sousCreneaux: [sousCreneau], besoins: [besoin],
+      groupes: [groupe], positionsGroupe: [position], places: [place],
+      disponibilites: [
+        ...disponibilitesIntervalle(aChoisi.id, h(0, 10), h(0, 11)),
+        ...disponibilitesIntervalle(simplementPresent.id, h(0, 10), h(0, 11)),
+      ],
+      souhaitsMissions: [creerSouhait(aChoisi.id, mission.id, 'Souhaite fortement')],
+    }));
+
+    const proposition = resultat.propositions.find((p) => p.placeId === place.id);
+    expect(proposition).toMatchObject({benevoleIdApres: aChoisi.id});
+  });
+});
+
 describe('calculerAffectation — jamais de double réservation', () => {
   it("n'affecte jamais le même bénévole à deux groupes dont les créneaux se chevauchent", () => {
     const missionA = creerMission();
@@ -376,6 +420,43 @@ describe('calculerAffectation — priorité de mission en cas de pénurie (§7.2
     expect(resultat.propositions).toHaveLength(1);
     expect(resultat.propositions[0]).toMatchObject({placeId: placeCritique.id, benevoleIdApres: seulCandidat.id});
     expect(resultat.anomalies.some((a) => a.code === 'sous_effectif' && a.besoinId === besoinConfort.id)).toBe(true);
+  });
+
+  it("sert entièrement un groupe Critique avant un groupe Confort même quand celui-ci a MOINS de candidats (demande d'Antoine, 2026-09-23 : « on remplit les missions prio d'abord »)", () => {
+    // Confort n'a qu'un seul candidat possible (X) : un tri « le bassin le
+    // plus restreint d'abord » (MRV pur, sans priorité) le traiterait avant
+    // Critique, qui a un bassin plus large (X et Y) mais demande 2 places.
+    // X serait alors « dépensé » sur Confort, laissant Critique sous-staffé
+    // d'une place — l'inverse de ce qu'Antoine demande.
+    const missionCritique = creerMission({priorite: 'Critique'});
+    const missionConfort = creerMission({priorite: 'Confort', competencesRequises: ['Bar']});
+    const sousCreneau = creerSousCreneau(h(0, 10), h(0, 11));
+    const besoinCritique = creerBesoin(missionCritique.id, sousCreneau.id, {effectifMin: 2, effectifMax: 2, tailleGroupe: 2});
+    const besoinConfort = creerBesoin(missionConfort.id, sousCreneau.id, {effectifMin: 1, effectifMax: 1});
+    const groupeCritique = creerGroupe({taille: 2});
+    const groupeConfort = creerGroupe();
+    const positionCritique = creerPositionGroupe(groupeCritique.id, besoinCritique.id);
+    const positionConfort = creerPositionGroupe(groupeConfort.id, besoinConfort.id);
+    const placesCritique = [creerPlace(groupeCritique.id, 1), creerPlace(groupeCritique.id, 2)];
+    const placeConfort = creerPlace(groupeConfort.id, 1);
+    const x = creerBenevole({competences: ['Bar']}); // seul à pouvoir faire Confort, peut aussi faire Critique
+    const y = creerBenevole(); // ne peut faire que Critique
+
+    const resultat = calculerAffectation(donnees({
+      benevoles: [x, y], missions: [missionCritique, missionConfort], sousCreneaux: [sousCreneau],
+      besoins: [besoinCritique, besoinConfort], groupes: [groupeCritique, groupeConfort],
+      positionsGroupe: [positionCritique, positionConfort], places: [...placesCritique, placeConfort],
+      disponibilites: [
+        ...disponibilitesIntervalle(x.id, h(0, 10), h(0, 11)),
+        ...disponibilitesIntervalle(y.id, h(0, 10), h(0, 11)),
+      ],
+    }));
+
+    const benevolesCritique = placesCritique
+      .map((p) => resultat.propositions.find((prop) => prop.placeId === p.id)?.benevoleIdApres)
+      .filter((id): id is Id => id != null);
+    expect(new Set(benevolesCritique)).toEqual(new Set([x.id, y.id])); // Critique couvert intégralement
+    expect(resultat.anomalies.some((a) => a.code === 'sous_effectif' && a.besoinId === besoinConfort.id)).toBe(true); // Confort sacrifié
   });
 });
 

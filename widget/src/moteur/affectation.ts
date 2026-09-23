@@ -170,6 +170,7 @@ function remplir(
     let meilleurGroupeId: Id | null = null;
     let meilleurPool: 'propre' | 'secours' | null = null;
     let meilleureTaille = Infinity;
+    let meilleurePriorite = Infinity;
 
     for (const groupeId of groupesAVides) {
       const {propre, secours} = compterEligibles(ctx, etat, groupeId);
@@ -183,13 +184,22 @@ function remplir(
           continue; // ce groupe ne peut rien donner à ce passage
         }
       }
+      // La priorité de mission (§7.2 objectif 1, demande explicite d'Antoine
+      // le 2026-09-23 : « on remplit les missions prio d'abord, puis les
+      // autres ») domine : un groupe Critique passe toujours avant un groupe
+      // Normale ou Confort, même si ce dernier a moins de candidats. La
+      // taille du bassin de candidats (MRV) ne départage qu'à l'intérieur
+      // d'un même rang de priorité — c'est là qu'elle sert son objectif
+      // d'origine (traiter d'abord les cas les plus difficiles à couvrir).
+      const priorite = prioriteGroupe(ctx, groupeId);
       const meilleure = meilleurGroupeId != null
-        && (taille > meilleureTaille
-          || (taille === meilleureTaille && prioriteGroupe(ctx, groupeId) >= prioriteGroupe(ctx, meilleurGroupeId)));
+        && (priorite > meilleurePriorite
+          || (priorite === meilleurePriorite && taille > meilleureTaille));
       if (!meilleure) {
         meilleurGroupeId = groupeId;
         meilleurPool = pool;
         meilleureTaille = taille;
+        meilleurePriorite = priorite;
       }
     }
 

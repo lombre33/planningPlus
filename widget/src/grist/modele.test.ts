@@ -161,6 +161,16 @@ describe('construireModele', () => {
     }]);
   });
 
+  it("décode une mission sans Priorité renseignée (colonne jamais remplie) comme Normale, pas comme une valeur manquante", () => {
+    const sansPriorite = construireModele({
+      Missions: {
+        id: [21], Nom: ['Sécurité'], Description: [''], Lieu: [0], Equipe: [10],
+        Priorite: [''], Competences_requises: [[]],
+      },
+    });
+    expect(sansPriorite.missions[0]).toMatchObject({Priorite: 'Normale'});
+  });
+
   it('décode un sous-créneau, y compris son Libelle', () => {
     expect(modele.sousCreneaux).toEqual([{
       id: 30, Macro_creneau: 400, Mission: null, Libelle: '10h–11h30', Debut: 1000, Fin: 2000,
