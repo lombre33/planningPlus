@@ -9,7 +9,10 @@
  *    en lecture seule sur ses colonnes, jamais une modification ;
  *  - édition manuelle quart d'heure par quart d'heure (mode édition,
  *    désactivé par défaut), pour le cas qu'un import ne sait pas classer
- *    automatiquement ("disponible mais…").
+ *    automatiquement ("disponible mais…") : clic simple pour basculer
+ *    disponible/indisponible, ou sous-mode "choisir un artiste" (point A
+ *    de la demande initiale) qui cycle parmi les artistes jouant à ce
+ *    quart d'heure précis.
  *
  * Densité assumée (jusqu'à 70 lignes × quelques dizaines de colonnes) :
  * en-tête et colonne des noms fixes au défilement, une teinte par état
@@ -24,7 +27,7 @@ import {
   blocsDuJour, contraintesBenevole, estHeurePleine, graviteContraintes, indexerDisponibilitesParBenevole,
   libelleContraintes, quartsEntre, regrouperParJourCourt, statutCellule,
 } from '../logic/dispos-terrain';
-import {disponibilitesApresBasculement} from '../logic/edition-disponibilites';
+import {disponibilitesApresBasculement, disponibilitesApresChoixArtiste} from '../logic/edition-disponibilites';
 import {
   disponibilitesDepuisReponseMacroCreneau, disponibilitesDepuisSouhaitsArtistes, fusionnerDisponibilites,
   LIBELLES_REPONSE_PAR_DEFAUT,
@@ -62,6 +65,7 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
   let equipeFiltre: Id | 'toutes' = 'toutes';
   let recherche = '';
   let modeEdition = false;
+  let modeArtiste = false;
   let panneauOuvert = false;
   let importEnCours = false;
   let dernierMessage: {texte: string; ton: 'ok' | 'danger'} | null = null;
@@ -107,6 +111,40 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
     const quarts = quartsEntre(macro.Debut, macro.Fin);
     const indexActuel = indexerDisponibilitesParBenevole(m.disponibilites).get(benevoleId) ?? new Map();
     const nouvelles = disponibilitesApresBasculement(benevoleId, quarts, indexActuel, quart);
+    try {
+      await m.remplacerDisponibilites(benevoleId, macro.Debut, macro.Fin, nouvelles);
+    } catch {
+      dernierMessage = {texte: "Échec de l'écriture dans le document Grist connecté. Réessaie.", ton: 'danger'};
+      rafraichir();
+    }
+  }
+
+  /** Les artistes dont le passage couvre exactement ce quart d'heure, triés
+   *  par nom — jamais tous les artistes du festival, seuls ceux plausibles
+   *  à ce moment précis. */
+  function artistesDuQuart(quart: Epoch) {
+    return m.artistes.filter((a) => quart >= a.Debut && quart < a.Fin).sort((a, b) => a.Nom.localeCompare(b.Nom, 'fr'));
+  }
+
+  /** Choix d'un artiste précis pour une case (§8 point 10, point A de la
+   *  demande initiale) : un clic cycle parmi les artistes qui jouent à ce
+   *  quart d'heure précis, puis referme sur "indisponible" — même principe
+   *  de cycle au clic que `basculerCellule`, jamais un menu par case (trop
+   *  dense sur cette grille). */
+  async function choisirArtisteCellule(benevoleId: Id, macro: MacroCreneau, quart: Epoch): Promise<void> {
+    const candidats = artistesDuQuart(quart);
+    if (candidats.length === 0) {
+      dernierMessage = {texte: "Aucun artiste ne joue à ce quart d'heure.", ton: 'danger'};
+      rafraichir();
+      return;
+    }
+    const quarts = quartsEntre(macro.Debut, macro.Fin);
+    const indexActuel = indexerDisponibilitesParBenevole(m.disponibilites).get(benevoleId) ?? new Map();
+    const actuel = indexActuel.get(quart);
+    const idActuel = actuel?.Statut === 'Artiste' ? actuel.Artiste : null;
+    const indexCandidatActuel = idActuel != null ? candidats.findIndex((a) => a.id === idActuel) : -1;
+    const prochainArtisteId = indexCandidatActuel + 1 < candidats.length ? candidats[indexCandidatActuel + 1]!.id : null;
+    const nouvelles = disponibilitesApresChoixArtiste(benevoleId, quarts, indexActuel, quart, prochainArtisteId);
     try {
       await m.remplacerDisponibilites(benevoleId, macro.Debut, macro.Fin, nouvelles);
     } catch {
@@ -216,7 +254,6 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
         class: 'btn btn--primary btn--sm', type: 'button', disabled: importEnCours,
         onclick: () => { void importerDisponibilites(); },
       }, importEnCours ? 'Import en cours…' : 'Importer les disponibilités'),
-      dernierMessage ? h('p', {class: `pill pill--${dernierMessage.ton}`, style: {marginTop: '8px'}}, dernierMessage.texte) : null,
     );
   }
 
@@ -261,9 +298,25 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
         h('label', {style: {display: 'inline-flex', alignItems: 'center', gap: '4px', marginLeft: '8px'}},
           h('input', {
             type: 'checkbox', checked: modeEdition,
-            onchange: (e: Event) => { modeEdition = (e.target as HTMLInputElement).checked; rafraichir(); },
+            onchange: (e: Event) => {
+              modeEdition = (e.target as HTMLInputElement).checked;
+              if (!modeEdition) { modeArtiste = false; }
+              rafraichir();
+            },
           }),
           'Mode édition',
+        ),
+        h('label', {
+          style: {
+            display: 'inline-flex', alignItems: 'center', gap: '4px', marginLeft: '8px',
+            opacity: modeEdition ? '1' : '0.5',
+          },
+        },
+          h('input', {
+            type: 'checkbox', checked: modeArtiste, disabled: !modeEdition,
+            onchange: (e: Event) => { modeArtiste = (e.target as HTMLInputElement).checked; rafraichir(); },
+          }),
+          'Choisir un artiste au clic',
         ),
       ),
       h('div', {class: 'dispos-legende'},
@@ -274,6 +327,10 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
       ),
     );
     container.append(barre);
+
+    if (dernierMessage) {
+      container.append(h('p', {class: `pill pill--${dernierMessage.ton}`, style: {marginTop: '8px'}}, dernierMessage.texte));
+    }
 
     if (!jourCle) {
       container.append(h('p', {class: 'empty'}, 'Aucun macro-créneau : rien à afficher.'));
@@ -320,11 +377,14 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
         const classe = statut === 'Disponible' ? 'disponible' : statut === 'Artiste' ? 'artiste' : 'indisponible';
         const limiteMacro = iQuart === 0 && iBloc > 0;
         const detail = artisteNom ? `veut voir ${artisteNom}` : LIBELLE_STATUT[statut];
+        const indiceClic = modeEdition ? (modeArtiste ? ' · cliquer pour choisir un artiste' : ' · cliquer pour basculer') : '';
         return h('td', {
           class: `dispos-cellule dispos-cellule--${classe}${limiteMacro ? ' dispos-cellule--limite-macro' : ''}`,
-          title: `${b.Nom} · ${libelleHeure(q)} · ${detail}${modeEdition ? ' · cliquer pour basculer' : ''}`,
+          title: `${b.Nom} · ${libelleHeure(q)} · ${detail}${indiceClic}`,
           style: modeEdition ? {cursor: 'pointer'} : undefined,
-          onclick: modeEdition ? () => { void basculerCellule(b.id, bloc.macro, q); } : undefined,
+          onclick: modeEdition
+            ? () => { void (modeArtiste ? choisirArtisteCellule(b.id, bloc.macro, q) : basculerCellule(b.id, bloc.macro, q)); }
+            : undefined,
         });
       }));
       return h('tr', null,
