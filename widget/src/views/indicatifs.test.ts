@@ -305,7 +305,7 @@ describe('créneaux propres à une mission (retour Antoine 2026-09-23, §6.2 : �
     // glisser en tenant Alt) — les deux vues partagent le même Magasin, donc
     // pas besoin de remonter la vue pour voir le changement (retour Antoine :
     // « il faut que les créneaux affichés s'adaptent en temps réel »).
-    await m.redimensionnerCreneauMission(10, false, 1800);
+    await m.redimensionnerCreneauMission(10, 1, false, 1800);
     const libelleApres = container.querySelector('.grille thead th:nth-child(3)')?.textContent;
 
     expect(libelleApres).not.toBe(libelleAvant);
