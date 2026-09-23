@@ -709,12 +709,18 @@ macro-créneaux (c'était le cas de la vue Artistes, voir point 8) est un
 écart à corriger, jamais une variante voulue.
 
 Techniquement, ce filtre global vit dans la coquille de l'application
-(`app.ts`, `DefinitionOnglet.filtreJour`, bandeau commun `construireBandeauJours`)
-et se branche vue par vue, pas d'un coup : au 2026-09-23, Missions,
-Disponibilités et Artistes s'y accrochent ; Indicatifs, Affectation et
-Terrain calent déjà leurs jours sur les mêmes macro-créneaux mais gardent
-encore leur propre sélecteur de jour, non partagé avec les autres vues —
-chantier en cours, vue par vue, pas un défaut à signaler à nouveau.
+(`app.ts`) : un drapeau `DefinitionOnglet.filtreJour` marque les vues qui
+s'y accrochent, `demarrerApp` monte alors au-dessus d'elles un bandeau
+commun (`construireBandeauJours`, dans `ui/bandeauJours.ts`), et la
+sélection elle-même vit dans le magasin (`Magasin.macroCreneauSelectionne`,
+modifiée par `Magasin.selectionnerMacroCreneau`). Il se branche vue par vue,
+pas d'un coup : au 2026-09-23, Missions, Disponibilités et Artistes portent
+`filtreJour: true` ; Indicatifs, Affectation et Terrain calent déjà leurs
+jours sur les mêmes macro-créneaux mais gardent encore leur propre
+sélecteur de jour, non partagé avec les autres vues — chantier en cours,
+vue par vue, pas un défaut à signaler à nouveau. Un fil qui branche une
+nouvelle vue sur ce filtre n'a que le drapeau à poser : le mécanisme est
+déjà générique.
 
 1. **Agenda** — création, édition et suppression des macro-créneaux et
    sous-créneaux, en horizontal (la disposition verticale et le comparatif
