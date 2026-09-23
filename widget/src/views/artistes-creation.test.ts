@@ -122,7 +122,8 @@ describe('document connecté : échec d’écriture puis nouvel essai', () => {
       supprimerMacroCreneau: async () => {},
       creerArtiste: async () => { if (echec) { throw new Error('document indisponible'); } return 1; },
       modifierArtiste: async () => {},
-      remplacerSousCreneaux: async () => [], modifierSousCreneaux: async () => {}, creerBesoin: async () => 1,
+      remplacerSousCreneaux: async () => [], modifierSousCreneaux: async () => {}, repointerBesoins: async () => {},
+      creerBesoin: async () => 1,
       creerGroupe: async () => 1, positionnerGroupe: async () => {},
       definirPlaces: async () => {}, deplacerPosition: async () => {}, ajouterPosition: async () => 1,
     };

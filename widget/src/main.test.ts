@@ -14,15 +14,9 @@ describe('démarrage du widget', () => {
     // par test isole ce déclenchement, `resetModules` seul ne suffit pas.
     vi.resetModules();
     await import('./main');
-    // `demarrer()` n'est pas exposé : on laisse ses micro-tâches (et,
-    // pour le cas « pas de réponse », son `setTimeout`) se dérouler.
+    // `demarrer()` n'est pas exposé : on laisse ses micro-tâches se dérouler.
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
-
-  it('sans window.grist, monte la démonstration', async () => {
-    await demarrerEtAttendre();
-    expect(document.querySelector('.pill--neutral')?.textContent).toBe('Démonstration — jeu de données figé');
-  });
 
   /** Les identifiants réels tels que `docApi.listTables()` les renverrait :
    *  les libellés (titres), pas les noms de schéma — `resoudreIdsTables`
@@ -32,7 +26,7 @@ describe('démarrage du widget', () => {
    *  où schéma et libellé divergent le plus — piège vécu par ce module. */
   const TOUTES_LES_TABLES = Object.values(LIBELLE_PAR_TABLE);
 
-  it("avec un document Grist connecté dont les tables existent mais sont vides (premier jour), monte la maquette dessus plutôt que la démo", async () => {
+  it('avec un document Grist connecté dont les tables existent mais sont vides (premier jour), monte la maquette dessus', async () => {
     window.grist = {
       ready: () => {},
       docApi: {
@@ -45,7 +39,7 @@ describe('démarrage du widget', () => {
     expect(document.querySelector('.pill--neutral')?.textContent).toBe('Document Grist connecté');
   });
 
-  it("si la lecture du document Grist échoue (vrai échec), retombe sur la démonstration plutôt que de casser la page", async () => {
+  it("si la lecture du document Grist échoue (vrai échec), affiche l'échec plutôt que de casser la page silencieusement — plus de repli sur une démonstration (retrait du 2026-09-23)", async () => {
     window.grist = {
       ready: () => {},
       docApi: {
@@ -55,10 +49,12 @@ describe('démarrage du widget', () => {
       },
     };
     await demarrerEtAttendre();
-    expect(document.querySelector('.pill--neutral')?.textContent).toBe('Démonstration — jeu de données figé');
+    expect(document.querySelector('.pill--neutral')).toBeNull();
+    expect(document.querySelector('h1')?.textContent).toBe('Échec de connexion au document Grist');
+    expect(document.body.textContent).toContain('document indisponible');
   });
 
-  it("si le document connecté n'a aucune des tables attendues, ce n'est ni la démo ni des vues vides silencieuses : un message le dit", async () => {
+  it("si le document connecté n'a aucune des tables attendues, ce n'est pas une vue vide silencieuse : un message le dit", async () => {
     window.grist = {
       ready: () => {},
       docApi: {

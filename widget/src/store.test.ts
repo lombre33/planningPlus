@@ -20,6 +20,7 @@ function ecritureDeTest(partielle: Partial<EcritureGrist> = {}): EcritureGrist {
     modifierArtiste: nonBranchee('modifierArtiste'),
     remplacerSousCreneaux: nonBranchee('remplacerSousCreneaux'),
     modifierSousCreneaux: nonBranchee('modifierSousCreneaux'),
+    repointerBesoins: nonBranchee('repointerBesoins'),
     creerBesoin: nonBranchee('creerBesoin'),
     creerGroupe: nonBranchee('creerGroupe'),
     positionnerGroupe: nonBranchee('positionnerGroupe'),
@@ -820,11 +821,11 @@ describe('Magasin.deplacerCreneauxMission', () => {
   }
 
   it("pousse le créneau tiré et ceux qui le suivent dans le temps (même mission), en place", async () => {
-    const {m, c1, c2} = await modeleDeuxCreneauxPropres();
+    const {m, missionId, c1, c2} = await modeleDeuxCreneauxPropres();
     const c1Avant = m.sousCreneaux.find((s) => s.id === c1)!;
     const [debutC1Avant, finC1Avant] = [c1Avant.Debut, c1Avant.Fin];
 
-    const resultat = await m.deplacerCreneauxMission(c1, 900); // +15 min
+    const resultat = await m.deplacerCreneauxMission(c1, missionId, 900); // +15 min
 
     expect(resultat).toEqual({ok: true});
     const nc1 = m.sousCreneaux.find((s) => s.id === c1)!;
@@ -846,53 +847,161 @@ describe('Magasin.deplacerCreneauxMission', () => {
     const cAutre = await m.creerSousCreneauMission(macroId, autreMissionId, {libelle: '10h-11h', debut: debutAutre, fin: finAutre});
     const c1DeMission = m.sousCreneaux.find((s) => s.Mission === missionId)!.id;
 
-    await m.deplacerCreneauxMission(c1DeMission, 900);
+    await m.deplacerCreneauxMission(c1DeMission, missionId, 900);
 
     expect(m.sousCreneaux.find((s) => s.id === cAutre)!.Debut).toBe(debutAutre);
   });
 
-  it('refuse un sous-créneau commun', async () => {
-    const debut = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 10});
-    const fin = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 12});
-    const m = new Magasin({
-      equipes: [], lieux: [], benevoles: [], missions: [], artistes: [],
-      macroCreneaux: [{id: 1, Nom: 'Journée', Debut: debut, Fin: fin}],
-      sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: '10h-12h', Debut: debut, Fin: fin}],
-      besoins: [], groupes: [], positionsGroupe: [], places: [],
-      disponibilites: [], souhaitsMissions: [], affinites: [],
-    });
-
-    const resultat = await m.deplacerCreneauxMission(1, 900);
-
-    expect(resultat.ok).toBe(false);
-  });
-
   it("en mode connecté, transmet tous les patches en un seul appel du pont, avec les nouveaux horaires", async () => {
-    const {m, c1, c2} = await modeleDeuxCreneauxPropres();
+    const {m, missionId, c1, c2} = await modeleDeuxCreneauxPropres();
     const appels: {id: Id; debut: number; fin: number}[] = [];
     m.brancherEcriture(ecritureDeTest({
       modifierSousCreneaux: async (patches) => { appels.push(...patches.map((p) => ({id: p.id, debut: p.debut, fin: p.fin}))); },
     }));
 
-    await m.deplacerCreneauxMission(c1, 900);
+    await m.deplacerCreneauxMission(c1, missionId, 900);
 
     expect(appels.map((p) => p.id).sort((a, b) => a - b)).toEqual([c1, c2].sort((a, b) => a - b));
   });
 
   it("en mode connecté, si le pont échoue, rien ne bouge localement", async () => {
-    const {m, c1} = await modeleDeuxCreneauxPropres();
+    const {m, missionId, c1} = await modeleDeuxCreneauxPropres();
     const avant = m.sousCreneaux.find((s) => s.id === c1)!.Debut;
     m.brancherEcriture(ecritureDeTest({modifierSousCreneaux: async () => { throw new Error('document indisponible'); }}));
 
-    const resultat = await m.deplacerCreneauxMission(c1, 900);
+    const resultat = await m.deplacerCreneauxMission(c1, missionId, 900);
 
     expect(resultat.ok).toBe(false);
     expect(m.sousCreneaux.find((s) => s.id === c1)!.Debut).toBe(avant);
   });
 });
 
+describe('Magasin.deplacerCreneauxMission — conversion depuis un commun (retour d\'Antoine du 2026-09-23)', () => {
+  /** Une journée avec deux communs (10h-11h, 11h-12h) que deux missions
+   *  voient encore toutes les deux — chacune avec un besoin sur le premier
+   *  commun, pour vérifier que seul celui de la mission qui glisse suit. */
+  async function modeleJourAvecCommunsEtBesoins(): Promise<{
+    m: Magasin; mission1: Id; mission2: Id; c1: Id; c2: Id; b1: Id; b2: Id;
+  }> {
+    const c1Debut = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 10});
+    const c1Fin = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 11});
+    const c2Fin = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 12});
+    const m = new Magasin({
+      equipes: [{id: 1, Nom: 'Bars', Couleur: '#c00', Referent: null, Notes: ''}],
+      lieux: [], benevoles: [], artistes: [],
+      missions: [
+        {id: 1, Nom: 'Buvette', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []},
+        {id: 2, Nom: 'Sécurité', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []},
+      ],
+      macroCreneaux: [{id: 1, Nom: 'Journée', Debut: c1Debut, Fin: c2Fin}],
+      sousCreneaux: [
+        {id: 1, Macro_creneau: 1, Mission: null, Libelle: '10h-11h', Debut: c1Debut, Fin: c1Fin},
+        {id: 2, Macro_creneau: 1, Mission: null, Libelle: '11h-12h', Debut: c1Fin, Fin: c2Fin},
+      ],
+      besoins: [
+        {id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 1, Taille_groupe: 1},
+        {id: 2, Mission: 2, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 1, Taille_groupe: 1},
+      ],
+      groupes: [], positionsGroupe: [], places: [],
+      disponibilites: [], souhaitsMissions: [], affinites: [],
+    });
+    return {m, mission1: 1, mission2: 2, c1: 1, c2: 2, b1: 1, b2: 2};
+  }
+
+  it('rend le commun tiré propre à la mission qui glisse, puis le déplace, sans toucher l\'original', async () => {
+    const {m, mission1, c1} = await modeleJourAvecCommunsEtBesoins();
+
+    const resultat = await m.deplacerCreneauxMission(c1, mission1, 900); // +15 min
+
+    expect(resultat.ok).toBe(true);
+    const original = m.sousCreneaux.find((s) => s.id === c1)!;
+    expect(original.Mission).toBeNull(); // le commun d'origine n'a pas bougé, ni changé de mission
+    expect(original.Debut).toBe(epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 10}));
+    const copie = m.sousCreneaux.find((s) => s.Mission === mission1)!;
+    expect(copie.id).not.toBe(c1); // nouvel id, jamais le même que le commun
+    expect(copie.Debut).toBe(epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 10}) + 900);
+  });
+
+  it('matérialise aussi les autres communs du même jour (§6.2 : tout ou rien par mission par jour)', async () => {
+    const {m, mission1, c1, c2} = await modeleJourAvecCommunsEtBesoins();
+    const c2Avant = m.sousCreneaux.find((s) => s.id === c2)!;
+
+    await m.deplacerCreneauxMission(c1, mission1, 900);
+
+    // Sans ça, mission1 perdrait toute visibilité sur c2 dès qu'elle a un
+    // seul créneau propre ce jour-là (sousCreneauxApplicables ne mélange
+    // jamais communs et propres pour une même mission).
+    const propresDeMission1 = m.sousCreneaux.filter((s) => s.Mission === mission1);
+    expect(propresDeMission1).toHaveLength(2);
+    // c2 est aussi dans « la suite qui suit » c1 pour cette mission (même
+    // règle que pour deux créneaux déjà propres, voir le describe
+    // `Magasin.deplacerCreneauxMission` plus haut) : sa copie glisse avec.
+    const copieDeC2 = propresDeMission1.find((s) => s.Debut === c2Avant.Debut + 900)!;
+    expect(copieDeC2).toBeDefined();
+    expect(copieDeC2.Fin).toBe(c2Avant.Fin + 900);
+    expect(m.sousCreneaux.find((s) => s.id === c2)!.Mission).toBeNull(); // le commun d'origine reste commun, inchangé
+  });
+
+  it('repointe le besoin de la mission qui glisse vers la copie, sans toucher le commun ni les autres missions', async () => {
+    const {m, mission1, mission2, c1, b1, b2} = await modeleJourAvecCommunsEtBesoins();
+
+    await m.deplacerCreneauxMission(c1, mission1, 900);
+
+    const copie = m.sousCreneaux.find((s) => s.Mission === mission1)!;
+    expect(m.besoins.find((b) => b.id === b1)!.Sous_creneau).toBe(copie.id);
+    expect(m.besoins.find((b) => b.id === b2)!.Sous_creneau).toBe(c1); // besoin de mission2 : inchangé
+    expect(m.besoins.find((b) => b.Mission === mission2 && b.Sous_creneau === copie.id)).toBeUndefined();
+  });
+
+  it('un créneau déjà propre à la mission ne matérialise rien de plus', async () => {
+    const {m, mission1, c1} = await modeleJourAvecCommunsEtBesoins();
+    await m.deplacerCreneauxMission(c1, mission1, 900); // première conversion
+    const nombreAvant = m.sousCreneaux.length;
+
+    const copie = m.sousCreneaux.find((s) => s.Mission === mission1)!;
+    const resultat = await m.deplacerCreneauxMission(copie.id, mission1, 900); // déjà propre
+
+    expect(resultat.ok).toBe(true);
+    expect(m.sousCreneaux).toHaveLength(nombreAvant); // aucune nouvelle matérialisation
+  });
+
+  it("en mode connecté, crée les copies puis repointe les besoins via le pont", async () => {
+    const {m, mission1, b1} = await modeleJourAvecCommunsEtBesoins();
+    const creations: {missionId: Id | null}[] = [];
+    const repointages: {id: Id; sousCreneauId: Id}[] = [];
+    let prochainIdReel = 100;
+    m.brancherEcriture(ecritureDeTest({
+      remplacerSousCreneaux: async (_idsASupprimer, nouveaux) => {
+        creations.push(...nouveaux.map((n) => ({missionId: n.missionId})));
+        return nouveaux.map(() => prochainIdReel++);
+      },
+      repointerBesoins: async (patches) => { repointages.push(...patches); },
+      modifierSousCreneaux: async () => {},
+    }));
+
+    const resultat = await m.deplacerCreneauxMission(1, mission1, 900);
+
+    expect(resultat.ok).toBe(true);
+    expect(creations).toHaveLength(2); // les deux communs du jour, pas seulement celui glissé
+    expect(creations.every((c) => c.missionId === mission1)).toBe(true); // jamais null : chacune est propre à mission1
+    expect(repointages.map((p) => p.id)).toEqual([b1]);
+  });
+
+  it("en mode connecté, si la création des copies échoue, rien ne change localement", async () => {
+    const {m, mission1, c1} = await modeleJourAvecCommunsEtBesoins();
+    m.brancherEcriture(ecritureDeTest({
+      remplacerSousCreneaux: async () => { throw new Error('document indisponible'); },
+    }));
+
+    const resultat = await m.deplacerCreneauxMission(c1, mission1, 900);
+
+    expect(resultat.ok).toBe(false);
+    expect(m.sousCreneaux.filter((s) => s.Mission === mission1)).toHaveLength(0);
+  });
+});
+
 describe('Magasin.redimensionnerCreneauMission', () => {
-  async function modeleUnCreneauPropre(): Promise<{m: Magasin; sousCreneauId: Id; debut: number; fin: number}> {
+  async function modeleUnCreneauPropre(): Promise<{m: Magasin; missionId: Id; sousCreneauId: Id; debut: number; fin: number}> {
     const debut = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 10});
     const fin = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 12});
     const m = new Magasin({
@@ -908,13 +1017,13 @@ describe('Magasin.redimensionnerCreneauMission', () => {
     const propreDebut = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 10});
     const propreFin = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 11});
     const sousCreneauId = await m.creerSousCreneauMission(1, 1, {libelle: '10h-11h', debut: propreDebut, fin: propreFin});
-    return {m, sousCreneauId, debut: propreDebut, fin: propreFin};
+    return {m, missionId: 1, sousCreneauId, debut: propreDebut, fin: propreFin};
   }
 
   it('allonge depuis la fin (bord droit tiré) sans toucher le début', async () => {
-    const {m, sousCreneauId, debut} = await modeleUnCreneauPropre();
+    const {m, missionId, sousCreneauId, debut} = await modeleUnCreneauPropre();
 
-    const resultat = await m.redimensionnerCreneauMission(sousCreneauId, false, 900);
+    const resultat = await m.redimensionnerCreneauMission(sousCreneauId, missionId, false, 900);
 
     expect(resultat).toEqual({ok: true});
     const sc = m.sousCreneaux.find((s) => s.id === sousCreneauId)!;
@@ -924,9 +1033,9 @@ describe('Magasin.redimensionnerCreneauMission', () => {
   });
 
   it('raccourcit depuis le début (bord gauche tiré) sans toucher la fin', async () => {
-    const {m, sousCreneauId, fin} = await modeleUnCreneauPropre();
+    const {m, missionId, sousCreneauId, fin} = await modeleUnCreneauPropre();
 
-    const resultat = await m.redimensionnerCreneauMission(sousCreneauId, true, 900);
+    const resultat = await m.redimensionnerCreneauMission(sousCreneauId, missionId, true, 900);
 
     expect(resultat).toEqual({ok: true});
     const sc = m.sousCreneaux.find((s) => s.id === sousCreneauId)!;
@@ -934,9 +1043,9 @@ describe('Magasin.redimensionnerCreneauMission', () => {
   });
 
   it("refuse de descendre sous un quart d'heure et ne change rien", async () => {
-    const {m, sousCreneauId, debut, fin} = await modeleUnCreneauPropre();
+    const {m, missionId, sousCreneauId, debut, fin} = await modeleUnCreneauPropre();
 
-    const resultat = await m.redimensionnerCreneauMission(sousCreneauId, true, 3600 - 600); // ne laisserait que 10 min
+    const resultat = await m.redimensionnerCreneauMission(sousCreneauId, missionId, true, 3600 - 600); // ne laisserait que 10 min
 
     expect(resultat.ok).toBe(false);
     const sc = m.sousCreneaux.find((s) => s.id === sousCreneauId)!;
@@ -945,15 +1054,42 @@ describe('Magasin.redimensionnerCreneauMission', () => {
   });
 
   it('en mode connecté, si le pont échoue, rien ne change localement', async () => {
-    const {m, sousCreneauId, debut, fin} = await modeleUnCreneauPropre();
+    const {m, missionId, sousCreneauId, debut, fin} = await modeleUnCreneauPropre();
     m.brancherEcriture(ecritureDeTest({modifierSousCreneaux: async () => { throw new Error('document indisponible'); }}));
 
-    const resultat = await m.redimensionnerCreneauMission(sousCreneauId, false, 900);
+    const resultat = await m.redimensionnerCreneauMission(sousCreneauId, missionId, false, 900);
 
     expect(resultat.ok).toBe(false);
     const sc = m.sousCreneaux.find((s) => s.id === sousCreneauId)!;
     expect(sc.Debut).toBe(debut);
     expect(sc.Fin).toBe(fin);
+  });
+});
+
+describe('Magasin.redimensionnerCreneauMission — conversion depuis un commun', () => {
+  it('rend le commun tiré propre à la mission, puis le redimensionne', async () => {
+    const debut = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 10});
+    const fin = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 12});
+    const m = new Magasin({
+      equipes: [{id: 1, Nom: 'Bars', Couleur: '#c00', Referent: null, Notes: ''}],
+      lieux: [], benevoles: [], artistes: [],
+      missions: [{
+        id: 1, Nom: 'Buvette', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: [],
+      }],
+      macroCreneaux: [{id: 1, Nom: 'Journée', Debut: debut, Fin: fin}],
+      sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: '10h-12h', Debut: debut, Fin: fin}],
+      besoins: [], groupes: [], positionsGroupe: [], places: [],
+      disponibilites: [], souhaitsMissions: [], affinites: [],
+    });
+
+    const resultat = await m.redimensionnerCreneauMission(1, 1, false, 900);
+
+    expect(resultat.ok).toBe(true);
+    expect(m.sousCreneaux.find((s) => s.id === 1)!.Mission).toBeNull(); // le commun d'origine, inchangé
+    const copie = m.sousCreneaux.find((s) => s.Mission === 1)!;
+    expect(copie.id).not.toBe(1);
+    expect(copie.Debut).toBe(debut);
+    expect(copie.Fin).toBe(fin + 900);
   });
 });
 

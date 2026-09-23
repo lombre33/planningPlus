@@ -49,20 +49,45 @@ export function montrerAgenda(container: HTMLElement, m: Magasin): () => void {
 
   /** Confirmation puis suppression d'un macro-créneau (§8, retour Antoine
    *  2026-09-22 : rien ne permettait de le faire depuis l'agenda). Même
-   *  garde-fou côté Magasin que `redecouperSousCreneaux` : un refus porte sa
-   *  raison plutôt que d'orpheliner silencieusement un besoin déjà posé. */
+   *  garde-fou côté Magasin que `redecouperSousCreneaux`. Retour d'Antoine
+   *  du 23/09 : un moyen de forcer quand le garde-fou refuse. Le décompte
+   *  (sous-créneaux, besoins, binômes positionnés) est calculé ici, sur les
+   *  données déjà en mémoire, pour l'annoncer avant le geste — la cascade
+   *  elle-même reste dans `Magasin.supprimerMacroCreneau`, côté Intégration.
+   *  Les missions et les binômes eux-mêmes ne sont jamais touchés : seuls
+   *  leurs besoins et leurs positions sur ce macro-créneau partent. */
   async function demanderSuppressionMacro(macro: MacroCreneau): Promise<void> {
-    const nSous = m.sousCreneaux.filter((s) => s.Macro_creneau === macro.id).length;
-    const message = nSous === 0
-      ? `Supprimer « ${macro.Nom} » ?`
-      : `Supprimer « ${macro.Nom} » et ${nSous === 1 ? 'son sous-créneau' : `ses ${nSous} sous-créneaux`} ?`;
-    if (!window.confirm(message)) { return; }
-    const resultat = await m.supprimerMacroCreneau(macro.id);
-    if (!resultat.ok) {
-      dernierMessage = {texte: resultat.raison, ton: 'danger'};
+    const sousCreneauxDuMacro = m.sousCreneaux.filter((s) => s.Macro_creneau === macro.id);
+    const sousCreneauIds = new Set(sousCreneauxDuMacro.map((s) => s.id));
+    const besoinsDuMacro = m.besoins.filter((b) => sousCreneauIds.has(b.Sous_creneau));
+    const besoinIds = new Set(besoinsDuMacro.map((b) => b.id));
+    const positionsDuMacro = m.positionsGroupe.filter((p) => besoinIds.has(p.Besoin));
+    const aDuTravail = sousCreneauxDuMacro.some((s) => s.Mission != null) || besoinsDuMacro.length > 0;
+
+    if (!aDuTravail) {
+      const nSous = sousCreneauxDuMacro.length;
+      const message = nSous === 0
+        ? `Supprimer « ${macro.Nom} » ?`
+        : `Supprimer « ${macro.Nom} » et ${nSous === 1 ? 'son sous-créneau' : `ses ${nSous} sous-créneaux`} ?`;
+      if (!window.confirm(message)) { return; }
+      const resultat = await m.supprimerMacroCreneau(macro.id);
+      if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; rafraichir(); return; }
       rafraichir();
       return;
     }
+
+    const detail = [
+      `${sousCreneauxDuMacro.length} sous-créneau${sousCreneauxDuMacro.length > 1 ? 'x' : ''}`,
+      besoinsDuMacro.length > 0 ? `${besoinsDuMacro.length} besoin${besoinsDuMacro.length > 1 ? 's' : ''}` : null,
+      positionsDuMacro.length > 0
+        ? `${positionsDuMacro.length} binôme${positionsDuMacro.length > 1 ? 's' : ''} positionné${positionsDuMacro.length > 1 ? 's' : ''}`
+        : null,
+    ].filter((partie): partie is string => partie != null).join(', ');
+    const message = `« ${macro.Nom} » porte déjà du travail : ${detail}. Forcer la suppression retirera tout cela ; `
+      + 'les missions et les binômes eux-mêmes resteront, simplement libérés de ces créneaux. Continuer ?';
+    if (!window.confirm(message)) { return; }
+    const resultat = await m.supprimerMacroCreneau(macro.id, true);
+    if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; rafraichir(); return; }
     rafraichir();
   }
 

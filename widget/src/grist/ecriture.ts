@@ -383,6 +383,24 @@ export function actionsSupprimerBesoins(besoinIds: readonly Id[]): UserAction[] 
   return [['BulkRemoveRecord', 'Besoins', [...besoinIds]]];
 }
 
+/** Repointe un ou plusieurs besoins vers un autre sous-créneau, en place
+ *  (même id de besoin) — jamais une suppression-recréation, qui perdrait
+ *  ses positions de groupe (`Positions_groupe` ne référence que l'id du
+ *  besoin). Sert à `Magasin.materialiserCreneauxPropres` (retour d'Antoine
+ *  du 2026-09-23) : convertir un créneau commun en créneau propre à une
+ *  mission crée une copie sous un nouvel id, et les besoins de CETTE
+ *  mission sur le commun doivent suivre vers cette copie — ceux des autres
+ *  missions restent sur le commun d'origine, jamais touchés. */
+export function actionsRepointerBesoins(patches: readonly {id: Id; sousCreneauId: Id}[]): UserAction[] {
+  if (patches.length === 0) { return []; }
+  if (patches.length === 1) {
+    return [['UpdateRecord', 'Besoins', patches[0]!.id, {Sous_creneau: patches[0]!.sousCreneauId}]];
+  }
+  return [[
+    'BulkUpdateRecord', 'Besoins', patches.map((p) => p.id), {Sous_creneau: patches.map((p) => p.sousCreneauId)},
+  ]];
+}
+
 // --- Groupe, positions, roster --------------------------------------------
 
 export interface NouveauGroupe {
