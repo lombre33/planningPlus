@@ -6,10 +6,8 @@
  */
 
 import type {Id} from '../domain/types';
-import {
-  type Candidat, type EtapePermutation, indexer, proposerPermutation,
-} from '../logic/derive';
-import {classerCandidats} from '../moteur/adaptateur-magasin';
+import {type Candidat, indexer} from '../logic/derive';
+import {type EtapePermutation, classerCandidats, proposerPermutation} from '../moteur/adaptateur-magasin';
 import type {Magasin} from '../store';
 import {h, vider} from '../ui/dom';
 
