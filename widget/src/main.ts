@@ -20,15 +20,17 @@
 import './style.css';
 import {demarrerApp} from './app';
 import type {Id} from './domain/types';
-import type {DocApiEcriture, TableBrute} from './grist';
+import type {DocApiEcriture, LigneParametre, NouvelleDisponibilite, TableBrute} from './grist';
 import {
   actionsCreerArtiste, actionsCreerBesoin, actionsCreerEquipe, actionsCreerGroupe, actionsCreerMacroCreneau,
   actionsCreerMission, actionsCreerSousCreneaux, actionsCreerTablesManquantes, actionsDefinirAbsence,
-  actionsDefinirPlaces, actionsDeplacerMacroCreneau, actionsDeplacerPositionGroupe, actionsModifierArtiste,
-  actionsModifierPlaces, actionsModifierSousCreneaux, actionsPositionnerGroupe, actionsReglerAffichage,
-  actionsRenommerMacroCreneau, actionsRepointerBesoins, actionsRetirerPositionGroupe, actionsRetirerPositionsGroupe,
-  actionsSupprimerBesoins, actionsSupprimerMacroCreneau, actionsSupprimerSousCreneaux,
+  actionsDefinirParametre, actionsDefinirPlaces, actionsDeplacerMacroCreneau, actionsDeplacerPositionGroupe,
+  actionsEcrireDisponibilites, actionsModifierArtiste, actionsModifierPlaces, actionsModifierSousCreneaux,
+  actionsPositionnerGroupe, actionsReglerAffichage, actionsRenommerMacroCreneau, actionsRepointerBesoins,
+  actionsRetirerPositionGroupe, actionsRetirerPositionsGroupe, actionsSupprimerBesoins, actionsSupprimerDisponibilites,
+  actionsSupprimerMacroCreneau, actionsSupprimerSousCreneaux,
   appliquerActions,
+  decoderNombre,
   LIBELLE_PAR_TABLE, lireDocument, zipperTable,
 } from './grist';
 import {type EcritureGrist, Magasin, SuppressionApresCreationEchouee} from './store';
@@ -55,11 +57,20 @@ const TABLES_REQUISES = [
  * `docApi` porte ici aussi `fetchTable` (au-delà du strict `DocApiEcriture`,
  * même élargissement que `reglerAffichageTablesCreees`) : `valeursColonneBrute`
  * lit une colonne brute directement, sans passer par une action.
+ *
+ * `parametresInitiales` (les lignes de `Parametres` telles que lues par
+ * `lireDocument` au démarrage) est recopié dans une variable locale mutable :
+ * `definirParametre` doit savoir, à chaque appel, si une clé a déjà une
+ * ligne (`UpdateRecord`) ou non (`AddRecord`, dont l'id créé est alors
+ * retenu ici pour le prochain appel sur la même clé) — voir `upsertParametres`
+ * (`grist/ecriture.ts`).
  */
 function construireEcritureGrist(
   docApi: DocApiEcriture & {fetchTable(tableId: string): Promise<TableBrute>},
   resolution: Record<string, string>,
+  parametresInitiales: readonly (LigneParametre & {id: Id})[],
 ): EcritureGrist {
+  const lignesParametres: (LigneParametre & {id: Id})[] = [...parametresInitiales];
   return {
     async creerEquipe(equipe) {
       const [id] = await appliquerActions(docApi, actionsCreerEquipe({
@@ -187,6 +198,34 @@ function construireEcritureGrist(
       const colonne = table[colId] ?? [];
       return new Map(ids.map((id, i) => [id as Id, colonne[i]]));
     },
+    async definirParametre(cle, valeur) {
+      const [retVal] = await appliquerActions(docApi, actionsDefinirParametre(cle, valeur, lignesParametres), resolution);
+      const existante = lignesParametres.find((l) => l.cle === cle);
+      if (existante) {
+        existante.valeur = valeur;
+      } else {
+        lignesParametres.push({id: retVal as Id, cle, valeur});
+      }
+    },
+    async remplacerDisponibilites(benevoleId, debut, fin, nouvelles) {
+      // Un seul aller-retour (contrairement à `remplacerSousCreneaux`) :
+      // aucune table ne référence une ligne de `Disponibilites` par son
+      // identifiant, rien à repointer après coup — vérifié avant d'écrire
+      // cette méthode (voir `Magasin.remplacerDisponibilites`, `store.ts`).
+      const table = await docApi.fetchTable(resolution.Disponibilites ?? 'Disponibilites');
+      const idsARetirer = zipperTable(table)
+        .filter((l) => decoderNombre(l.Benevole) === benevoleId)
+        .filter((l) => { const q = decoderNombre(l.Quart_heure); return q >= debut && q < fin; })
+        .map((l) => l.id as Id);
+      const nouvellesGrist: NouvelleDisponibilite[] = nouvelles.map((d) => ({
+        benevoleId: d.Benevole, quartHeure: d.Quart_heure, statut: d.Statut, artisteId: d.Artiste,
+      }));
+      await appliquerActions(
+        docApi,
+        [...actionsSupprimerDisponibilites(idsARetirer), ...actionsEcrireDisponibilites(nouvellesGrist)],
+        resolution,
+      );
+    },
   };
 }
 
@@ -292,7 +331,9 @@ async function demarrer(): Promise<void> {
       resultatFinal = relu;
     }
     const magasin = new Magasin(resultatFinal.modele, resultatFinal.parametres);
-    magasin.brancherEcriture(construireEcritureGrist(window.grist.docApi, resultatFinal.resolution));
+    magasin.brancherEcriture(
+      construireEcritureGrist(window.grist.docApi, resultatFinal.resolution, resultatFinal.parametres),
+    );
     demarrerApp(racine, magasin, 'Document Grist connecté');
   } catch (erreur) {
     afficherErreurConnexion(racine, erreur);

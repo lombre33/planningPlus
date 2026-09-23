@@ -123,6 +123,8 @@ describe('planning complet : missions et besoin, mais zone volontairement vide',
         definirPlaces: refuse(), deplacerPosition: refuse(), ajouterPosition: refuse(),
         modifierPlaces: refuse(), supprimerPosition: refuse(), definirAbsence: refuse(),
         valeursColonneBrute: refuse(),
+        definirParametre: refuse(),
+        remplacerDisponibilites: refuse(),
       };
     }
 

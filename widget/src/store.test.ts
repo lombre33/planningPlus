@@ -31,6 +31,8 @@ function ecritureDeTest(partielle: Partial<EcritureGrist> = {}): EcritureGrist {
     supprimerPosition: nonBranchee('supprimerPosition'),
     definirAbsence: nonBranchee('definirAbsence'),
     valeursColonneBrute: nonBranchee('valeursColonneBrute'),
+    definirParametre: nonBranchee('definirParametre'),
+    remplacerDisponibilites: nonBranchee('remplacerDisponibilites'),
     ...partielle,
   };
 }
@@ -1312,5 +1314,81 @@ describe('Magasin.valeursColonneBrute', () => {
 
     expect(appels).toEqual([{tableId: 'Souhaits_artistes', colId: 'Reponse'}]);
     expect(valeurs).toEqual(new Map([[1, 'a'], [2, 'b']]));
+  });
+});
+
+describe('Magasin.definirParametre', () => {
+  it('sans écrivain branché (mode démo), enregistre la valeur localement', async () => {
+    const m = new Magasin(normaliser());
+    await m.definirParametre('x', '1');
+    expect(m.parametre('x')).toBe('1');
+  });
+
+  it('avec une écriture branchée, transmet clé/valeur telles quelles puis les applique localement', async () => {
+    const appels: unknown[] = [];
+    const m = new Magasin(normaliser());
+    m.brancherEcriture(ecritureDeTest({
+      definirParametre: async (cle, valeur) => { appels.push({cle, valeur}); },
+    }));
+
+    await m.definirParametre('heure_coupure_jour', '7');
+
+    expect(appels).toEqual([{cle: 'heure_coupure_jour', valeur: '7'}]);
+    expect(m.parametre('heure_coupure_jour')).toBe('7');
+  });
+
+  it("sur échec de l'écriture, ne modifie pas le réglage local", async () => {
+    const m = new Magasin(normaliser(), [{cle: 'x', valeur: 'avant'}]);
+    m.brancherEcriture(ecritureDeTest({
+      definirParametre: async () => { throw new Error('document indisponible'); },
+    }));
+
+    await expect(m.definirParametre('x', 'après')).rejects.toThrow('document indisponible');
+    expect(m.parametre('x')).toBe('avant');
+  });
+});
+
+describe('Magasin.remplacerDisponibilites', () => {
+  function dispo(
+    benevoleId: number, quartHeure: number, statut: 'Disponible' | 'Indisponible' | 'Artiste' = 'Disponible',
+  ) {
+    return {Benevole: benevoleId, Quart_heure: quartHeure, Statut: statut, Artiste: null};
+  }
+
+  it('sans écrivain branché (mode démo), remplace uniquement les lignes du bénévole sur la plage donnée', async () => {
+    const m = new Magasin({
+      ...normaliser(),
+      disponibilites: [dispo(1, 100), dispo(1, 200), dispo(2, 100)],
+    });
+
+    await m.remplacerDisponibilites(1, 100, 200, [dispo(1, 100, 'Indisponible')]);
+
+    expect(m.disponibilites).toEqual([dispo(1, 200), dispo(2, 100), dispo(1, 100, 'Indisponible')]);
+  });
+
+  it('avec une écriture branchée, transmet les arguments tels quels puis applique le même remplacement localement', async () => {
+    const appels: unknown[] = [];
+    const m = new Magasin({...normaliser(), disponibilites: [dispo(1, 100)]});
+    m.brancherEcriture(ecritureDeTest({
+      remplacerDisponibilites: async (benevoleId, debut, fin, nouvelles) => {
+        appels.push({benevoleId, debut, fin, nouvelles});
+      },
+    }));
+
+    await m.remplacerDisponibilites(1, 100, 200, [dispo(1, 100, 'Artiste')]);
+
+    expect(appels).toEqual([{benevoleId: 1, debut: 100, fin: 200, nouvelles: [dispo(1, 100, 'Artiste')]}]);
+    expect(m.disponibilites).toEqual([dispo(1, 100, 'Artiste')]);
+  });
+
+  it("sur échec de l'écriture, ne modifie pas les disponibilités locales", async () => {
+    const m = new Magasin({...normaliser(), disponibilites: [dispo(1, 100)]});
+    m.brancherEcriture(ecritureDeTest({
+      remplacerDisponibilites: async () => { throw new Error('document indisponible'); },
+    }));
+
+    await expect(m.remplacerDisponibilites(1, 100, 200, [dispo(1, 100, 'Indisponible')]))
+      .rejects.toThrow('document indisponible');
+    expect(m.disponibilites).toEqual([dispo(1, 100)]);
   });
 });

@@ -172,6 +172,21 @@ export interface EcritureGrist {
    *  contrairement au reste de cette interface — ces colonnes n'ont pas de
    *  nom canonique côté PlanningPlus). */
   valeursColonneBrute(tableId: string, colId: string): Promise<Map<Id, unknown>>;
+  /** Enregistre un réglage scalaire quelconque de `Parametres` (upsert par
+   *  clé) — voir `Magasin.definirParametre`. Clé libre, non fixée ici : ce
+   *  pont ne connaît pas les réglages eux-mêmes, seulement comment les
+   *  écrire ; les clés vivent côté appelant (`logic/parametres-benevoles.ts`
+   *  pour les disponibilités, `grist/parametres.ts` pour l'algorithme). */
+  definirParametre(cle: string, valeur: string): Promise<void>;
+  /** Remplace TOUTES les disponibilités d'un bénévole sur `[debut, fin)` —
+   *  un macro-créneau, en pratique (§8 point 10, saisie manuelle au quart
+   *  d'heure). Les lignes existantes de cette plage sont retirées puis
+   *  `nouvelles` écrit, en un seul aller-retour (contrairement à
+   *  `remplacerSousCreneaux` : aucune table ne référence une ligne de
+   *  `Disponibilites` par son identifiant, rien à repointer après coup —
+   *  vérifié avant d'écrire cette méthode). Voir
+   *  `Magasin.remplacerDisponibilites`. */
+  remplacerDisponibilites(benevoleId: Id, debut: Epoch, fin: Epoch, nouvelles: readonly Disponibilite[]): Promise<void>;
 }
 
 /** Levée par `EcritureGrist.remplacerSousCreneaux` quand la création des
@@ -268,6 +283,31 @@ export class Magasin {
    *  document connecté (démo, tests, clone de simulation) : rien à lire. */
   async valeursColonneBrute(tableId: string, colId: string): Promise<Map<Id, unknown>> {
     return this.ecriture ? this.ecriture.valeursColonneBrute(tableId, colId) : new Map();
+  }
+
+  /** Enregistre un réglage scalaire de `Parametres` (upsert par clé) — voir
+   *  `EcritureGrist.definirParametre` ci-dessus. */
+  async definirParametre(cle: string, valeur: string): Promise<void> {
+    if (this.ecriture) {
+      await this.ecriture.definirParametre(cle, valeur);
+    }
+    this.parametres.set(cle, valeur);
+    this.notifier();
+  }
+
+  /** Remplace toutes les disponibilités d'un bénévole sur `[debut, fin)` —
+   *  voir `EcritureGrist.remplacerDisponibilites` ci-dessus. */
+  async remplacerDisponibilites(
+    benevoleId: Id, debut: Epoch, fin: Epoch, nouvelles: Disponibilite[],
+  ): Promise<void> {
+    if (this.ecriture) {
+      await this.ecriture.remplacerDisponibilites(benevoleId, debut, fin, nouvelles);
+    }
+    this.data.disponibilites = this.data.disponibilites.filter(
+      (d) => !(d.Benevole === benevoleId && d.Quart_heure >= debut && d.Quart_heure < fin),
+    );
+    this.data.disponibilites.push(...nouvelles);
+    this.notifier();
   }
 
   // --- Écriture : équipes ------------------------------------------------

@@ -141,6 +141,8 @@ describe('document connecté : échec d’écriture puis nouvel essai', () => {
       definirPlaces: async () => {}, deplacerPosition: async () => {}, ajouterPosition: async () => 1,
       modifierPlaces: async () => {}, supprimerPosition: async () => {}, definirAbsence: async () => {},
       valeursColonneBrute: async () => new Map(),
+      definirParametre: async () => {},
+      remplacerDisponibilites: async () => {},
     };
     m.brancherEcriture(ecriture);
     montrerArtistes(container, m);
