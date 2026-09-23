@@ -480,6 +480,87 @@ describe('panneau : candidats suggérés sur #1/#2 (retour Antoine 2026-09-23, p
   });
 });
 
+describe('panneau : artistes à voir (retour Antoine 2026-09-23, point 8)', () => {
+  const DEBUT = 1_700_000_000;
+
+  function modele(): Modele {
+    return {
+      ...modeleVide(),
+      equipes: [{id: 1, Nom: 'Bars', Couleur: '#c00', Referent: null, Notes: ''}],
+      benevoles: [{
+        id: 1, Nom: 'Ada', Contact: '', Equipe: 1, Competences: [],
+        Quota_heures_min: 0, Quota_heures_max: 40, Statut: 'Actif', Notes: '',
+      }],
+      missions: [{id: 1, Nom: 'Buvette', Description: '', Lieu: 1, Equipe: 1, Priorite: 'Normale', Competences_requises: []}],
+      lieux: [{id: 1, Nom: 'Scène A', Description: ''}],
+      // Le binôme occupe seulement 10h-11h : le reste du jour (jusqu'à 12h) est libre.
+      macroCreneaux: [{id: 1, Nom: 'Vendredi', Debut: DEBUT, Fin: DEBUT + 7200}],
+      sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: '10h-11h', Debut: DEBUT, Fin: DEBUT + 3600}],
+      artistes: [
+        // Passage entier (30 min) pendant le créneau libre : visible.
+        {id: 1, Nom: 'DJ Libre', Lieu: 1, Debut: DEBUT + 3600, Fin: DEBUT + 3600 + 1800},
+        // Passage entièrement pendant la mission du binôme : jamais visible.
+        {id: 2, Nom: 'DJ Occupé', Lieu: 1, Debut: DEBUT, Fin: DEBUT + 1800},
+      ],
+    };
+  }
+
+  async function preparerAvecPanneauOuvert(souhaite = false): Promise<Magasin> {
+    const m = new Magasin(modele());
+    if (souhaite) {
+      m.disponibilites.push({Benevole: 1, Quart_heure: DEBUT + 3600, Statut: 'Artiste', Artiste: 1});
+    }
+    await m.creerBesoin(1, 1);
+    const groupeId = await m.creerGroupeSurBesoin(m.besoins[0]!.id);
+    const [p1] = m.places.filter((p) => p.Groupe === groupeId);
+    await m.assignerPlace(p1!.id, 1);
+    montrerIndicatifs(container, m);
+    container.querySelector<HTMLButtonElement>('.groupe-chip')!.click();
+    return m;
+  }
+
+  function nomsVisibles(): string[] {
+    return Array.from(document.querySelectorAll('#panneau-lateral .artiste-visible span:first-child'))
+      .map((el) => el.textContent ?? '');
+  }
+
+  it('liste l’artiste visible pendant le créneau libre, jamais celui couvert par la mission', async () => {
+    await preparerAvecPanneauOuvert();
+
+    expect(nomsVisibles()).toEqual(['DJ Libre']);
+  });
+
+  it('marque un artiste souhaité par un bénévole affecté', async () => {
+    await preparerAvecPanneauOuvert(true);
+
+    const ligne = document.querySelector('#panneau-lateral .artiste-visible')!;
+    expect(ligne.querySelector('.tag--plus')?.textContent).toContain('souhaité');
+    expect(ligne.querySelector('.tag--plus')?.getAttribute('title')).toContain('Ada');
+  });
+
+  it('n’affiche pas de tag souhaité sans souhait enregistré', async () => {
+    await preparerAvecPanneauOuvert(false);
+
+    const ligne = document.querySelector('#panneau-lateral .artiste-visible')!;
+    expect(ligne.querySelector('.tag--plus')).toBeNull();
+  });
+
+  it('n’affiche pas la section quand le document n’a aucun artiste', async () => {
+    const m = new Magasin({...modeleVide(), artistes: []});
+    await m.creerEquipe({Nom: 'Bars', Couleur: '#c00', Notes: ''});
+    await m.creerMission({Nom: 'Buvette', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []});
+    await m.enregistrerMacroCreneau({Nom: 'Vendredi', Debut: DEBUT, Fin: DEBUT + 7200});
+    m.enregistrerSousCreneau({Macro_creneau: 1, Mission: null, Libelle: '10h-11h', Debut: DEBUT, Fin: DEBUT + 3600});
+    await m.creerBesoin(1, 1);
+    await m.creerGroupeSurBesoin(m.besoins[0]!.id);
+    montrerIndicatifs(container, m);
+    container.querySelector<HTMLButtonElement>('.groupe-chip')!.click();
+
+    const titres = Array.from(document.querySelectorAll('#panneau-lateral h2')).map((h) => h.textContent);
+    expect(titres).not.toContain('Artistes à voir');
+  });
+});
+
 describe('créneaux propres à une mission (retour Antoine 2026-09-23, §6.2 : « communs, avec exceptions »)', () => {
   // Mission A (id 1) a matérialisé ses deux créneaux propres (décalés de
   // 30 min par rapport aux communs, comme le fait un glisser dans la vue

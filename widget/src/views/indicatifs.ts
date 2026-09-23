@@ -22,13 +22,15 @@
  * temps, mais n'est jamais glissable depuis cette vue.
  */
 
-import type {Besoin, Epoch, Groupe, Id, Mission, SousCreneau} from '../domain/types';
+import type {Artiste, Besoin, Epoch, Groupe, Id, Mission, SousCreneau} from '../domain/types';
 import {
   type Candidat, type Index, type Jour, couvertureBesoin, indexer, placesDuGroupe, positionsDuGroupe,
-  regrouperParJour, sousCreneauxApplicables,
+  quartsCouvertsParGroupe, regrouperParJour, sousCreneauxApplicables,
 } from '../logic/derive';
 import {classerCandidats} from '../moteur/adaptateur-magasin';
+import {peutVoirArtiste, SEUIL_MINUTES_VOIR_ARTISTE, seChevauchent} from '../moteur';
 import type {Magasin} from '../store';
+import {PAS_SECONDES} from '../temps';
 import {fermerPanneau, h, ouvrirPanneau, vider} from '../ui/dom';
 import {type BlocFrise, construireFrise} from '../ui/frise';
 
@@ -110,7 +112,7 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
     );
 
     if (groupeSelectionne != null && ix.groupe.has(groupeSelectionne)) {
-      panneauIndicatif(ix, groupeSelectionne);
+      panneauIndicatif(ix, groupeSelectionne, jour);
     } else {
       fermerPanneau();
     }
@@ -400,7 +402,36 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
     );
   }
 
-  function panneauIndicatif(ix: Index, groupeId: Id): void {
+  /** Artistes que les bénévoles déjà affectés à ce binôme peuvent réellement
+   *  aller voir ce jour (retour Antoine 2026-09-23, point 8) : sur les
+   *  créneaux du jour où ce binôme n'est PAS positionné, au moins
+   *  `SEUIL_MINUTES_VOIR_ARTISTE` minutes libres pendant le passage — pas le
+   *  passage entier (`peutVoirArtiste`, `moteur/temps.ts`, écrit par le fil
+   *  Algorithme, jamais réécrit ici). `souhaitePar` marque les bénévoles de
+   *  ce binôme qui l'ont dans leurs souhaits (`Disponibilite.Statut ===
+   *  'Artiste'`, import §6.4), pour distinguer un passage juste possible d'un
+   *  passage vraiment voulu. */
+  function artistesVisibles(ix: Index, groupeId: Id, jour: Jour): {artiste: Artiste; souhaitePar: string[]}[] {
+    const quartsOccupes = quartsCouvertsParGroupe(m, ix, groupeId);
+    const debutJour = Math.min(...jour.macros.map((ma) => ma.Debut));
+    const finJour = Math.max(...jour.macros.map((ma) => ma.Fin));
+    const benevoleIds = placesDuGroupe(m, groupeId)
+      .map((p) => p.Benevole)
+      .filter((id): id is Id => id != null);
+
+    return m.artistes
+      .filter((a) => seChevauchent(a.Debut, a.Fin, debutJour, finJour))
+      .filter((a) => peutVoirArtiste(a.Debut, a.Fin, quartsOccupes, PAS_SECONDES))
+      .map((a) => ({
+        artiste: a,
+        souhaitePar: benevoleIds
+          .filter((bId) => m.disponibilites.some((d) => d.Benevole === bId && d.Statut === 'Artiste' && d.Artiste === a.id))
+          .map((bId) => ix.benevole.get(bId)?.Nom ?? '?'),
+      }))
+      .sort((x, y) => x.artiste.Debut - y.artiste.Debut);
+  }
+
+  function panneauIndicatif(ix: Index, groupeId: Id, jour: Jour | undefined): void {
     const groupe = ix.groupe.get(groupeId)!;
     const equipe = ix.equipe.get(groupe.Equipe)!;
     const places = placesDuGroupe(m, groupeId);
@@ -489,6 +520,31 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
           'Glissez une puce vers une autre case du planning pour la repositionner directement.',
         ),
       ),
+
+      m.artistes.length > 0 && jour
+        ? (() => {
+          const visibles = artistesVisibles(ix, groupeId, jour);
+          return h('div', null,
+            h('div', {class: 'section-title'},
+              h('h2', null, 'Artistes à voir'),
+              h('span', {class: 'count mono'}, String(visibles.length)),
+            ),
+            h('div', {class: 'card', style: {display: 'flex', flexDirection: 'column', gap: '6px'}},
+              visibles.length === 0
+                ? h('p', {class: 'empty'}, "Aucun passage n'est visible sur les créneaux libres de ce jour.")
+                : visibles.map(({artiste, souhaitePar}) => h('div', {class: 'membre artiste-visible'},
+                  h('span', {style: {flex: '1'}}, artiste.Nom),
+                  souhaitePar.length > 0
+                    ? h('span', {class: 'tag tag--plus', title: `Souhaité par ${souhaitePar.join(', ')}`}, '★ souhaité')
+                    : null,
+                )),
+            ),
+            h('p', {class: 'view__intro', style: {marginTop: '8px', marginBottom: '0'}},
+              `Au moins ${SEUIL_MINUTES_VOIR_ARTISTE} minutes libres pendant le passage, sur les créneaux où ce binôme n'est pas positionné ce jour.`,
+            ),
+          );
+        })()
+        : null,
     );
     ouvrirPanneau(panneau);
   }
