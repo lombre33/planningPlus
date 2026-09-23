@@ -3,7 +3,8 @@
  * exactement de la même façon [que Missions], chaque groupe sera
  * l'équivalent d'une ligne […] leur horaire de passage sera un
  * sous-créneau/besoin »). Mêmes gestes que `grille.test.ts` (glisser,
- * ALT+glisser, clic sur piste), sur le modèle Artiste plutôt que Mission.
+ * glisser depuis une poignée de bord, clic sur piste), sur le modèle
+ * Artiste plutôt que Mission.
  */
 import {describe, expect, it} from 'vitest';
 import type {Modele} from '../domain/types';
@@ -30,10 +31,19 @@ function poserRect(el: Element, left: number, width: number): void {
   });
 }
 
-function glisser(bouton: HTMLElement, clientXDepart: number, deltaPx: number, alt = false): void {
+function glisser(bouton: HTMLElement, clientXDepart: number, deltaPx: number): void {
   bouton.dispatchEvent(new MouseEvent('mousedown', {clientX: clientXDepart, button: 0}));
   document.dispatchEvent(new MouseEvent('mousemove', {clientX: clientXDepart + deltaPx}));
-  document.dispatchEvent(new MouseEvent('mouseup', {clientX: clientXDepart + deltaPx, altKey: alt}));
+  document.dispatchEvent(new MouseEvent('mouseup', {clientX: clientXDepart + deltaPx}));
+}
+
+/** Glisse depuis la poignée d'un bord (redimensionnement, remplace l'ancien
+ *  geste ALT+position — voir `ui/frise.ts`). */
+function glisserPoignee(bouton: HTMLElement, bord: 'debut' | 'fin', clientXDepart: number, deltaPx: number): void {
+  const poignee = bouton.querySelector(`[data-poignee="${bord}"]`)!;
+  poignee.dispatchEvent(new MouseEvent('mousedown', {clientX: clientXDepart, button: 0, bubbles: true}));
+  document.dispatchEvent(new MouseEvent('mousemove', {clientX: clientXDepart + deltaPx}));
+  document.dispatchEvent(new MouseEvent('mouseup', {clientX: clientXDepart + deltaPx}));
 }
 
 describe('montrerArtistes — frise commune au quart d’heure', () => {
@@ -61,19 +71,18 @@ describe('montrerArtistes — frise commune au quart d’heure', () => {
     expect(m.artistes[0]!.Fin).toBe(finAvant + 1800); // les deux bornes bougent ensemble : pas de « suite » à part
   });
 
-  it('glisser en maintenant ALT le redimensionne depuis le bord saisi au lieu de le déplacer', async () => {
+  it('glisser depuis la poignée de fin redimensionne depuis le bord saisi au lieu de déplacer', async () => {
     const m = new Magasin(modeleAvecPassage());
     const container = document.createElement('div');
     montrerArtistes(container, m);
 
     const bloc = container.querySelector<HTMLButtonElement>('[data-bloc-id="1"]')!;
-    poserRect(bloc, 0, 4 * LARGEUR_QUART_PX); // bord droit saisi (mousedown dans la moitié droite)
     const [debutAvant, finAvant] = [m.artistes[0]!.Debut, m.artistes[0]!.Fin];
 
-    glisser(bloc, 3 * LARGEUR_QUART_PX, LARGEUR_QUART_PX, true); // +1 quart = +15 min, ALT maintenu
+    glisserPoignee(bloc, 'fin', 3 * LARGEUR_QUART_PX, LARGEUR_QUART_PX); // +1 quart = +15 min
 
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(m.artistes[0]!.Debut).toBe(debutAvant); // le début ne bouge pas : bord droit saisi
+    expect(m.artistes[0]!.Debut).toBe(debutAvant); // le début ne bouge pas : poignée de fin saisie
     expect(m.artistes[0]!.Fin).toBe(finAvant + 900);
   });
 
@@ -84,11 +93,10 @@ describe('montrerArtistes — frise commune au quart d’heure', () => {
     montrerArtistes(container, m);
 
     const bloc = container.querySelector<HTMLButtonElement>('[data-bloc-id="1"]')!;
-    poserRect(bloc, 0, 4 * LARGEUR_QUART_PX); // bord gauche saisi (mousedown dans la moitié gauche)
     const finAvant = m.artistes[0]!.Fin;
 
     // Le passage dure 1h (4 quarts) : le pousser de 4 quarts depuis le bord gauche le viderait.
-    glisser(bloc, LARGEUR_QUART_PX, 4 * LARGEUR_QUART_PX, true);
+    glisserPoignee(bloc, 'debut', LARGEUR_QUART_PX, 4 * LARGEUR_QUART_PX);
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(m.artistes[0]!.Fin).toBe(finAvant); // rien n'a bougé

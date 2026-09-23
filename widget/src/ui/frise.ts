@@ -81,36 +81,67 @@ export function construireFrise<B extends BlocFrise>(
   const nbColonnes = Math.max(1, Math.round((options.axeFin - options.axeDebut) / PAS_SECONDES));
   let blocVientDeGlisser = false;
 
-  /** Glisser un bloc déplaçable : par défaut, déplace ce bloc par pas de 15
-   *  minutes (l'appelant décide ce qu'il entraîne avec lui, la frise ne
-   *  regroupe rien elle-même). ALT maintenu au relâchement redimensionne à
-   *  la place le bloc saisi, depuis le bord le plus proche du point de
-   *  saisie. Un relâchement sans déplacement (delta nul) est un simple
+  /** Glisser un bloc déplaçable : la souris saisie sur le corps du bloc le
+   *  déplace par pas de 15 minutes (l'appelant décide ce qu'il entraîne
+   *  avec lui, la frise ne regroupe rien elle-même) ; saisie sur une
+   *  poignée d'un bord (`elementBloc`, retour d'Antoine du 2026-09-23 :
+   *  « je n'ai pas de poignée pour ajuster le début ou la fin ») redimensionne
+   *  depuis ce bord — remplace l'ancien geste ALT+position (invisible,
+   *  imprécis) par une cible explicite. Un retour visuel suit la souris
+   *  pendant le glisser (même raison : « le drag ne change pas l'affichage »)
+   *  via `transform`/`width` en ligne, effacés au relâchement — le rendu
+   *  définitif vient toujours du redessin déclenché par `notifier()` côté
+   *  Magasin. Un relâchement sans déplacement (delta nul) est un simple
    *  clic, laissé au onclick du bouton. */
   function demarrerGlisser(e: MouseEvent, bouton: HTMLButtonElement, bloc: B): void {
     if (e.button !== 0) { return; }
     e.preventDefault();
     const xDepart = e.clientX;
-    const rect = bouton.getBoundingClientRect();
-    const depuisDebut = (e.clientX - rect.left) < rect.width / 2;
+    const poignee = e.target instanceof HTMLElement ? e.target.closest<HTMLElement>('[data-poignee]') : null;
+    const modeRedimensionner = poignee !== null;
+    const depuisDebut = poignee?.dataset['poignee'] === 'debut';
     let deltaQuarts = 0;
 
     function onMove(ev: MouseEvent): void {
       deltaQuarts = Math.round((ev.clientX - xDepart) / LARGEUR_QUART_PX);
+      const deltaPx = deltaQuarts * LARGEUR_QUART_PX;
+      if (!modeRedimensionner) {
+        bouton.style.transform = `translateX(${deltaPx}px)`;
+      } else if (depuisDebut) {
+        bouton.style.marginLeft = `${deltaPx}px`;
+        bouton.style.width = `calc(100% - ${deltaPx}px)`;
+      } else {
+        bouton.style.width = `calc(100% + ${deltaPx}px)`;
+      }
     }
-    async function onUp(ev: MouseEvent): Promise<void> {
+    async function onUp(): Promise<void> {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
+      bouton.style.transform = '';
+      bouton.style.width = '';
+      bouton.style.marginLeft = '';
       if (deltaQuarts === 0) { return; }
       blocVientDeGlisser = true;
       const deltaSecondes = deltaQuarts * PAS_SECONDES;
-      const resultat = ev.altKey
+      const resultat = modeRedimensionner
         ? await options.onRedimensionner(bloc, depuisDebut, deltaSecondes)
         : await options.onDeplacer(bloc, deltaSecondes);
       if (!resultat.ok) { options.surErreur(resultat.raison); }
     }
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
+  }
+
+  /** Poignée de bord (retour d'Antoine du 2026-09-23) : une cible visible et
+   *  dédiée pour redimensionner depuis ce bord précis, plutôt que deviner
+   *  quelle moitié du bloc la souris a saisie. `demarrerGlisser` reconnaît
+   *  la saisie via `closest('[data-poignee]')` sur `e.target`. */
+  function elementPoignee(bord: 'debut' | 'fin'): Node {
+    return h('span', {
+      class: `timeline__bloc__poignee timeline__bloc__poignee--${bord}`,
+      'data-poignee': bord,
+      'aria-hidden': 'true',
+    });
   }
 
   function elementBloc(bloc: B, rangee: number): Node {
@@ -127,7 +158,11 @@ export function construireFrise<B extends BlocFrise>(
         if (blocVientDeGlisser) { blocVientDeGlisser = false; return; }
         options.onClicBloc(bloc);
       },
-    }, options.rendreBloc(bloc)) as HTMLButtonElement;
+    },
+      bloc.deplacable ? elementPoignee('debut') : null,
+      options.rendreBloc(bloc),
+      bloc.deplacable ? elementPoignee('fin') : null,
+    ) as HTMLButtonElement;
     if (bloc.deplacable) { bouton.addEventListener('mousedown', (ev) => demarrerGlisser(ev as MouseEvent, bouton, bloc)); }
     return bouton;
   }

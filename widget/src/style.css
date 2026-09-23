@@ -928,6 +928,7 @@ table.grille .mission-cell .lieu {
   z-index: 2;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
+  border-left: 1px dotted var(--border);
   padding: 8px 2px;
   text-align: center;
   font-size: 9px;
@@ -979,14 +980,24 @@ table.grille .mission-cell .lieu {
    plage (crée un créneau propre à l'horaire cliqué). Ce qui en reste
    visible une fois les blocs posés par-dessus EST la zone hors cadre —
    aucune case dédiée à calculer, à la différence de l'ancien tableau. */
+/* Repères au quart d'heure sur la piste elle-même (retour d'Antoine du
+   2026-09-23 : « si la timeline pouvait inclure un découpage au quart
+   d'heure avec des pointillés »), en plus de la graduation déjà posée
+   dans l'en-tête (`.axe-quart`) — traits fins alignés sur les mêmes 22px
+   (LARGEUR_QUART_PX, `ui/frise.ts`), plus marqués toutes les 4 colonnes
+   (l'heure). La piste commence toujours à la colonne 2 (juste après
+   l'étiquette), donc sa position 0 0 coïncide avec `axeDebut` : ces deux
+   dégradés restent en phase avec l'heure quel que soit le macro-créneau. */
 .timeline__piste {
   grid-row: span 1;
   border-bottom: 1px solid var(--border);
   min-height: 40px;
   cursor: pointer;
-  background: repeating-linear-gradient(
-    135deg, transparent, transparent 5px, var(--surface-muted) 5px, var(--surface-muted) 6px
-  );
+  background-image:
+    linear-gradient(to right, var(--text-faint) 1px, transparent 1px),
+    linear-gradient(to right, var(--border) 1px, transparent 1px),
+    repeating-linear-gradient(135deg, transparent, transparent 5px, var(--surface-muted) 5px, var(--surface-muted) 6px);
+  background-size: 88px 100%, 22px 100%, auto;
   opacity: .5;
   transition: opacity .1s;
 }
@@ -1029,6 +1040,54 @@ table.grille .mission-cell .lieu {
    missions qui le partagent encore. */
 .timeline__bloc--propre { cursor: grab; }
 .timeline__bloc--propre:active { cursor: grabbing; }
+
+/* Poignées de bord (retour d'Antoine du 2026-09-23 : « je n'ai pas de
+   poignée pour ajuster plus efficacement le début ou la fin ») — une
+   bande étroite à chaque bout du bloc, curseur de redimensionnement,
+   posée par `ui/frise.ts` uniquement sur un bloc `deplacable`. En dehors
+   du flux flex du bloc (`position: absolute`) pour ne rien déplacer de
+   son contenu. */
+.timeline__bloc__poignee {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  cursor: ew-resize;
+}
+.timeline__bloc__poignee--debut { left: 0; }
+.timeline__bloc__poignee--fin { right: 0; }
+.timeline__bloc__poignee::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: 16px;
+  transform: translate(-50%, -50%);
+  border-radius: 2px;
+  background: var(--text-faint);
+  opacity: 0;
+  transition: opacity .1s;
+}
+.timeline__bloc:hover .timeline__bloc__poignee::after,
+.timeline__bloc__poignee:hover::after {
+  opacity: .6;
+}
+.timeline__bloc__poignee:hover::after { background: var(--brand); opacity: 1; }
+
+/* Case vide de la frise Missions (jamais celle du tableau Indicatifs, qui
+   garde sa propre hachure sur `.besoin-cell--vide`) : fond plat plutôt que
+   la hachure en diagonale héritée, qui se répétait en dizaines de petites
+   cases visibles dès qu'un créneau dépassait le découpage par défaut
+   (retour d'Antoine du 2026-09-23 : « le hover fait changer la couleur de
+   plein de petits créneaux inexistants »). Repères au quart d'heure comme
+   la piste, en phase quel que soit l'horaire de début du bloc (22px
+   divise 22px quel que soit le décalage). */
+.timeline__bloc.besoin-cell--vide {
+  background-color: var(--bg);
+  background-image: linear-gradient(to right, var(--border) 1px, transparent 1px);
+  background-size: 22px 100%;
+}
 
 .besoin-cell__ajouter-icone {
   color: var(--text-faint);

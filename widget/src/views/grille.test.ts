@@ -168,13 +168,25 @@ describe('montrerGrille — frise commune au quart d’heure et créneau propre 
     });
   }
 
-  /** Glisse un bloc : mousedown sur `bouton` puis mousemove/mouseup sur
-   *  `document` (mêmes cibles que `demarrerGlisser`), déplacement en pixels
-   *  converti en quarts d'heure par le composant lui-même. */
-  function glisser(bouton: HTMLElement, clientXDepart: number, deltaPx: number, alt = false): void {
+  /** Glisse un bloc par son corps (déplacement) : mousedown sur `bouton` puis
+   *  mousemove/mouseup sur `document` (mêmes cibles que `demarrerGlisser`),
+   *  déplacement en pixels converti en quarts d'heure par le composant
+   *  lui-même. */
+  function glisser(bouton: HTMLElement, clientXDepart: number, deltaPx: number): void {
     bouton.dispatchEvent(new MouseEvent('mousedown', {clientX: clientXDepart, button: 0}));
     document.dispatchEvent(new MouseEvent('mousemove', {clientX: clientXDepart + deltaPx}));
-    document.dispatchEvent(new MouseEvent('mouseup', {clientX: clientXDepart + deltaPx, altKey: alt}));
+    document.dispatchEvent(new MouseEvent('mouseup', {clientX: clientXDepart + deltaPx}));
+  }
+
+  /** Glisse depuis la poignée d'un bord (redimensionnement, retour
+   *  d'Antoine du 2026-09-23 — remplace l'ancien geste ALT+position) :
+   *  mousedown sur `[data-poignee]`, `bubbles: true` pour que l'écouteur
+   *  posé sur le bouton (délégation) le voie. */
+  function glisserPoignee(bouton: HTMLElement, bord: 'debut' | 'fin', clientXDepart: number, deltaPx: number): void {
+    const poignee = bouton.querySelector(`[data-poignee="${bord}"]`)!;
+    poignee.dispatchEvent(new MouseEvent('mousedown', {clientX: clientXDepart, button: 0, bubbles: true}));
+    document.dispatchEvent(new MouseEvent('mousemove', {clientX: clientXDepart + deltaPx}));
+    document.dispatchEvent(new MouseEvent('mouseup', {clientX: clientXDepart + deltaPx}));
   }
 
   it("l'en-tête pose une colonne par quart d'heure sur toute la plage du macro-créneau, marquée à l'heure", async () => {
@@ -253,7 +265,7 @@ describe('montrerGrille — frise commune au quart d’heure et créneau propre 
     container.remove();
   });
 
-  it('glisser un créneau déjà propre (sans ALT) le déplace par pas de 15 minutes, avec ceux qui le suivent', async () => {
+  it("glisser le corps d'un créneau déjà propre le déplace par pas de 15 minutes, avec ceux qui le suivent", async () => {
     const {m, macroId, missionId} = modeleAvecMission();
     const c1 = await m.creerSousCreneauMission(macroId, missionId, {
       libelle: '10h-11h',
@@ -266,12 +278,41 @@ describe('montrerGrille — frise commune au quart d’heure et créneau propre 
     const bloc = container.querySelector<HTMLButtonElement>(`[data-bloc-id="${c1}"]`)!;
     const debutAvant = m.sousCreneaux.find((s) => s.id === c1)!.Debut;
 
-    glisser(bloc, 100, 2 * LARGEUR_QUART_PX); // +2 quarts = +30 min, sans ALT
+    glisser(bloc, 100, 2 * LARGEUR_QUART_PX); // +2 quarts = +30 min
 
     expect(m.sousCreneaux.find((s) => s.id === c1)!.Debut).toBe(debutAvant + 1800);
   });
 
-  it('glisser un créneau propre en maintenant ALT le redimensionne au lieu de le déplacer', async () => {
+  it('pendant le glisser, un retour visuel suit la souris (translation ou largeur en ligne), effacé au relâchement (retour d\'Antoine du 2026-09-23 : « le drag ne change pas l\'affichage »)', async () => {
+    const {m, macroId, missionId} = modeleAvecMission();
+    const c1 = await m.creerSousCreneauMission(macroId, missionId, {
+      libelle: '10h-11h',
+      debut: epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 10}),
+      fin: epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 11}),
+    });
+    const container = document.createElement('div');
+    montrerGrille(container, m);
+    const bloc = container.querySelector<HTMLButtonElement>(`[data-bloc-id="${c1}"]`)!;
+
+    // Déplacement : mousedown puis mousemove SANS mouseup — la souris est
+    // encore maintenue, le magasin n'a encore rien reçu.
+    bloc.dispatchEvent(new MouseEvent('mousedown', {clientX: 100, button: 0}));
+    document.dispatchEvent(new MouseEvent('mousemove', {clientX: 100 + 2 * LARGEUR_QUART_PX}));
+    expect(bloc.style.transform).toBe(`translateX(${2 * LARGEUR_QUART_PX}px)`);
+    document.dispatchEvent(new MouseEvent('mouseup', {clientX: 100 + 2 * LARGEUR_QUART_PX}));
+    expect(bloc.style.transform).toBe(''); // effacé : le redessin du magasin prend le relais
+
+    // Redimensionnement depuis la poignée de fin : largeur en ligne pendant
+    // la saisie, elle aussi effacée au relâchement.
+    const poignee = bloc.querySelector('[data-poignee="fin"]')!;
+    poignee.dispatchEvent(new MouseEvent('mousedown', {clientX: 100, button: 0, bubbles: true}));
+    document.dispatchEvent(new MouseEvent('mousemove', {clientX: 100 + LARGEUR_QUART_PX}));
+    expect(bloc.style.width).toBe(`calc(100% + ${LARGEUR_QUART_PX}px)`);
+    document.dispatchEvent(new MouseEvent('mouseup', {clientX: 100 + LARGEUR_QUART_PX}));
+    expect(bloc.style.width).toBe('');
+  });
+
+  it('glisser depuis la poignée de fin redimensionne au lieu de déplacer, sans toucher le début', async () => {
     const {m, macroId, missionId} = modeleAvecMission();
     const c1 = await m.creerSousCreneauMission(macroId, missionId, {
       libelle: '10h-11h',
@@ -282,14 +323,33 @@ describe('montrerGrille — frise commune au quart d’heure et créneau propre 
     montrerGrille(container, m);
 
     const bloc = container.querySelector<HTMLButtonElement>(`[data-bloc-id="${c1}"]`)!;
-    poserRect(bloc, 0, 4 * LARGEUR_QUART_PX); // bord droit saisi (clientX de mousedown dans la moitié droite)
     const [debutAvant, finAvant] = [m.sousCreneaux.find((s) => s.id === c1)!.Debut, m.sousCreneaux.find((s) => s.id === c1)!.Fin];
 
-    glisser(bloc, 3 * LARGEUR_QUART_PX, LARGEUR_QUART_PX, true); // +1 quart = +15 min, ALT maintenu
+    glisserPoignee(bloc, 'fin', 3 * LARGEUR_QUART_PX, LARGEUR_QUART_PX); // +1 quart = +15 min
 
     const sc = m.sousCreneaux.find((s) => s.id === c1)!;
-    expect(sc.Debut).toBe(debutAvant); // le début ne bouge pas : bord droit saisi
+    expect(sc.Debut).toBe(debutAvant); // le début ne bouge pas : poignée de fin saisie
     expect(sc.Fin).toBe(finAvant + 900);
+  });
+
+  it('glisser depuis la poignée de début redimensionne depuis le début, sans toucher la fin', async () => {
+    const {m, macroId, missionId} = modeleAvecMission();
+    const c1 = await m.creerSousCreneauMission(macroId, missionId, {
+      libelle: '10h-11h',
+      debut: epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 10}),
+      fin: epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 11}),
+    });
+    const container = document.createElement('div');
+    montrerGrille(container, m);
+
+    const bloc = container.querySelector<HTMLButtonElement>(`[data-bloc-id="${c1}"]`)!;
+    const [debutAvant, finAvant] = [m.sousCreneaux.find((s) => s.id === c1)!.Debut, m.sousCreneaux.find((s) => s.id === c1)!.Fin];
+
+    glisserPoignee(bloc, 'debut', 100, -LARGEUR_QUART_PX); // -1 quart = 15 min plus tôt
+
+    const sc = m.sousCreneaux.find((s) => s.id === c1)!;
+    expect(sc.Debut).toBe(debutAvant - 900);
+    expect(sc.Fin).toBe(finAvant); // la fin ne bouge pas : poignée de début saisie
   });
 
   it('glisser un bloc encore commun le rend propre à la mission au passage, puis le déplace (retour d\'Antoine du 2026-09-23)', async () => {
@@ -301,7 +361,7 @@ describe('montrerGrille — frise commune au quart d’heure et créneau propre 
     const bloc = container.querySelector<HTMLButtonElement>(`[data-bloc-id="${c1}"]`)!;
     const debutAvant = m.sousCreneaux.find((s) => s.id === c1)!.Debut;
 
-    glisser(bloc, 100, 2 * LARGEUR_QUART_PX); // +2 quarts = +30 min, sans ALT
+    glisser(bloc, 100, 2 * LARGEUR_QUART_PX); // +2 quarts = +30 min
     await new Promise((resolve) => setTimeout(resolve, 0)); // la conversion passe par un await, contrairement au propre
 
     expect(m.sousCreneaux.find((s) => s.id === c1)!.Mission).toBeNull(); // le commun d'origine, inchangé
