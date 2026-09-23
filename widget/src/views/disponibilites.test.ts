@@ -210,8 +210,31 @@ describe('panneau de réglages d’import (nouveau, 2026-09-23)', () => {
     await attendreMicrotaches();
 
     expect(container.querySelector('select[aria-label="Colonne des souhaits d\'artistes"]')).toBeNull();
-    expect(container.querySelector('input[aria-label="Colonne des souhaits d\'artistes"]')).not.toBeNull();
+    const champTexte = container.querySelector('input[aria-label="Colonne des souhaits d\'artistes"]') as HTMLInputElement;
+    expect(champTexte).not.toBeNull();
     expect(container.textContent).toContain('Impossible de lire la liste de tes colonnes');
+  });
+
+  it('les valeurs déjà enregistrées apparaissent réellement dans les champs (pas seulement en attribut inerte)', async () => {
+    const m = new Magasin(modeleDeTest(), [
+      {cle: 'benevoles.colonne_souhaits_artistes', valeur: 'Souhaits_deja_enregistres'},
+      {cle: 'benevoles.libelle_tout_le_creneau', valeur: 'Toute la journée'},
+    ]);
+    m.brancherEcriture({
+      ...ecritureMuette,
+      colonnesTable: async () => { throw new Error('document indisponible'); }, // force le repli texte
+    });
+    montrerDisponibilites(container, m);
+
+    (Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent === "Réglages d'import") as HTMLButtonElement).click();
+    await attendreMicrotaches();
+
+    const champColonne = container.querySelector('input[aria-label="Colonne des souhaits d\'artistes"]') as HTMLInputElement;
+    expect(champColonne.value).toBe('Souhaits_deja_enregistres');
+    const champLibelle = Array.from(container.querySelectorAll('input[type="text"]'))
+      .find((el) => (el as HTMLInputElement).value === 'Toute la journée') as HTMLInputElement | undefined;
+    expect(champLibelle).not.toBeUndefined();
   });
 
   it('un choix de colonne est enregistré via définirParametre', async () => {
