@@ -102,7 +102,7 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
     }
     return h('input', {
       class: 'input', type: 'text', placeholder: 'identifiant de colonne (ex. Dispo_Vendredi)', 'aria-label': aria,
-      defaultValue: valeurActuelle ?? '',
+      value: valeurActuelle ?? '',
       onchange: (e: Event) => { void m.definirParametre(cle, (e.target as HTMLInputElement).value.trim()); },
     });
   }
@@ -242,12 +242,12 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
           ))),
       champ('Libellé "disponible sur tout le créneau"', h('input', {
         class: 'input', type: 'text',
-        defaultValue: m.parametre(CLE_LIBELLE_TOUT_LE_CRENEAU) ?? LIBELLES_REPONSE_PAR_DEFAUT.toutLeCreneau[0],
+        value: m.parametre(CLE_LIBELLE_TOUT_LE_CRENEAU) ?? LIBELLES_REPONSE_PAR_DEFAUT.toutLeCreneau[0],
         onchange: (e: Event) => { void m.definirParametre(CLE_LIBELLE_TOUT_LE_CRENEAU, (e.target as HTMLInputElement).value); },
       })),
       champ('Libellé "pas disponible du tout"', h('input', {
         class: 'input', type: 'text',
-        defaultValue: m.parametre(CLE_LIBELLE_PAS_DISPONIBLE_DU_TOUT) ?? LIBELLES_REPONSE_PAR_DEFAUT.pasDisponibleDuTout[0],
+        value: m.parametre(CLE_LIBELLE_PAS_DISPONIBLE_DU_TOUT) ?? LIBELLES_REPONSE_PAR_DEFAUT.pasDisponibleDuTout[0],
         onchange: (e: Event) => { void m.definirParametre(CLE_LIBELLE_PAS_DISPONIBLE_DU_TOUT, (e.target as HTMLInputElement).value); },
       })),
       h('button', {
