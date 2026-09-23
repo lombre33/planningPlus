@@ -70,6 +70,9 @@ export {
 
 export {idsReelsDeTest, LIBELLE_PAR_TABLE, resoudreIdsTables} from './tables';
 
+export type {ColonneTable} from './colonnes';
+export {colonnesDeTable} from './colonnes';
+
 export {actionsCreerTablesManquantes, actionsReglerAffichage} from './creation';
 
 export type {LigneParametre} from './parametres';
