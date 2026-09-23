@@ -1,12 +1,13 @@
 # PlanningPlus — Cahier des charges
 
-**Version :** v1.5 (V0.1 — premier incrément agile — cadrée en §11.1 ;
-création des missions dans le widget ; démarrage sans table créée par le
-widget, 2026-09-22)
-**Statut :** structure et règles validées (§6.3, §7.5) ; le développement est
-passé en mode agile par incréments courts à partir du 2026-09-22, voir §11.1
-pour le périmètre en cours
-**Dernière mise à jour :** 2026-09-22
+**Version :** v1.6 (rattrapage du 2026-09-23 : le widget crée maintenant ses
+propres tables — renversement du 2026-09-22 —, plus de binôme automatique à
+la création d'un besoin, nomenclature des indicatifs, frise Missions et
+suppression de macro-créneau)
+**Statut :** structure et règles validées (§6.3, §7.5) ; développement agile
+par incréments courts depuis le 2026-09-22 (§11.1) ; document tenu à jour au
+fil du code plutôt qu'en fin de sprint, sur consigne du coordinateur
+**Dernière mise à jour :** 2026-09-23
 
 > Les décisions issues du cadrage sont annotées *(Décision Antoine,
 > 2026-09-21)* dans le texte. Voir le détail question par question dans
@@ -80,7 +81,7 @@ sans en sortir : elle ajuste le résultat de l'étape 5 sans revenir sur les
 | **Quart d'heure** | Unité de granularité du planning. Toutes les bornes sont alignées sur 00/15/30/45. |
 | **Mission** | Tâche à tenir (bar, accueil, sécurité…), avec un besoin en effectif. |
 | **Besoin** | Couple (mission, sous-créneau) avec un effectif minimum et maximum. |
-| **Groupe / indicatif** | Place théorique nommée (ex. « BAR-B2 ») créée avant toute affectation. Un groupe de taille 2 est un binôme, de taille 3 un trinôme, de taille *n* un *n*-uplet. |
+| **Groupe / indicatif** | Place théorique nommée (ex. « B1 », §6.3) créée avant toute affectation, jamais automatiquement. Un groupe de taille 2 est un binôme, de taille 3 un trinôme, de taille *n* un *n*-uplet. |
 | **Place** | Emplacement individuel dans un groupe. C'est l'unité affectée à un bénévole. |
 | **Équipe** | Regroupement opérationnel de bénévoles, avec une cheffe d'équipe. |
 | **Disponibilité** | État déclaré d'un bénévole sur une plage : indisponible, disponible, ou « souhaite voir un artiste ». |
@@ -117,10 +118,18 @@ typées et des références explicites. Conséquences :
   calcul, instantanés de version) peuvent être stockées sous une forme non
   directement exploitable, et sont alors isolées dans des tables dédiées et
   clairement nommées ;
-- le widget ne crée **jamais** de table : il lit et écrit des lignes dans des
-  tables existantes (§6), jamais leur structure. La création des tables
-  elles-mêmes reste de la responsabilité de qui prépare le document Grist.
-  *(Décision Antoine, 2026-09-21 soir.)*
+- **le widget crée lui-même les tables PlanningPlus qui lui manquent**
+  (`widget/src/grist/creation.ts`), colonnes et affichage compris, pour
+  qu'un document Grist tout neuf suffise comme point de départ — sans import
+  d'un fichier modèle, qui n'est plus le chemin nominal. Portée strictement
+  aux tables du schéma PlanningPlus (§6) qui n'existent pas encore : une
+  table déjà présente n'est jamais recréée ni modifiée par ce mécanisme, et
+  **aucune table étrangère** du document (posée par un autre usage du même
+  document Grist) n'est jamais touchée, créée ou lue. Suppressions et
+  modifications de schéma sont permises, mais seulement sur les tables
+  PlanningPlus, jamais sur une table étrangère. *(Renversement assumé par
+  Antoine, 2026-09-22, de sa décision du 2026-09-21 au soir — voir aussi
+  §5.4 : l'argument d'audit donné ce matin-là est écarté par lui-même.)*
 
 ### 5.2 Contrainte B — auditabilité
 
@@ -180,16 +189,21 @@ des contraintes A et B mais n'avait pas été rassemblée en un seul endroit.
   aperçu avant validation plutôt qu'appliquée directement. Grist gère
   lui-même la synchronisation des écritures concurrentes au niveau du
   document ; ce point n'appelle pas de mécanisme supplémentaire pour la v1.
-- **Trois états au démarrage (vérifiés à l'écran, 2026-09-21).** Le widget
-  distingue explicitement : pas d'hôte Grist (ou timeout, ou échec de
-  connexion) → **mode démonstration**, sur un jeu de données factice, jamais
-  confondu avec un vrai document ; hôte Grist présent et les tables du §6
-  toutes présentes (vides ou non) → connecté, sur les vraies données, y
-  compris à vide (jamais de repli silencieux sur la démo) ; hôte Grist
-  présent mais au moins une table absente → un écran qui nomme précisément
-  la ou les tables manquantes plutôt que de deviner ou de planter. Le mode
-  démonstration reste un comportement prévu et volontaire, pas un filet de
-  secours à retirer : il permet de découvrir l'outil sans document préparé.
+- **États au démarrage (vérifiés à l'écran, mis à jour le 2026-09-22).** Le
+  widget distingue : pas d'hôte Grist (ou timeout, ou échec de connexion) →
+  **mode démonstration**, sur un jeu de données factice, jamais confondu
+  avec un vrai document ; hôte Grist présent, tables du §6 toutes présentes
+  (vides ou non) → connecté, sur les vraies données, y compris à vide
+  (jamais de repli silencieux sur la démo) ; hôte Grist présent mais au
+  moins une table PlanningPlus absente → le widget **les crée lui-même**
+  (voir §5.1) plutôt que de se contenter de les nommer, pour qu'un document
+  Grist tout neuf devienne utilisable sans étape manuelle. Si une écriture
+  échoue malgré tout (création de table comprise), une fois la connexion
+  confirmée, un écran nomme précisément l'échec plutôt que de basculer sur
+  la démo ou de rester muet — la démo ne sert jamais après connexion,
+  seulement hors hôte Grist. Le mode démonstration reste un comportement
+  prévu et volontaire, pas un filet de secours à retirer : il permet de
+  découvrir l'outil sans document préparé.
 
 ## 6. Modèle de données
 
@@ -237,6 +251,41 @@ ce cas. Une mission dont le rythme diffère (rotation plus courte ou plus
 longue) peut définir ses propres sous-créneaux en la renseignant : ses
 sous-créneaux communs sont alors ignorés pour elle et remplacés par les
 siens. *(Décision Antoine, 2026-09-21 : « communs, avec exceptions ».)*
+
+**Grille Missions : un axe commun au quart d'heure (précisé le 2026-09-22).**
+La vue Missions (§8.2) présente les sous-créneaux communs et les
+sous-créneaux propres à une mission sur une même frise, un axe temporel au
+quart d'heure partagé par toutes les lignes. Cliquer la piste d'une mission y
+crée un sous-créneau propre à elle ; glisser un bloc le décale par crans de
+15 minutes (la suite du même sous-créneau, s'il y en a une, suit) ; ALT
+maintenu le redimensionne depuis le bord saisi. **L'affichage est fin, le
+modèle ne l'est pas** : un sous-créneau reste une seule ligne de
+`Sous_creneaux`, quel que soit le geste qui l'a posé ou ajusté.
+
+**Modification en place, jamais suppression-recréation (invariant ajouté le
+2026-09-22).** Décaler ou redimensionner un sous-créneau qui porte déjà un
+`Besoin` modifie cette ligne sur place, en conservant son identifiant : un
+`Besoin` ne référence que l'identifiant de son `Sous_creneau`, jamais ses
+horaires, donc une suppression suivie d'une recréation l'orphelinerait
+silencieusement (`Besoins.Sous_creneau` retomberait à vide, Grist ne
+cascadant pas les suppressions). Seule la pose d'un tout premier sous-créneau
+sur une mission (aucun besoin encore dessus) peut passer par une création
+pure. Cette règle s'applique à tout geste d'édition d'un sous-créneau
+existant, pas seulement au glisser de la grille.
+
+**Suppression d'un macro-créneau (ajouté le 2026-09-22).** Un macro-créneau
+se supprime depuis l'Agenda (§8.1). Le geste est refusé, avec le motif
+affiché, si l'un de ses sous-créneaux porte déjà un `Besoin` — pour ne jamais
+faire disparaître silencieusement une mission déjà positionnée. **Écart
+constaté en relisant le code le 2026-09-23** : ce garde-fou ne couvre
+aujourd'hui que les besoins, pas un sous-créneau propre à une mission qui
+n'en a pas encore (`Sous_creneau.Mission` non vide, aucun `Besoin` positionné
+dessus) — un tel sous-créneau disparaît avec son macro-créneau sans refus.
+Le garde-fou du découpage automatique voisin (`redecouperSousCreneaux`,
+juste au-dessus) couvre bien les deux cas depuis le 2026-09-22 (commit
+`31cca15`) ; celui de la suppression ne l'a pas encore reçu. Signalé au fil
+Agenda/Intégration plutôt que corrigé ici, ce document décrivant le code tel
+qu'il est.
 
 Les sous-créneaux d'un même macro-créneau ne sont **pas** tenus de former une
 partition stricte. *(Décision Antoine, 2026-09-21 : « tolérée, signalée ».)*
@@ -294,7 +343,7 @@ jamais scindé entre deux jours d'affichage.
 | --- | --- |
 | `Missions` | `Nom`, `Lieu` (→), `Equipe` (→), `Priorite`, `Competences_requises`, `Description` |
 | `Besoins` | `Mission` (→), `Sous_creneau` (→), `Effectif_min`, `Effectif_max`, `Taille_groupe` |
-| `Groupes` | `Code` (indicatif, ex. « Beta12 »), `Taille`, `Equipe` (→) |
+| `Groupes` | `Code` (indicatif, ex. « B1 » — voir nomenclature ci-dessous), `Taille`, `Equipe` (→) |
 | `Positions_groupe` | `Groupe` (→), `Besoin` (→) |
 | `Places` | `Groupe` (→), `Rang` (1..*n*), `Benevole` (→), `Origine` (algorithme / manuel), `Verrouillee` (booléen), `Score` |
 
@@ -317,13 +366,26 @@ catalogue du §7.4. Ce n'est qu'une fois un `Besoin` créé que son effectif
 minimum peut, ou non, être atteint (voir « Sous-effectif », juste en dessous,
 et §7.4).
 
-**Dimensionnement par défaut d'un besoin (décision Antoine, 2026-09-21).** À la
-création, un besoin reçoit un seul binôme (un `Groupe` de `Taille` 2, positionné
-dessus via une ligne `Positions_groupe`). Si l'effectif nécessaire dépasse ce
-qu'un binôme peut fournir, un second binôme est ajouté explicitement sur le
-même besoin plutôt que d'agrandir le premier. C'est un défaut de création, pas
-une limite : `Besoins.Taille_groupe` reste le réglage qui permet de partir
-directement sur des trinômes ou plus quand une mission l'exige vraiment.
+**Aucun binôme automatique à la création d'un besoin (renversé le 2026-09-22,
+reprend la décision du 2026-09-21 ci-dessous).** Créer un `Besoin` ne pose
+plus de `Groupe` dessus : les indicatifs se créent librement et
+explicitement depuis la vue Indicatifs (§7.5), autant qu'on veut, un geste
+« + positionner un binôme » par besoin puis « + binôme » pour en ajouter
+d'autres. La vue affiche un repère non bloquant, **« ≈*N* binômes »**, où
+*N* = `Besoin.Effectif_min` ÷ 2 arrondi au-dessus : une indication de
+dimensionnement, jamais une création ni un blocage — le besoin peut rester
+sans indicatif, en avoir moins ou plus que ce repère, sans anomalie propre à
+cet écart (l'anomalie « sous-effectif » du §7.4 reste la seule mesure qui
+compte, sur l'effectif réellement pourvu). `Besoins.Taille_groupe` continue
+de fixer la taille des indicatifs qu'on y pose (binôme par défaut, trinôme ou
+plus si réglé).
+
+**Nomenclature des codes d'indicatif (ajoutée le 2026-09-22).** `Groupes.Code`
+suit une séquence unique pour tout le document, indépendante des équipes :
+A1 à Z1, puis A2 à Z2, et ainsi de suite, en sautant tout code déjà pris
+(y compris un ancien format hérité) pour ne jamais réattribuer un code
+existant. L'équipe d'un indicatif reste `Groupes.Equipe`, une colonne à part
+— jamais un préfixe du code.
 
 **Effectif minimum et maximum (précision du 2026-09-21).** En interface, seul
 l'effectif minimum est mis en avant : c'est lui qui déclenche l'alerte visuelle
@@ -337,9 +399,11 @@ conséquence).
 (`Groupes`) n'est plus rattaché à un seul besoin : il est positionné à l'avance
 sur autant de besoins que nécessaire via `Positions_groupe`, y compris sur des
 missions différentes d'un sous-créneau à l'autre. Exemple concret donné par
-Antoine : l'indicatif « Beta12 » est positionné sur le bar à 14h, puis sur la
-sécurité à 15h ; le binôme réel qui occupe Beta12 (les deux `Places` de rang 1
-et 2) est le même sur les deux créneaux, seule la mission change. C'est ce
+Antoine à l'époque du cadrage : l'indicatif « Beta12 » est positionné sur le
+bar à 14h, puis sur la sécurité à 15h ; le binôme réel qui occupe Beta12 (les
+deux `Places` de rang 1 et 2) est le même sur les deux créneaux, seule la
+mission change. Le principe illustré reste inchangé, mais le code lui-même
+ne suit plus ce format : voir la nomenclature ci-dessus (A1, B1…). C'est ce
 mécanisme qui porte à la fois :
 
 - la **stabilité des binômes** (un indicatif = un binôme qui ne change pas
@@ -588,9 +652,17 @@ fait gagner du temps le jour J.
 Liste de travail, à arbitrer (voir le brainstorm dans le fil et la
 [liste de questions](questions-cadrage.md#9-vues-et-ux)).
 
-1. **Agenda** — création et édition des macro-créneaux et sous-créneaux, en mode
-   semaine ou par jours choisis à la main, sans exigence de continuité.
-2. **Grille mission × sous-créneau** — qui est où, la vue des cheffes d'équipe.
+1. **Agenda** — création, édition et suppression des macro-créneaux et
+   sous-créneaux, en horizontal (la disposition verticale et le comparatif
+   envisagés en cadrage ont été abandonnés). Permet aussi le découpage
+   automatique en sous-créneaux d'une durée par défaut (§6.2, §11.1 point 3).
+   La suppression d'un macro-créneau est refusée, motif affiché, si un
+   besoin y est déjà positionné (garde-fou partiel, voir §6.2).
+2. **Grille mission × sous-créneau** — qui est où, la vue des cheffes
+   d'équipe. Présentée en frise (§6.2) : un axe commun au quart d'heure, une
+   piste par mission, clic pour créer un sous-créneau propre à la mission,
+   glisser pour le décaler, ALT maintenu pour le redimensionner. Les
+   sous-créneaux communs restent modifiables depuis l'Agenda (§8.1).
 3. **Vue tension** — couverture par mission et par quart d'heure, trous et
    sur-effectifs.
 4. **Vue anomalies** — liste des cas à traiter, structurée par le catalogue du
@@ -690,3 +762,13 @@ ailleurs dans ce document) : l'algorithme d'affectation, le catalogue
 d'anomalies, le verrouillage et la correction manuelle, les autres vues du
 §8. Rien n'empêche un fil d'avancer dessus en parallèle si Antoine le
 demande ; ce n'est simplement pas ce qui définit la V0.1 comme faite.
+
+**État au 2026-09-23 (relevé sur le code et les commits, pas une déclaration
+de « fait »).** Les quatre points ont du code écrit et poussé sur `main` :
+macro-créneaux (Agenda, création/édition/suppression), missions (création
+depuis le widget), découpage automatique de sous-créneaux, page Indicatifs
+(création libre de binômes, plus d'automatisme, §6.3). Un défaut d'affichage
+bloquant était en cours de correction chez le fil Intégration à cette date
+(un bloc de frise inatteignable au clic derrière sa piste). Ce document
+décrit ce que le code fait ; il ne se prononce pas sur le go donné à Antoine
+pour tester, qui reste la décision du fil qui porte l'intégration.
