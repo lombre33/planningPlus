@@ -1707,3 +1707,70 @@ describe('Magasin.remplacerDisponibilites', () => {
     expect(m.disponibilites).toEqual([dispo(1, 100)]);
   });
 });
+
+describe('Magasin.reinitialiserAffectations', () => {
+  function place(partiel: Partial<{id: Id; Benevole: Id | null; Origine: 'Manuel' | 'Algorithme'; Verrouillee: boolean; Score: number}>) {
+    return {id: 1, Groupe: 1, Rang: 1, Benevole: null, Origine: 'Manuel' as const, Verrouillee: false, Score: 0, ...partiel};
+  }
+
+  it('vide et déverrouille chaque place affectée ou verrouillée, y compris une place verrouillée déjà vide (demande d’Antoine, 2026-09-23)', async () => {
+    const m = new Magasin({
+      ...normaliser(),
+      places: [
+        place({id: 1, Benevole: 10, Origine: 'Algorithme', Verrouillee: false, Score: 0.8}), // à vider
+        place({id: 2, Benevole: null, Origine: 'Manuel', Verrouillee: true, Score: 0}), // verrouillée vide : sinon ignorée pour toujours par le solveur
+        place({id: 3, Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0}), // déjà à l'état cible
+      ],
+    });
+
+    const resultat = await m.reinitialiserAffectations();
+
+    expect(resultat).toEqual({ok: true});
+    expect(m.places).toEqual([
+      place({id: 1}), place({id: 2}), place({id: 3}),
+    ]);
+  });
+
+  it("en mode connecté, n'écrit que les places qui ont réellement changé", async () => {
+    const appels: unknown[] = [];
+    const m = new Magasin({
+      ...normaliser(),
+      places: [
+        place({id: 1, Benevole: 10}),
+        place({id: 2, Verrouillee: true}),
+        place({id: 3}), // déjà vide et déverrouillée : pas de patch attendu
+      ],
+    });
+    m.brancherEcriture(ecritureDeTest({
+      modifierPlaces: async (patches) => { appels.push(...patches); },
+    }));
+
+    await m.reinitialiserAffectations();
+
+    expect(appels).toEqual([
+      {id: 1, benevoleId: null, origine: 'Manuel', verrouillee: false, score: 0},
+      {id: 2, benevoleId: null, origine: 'Manuel', verrouillee: false, score: 0},
+    ]);
+  });
+
+  it("sur échec de l'écriture, ne modifie aucune place localement", async () => {
+    const m = new Magasin({...normaliser(), places: [place({id: 1, Benevole: 10})]});
+    m.brancherEcriture(ecritureDeTest({modifierPlaces: async () => { throw new Error('document indisponible'); }}));
+
+    const resultat = await m.reinitialiserAffectations();
+
+    expect(resultat).toEqual({ok: false, raison: "Échec de l'écriture dans le document Grist connecté. Réessayez."});
+    expect(m.places).toEqual([place({id: 1, Benevole: 10})]);
+  });
+
+  it("ne fait rien (et n'appelle pas le pont) si tout est déjà vide et déverrouillé", async () => {
+    let appele = false;
+    const m = new Magasin({...normaliser(), places: [place({id: 1})]});
+    m.brancherEcriture(ecritureDeTest({modifierPlaces: async () => { appele = true; }}));
+
+    const resultat = await m.reinitialiserAffectations();
+
+    expect(resultat).toEqual({ok: true});
+    expect(appele).toBe(false);
+  });
+});

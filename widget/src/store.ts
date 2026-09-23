@@ -1186,6 +1186,38 @@ export class Magasin {
     return {ok: true};
   }
 
+  /** Réinitialise complètement les affectations (bouton « Réinitialiser »,
+   *  demande d'Antoine du 2026-09-23) : vide ET déverrouille CHAQUE place, y
+   *  compris une place verrouillée déjà vide — sinon le solveur (§7.1) l'ignore
+   *  pour toujours (voir l'en-tête d'`assignerPlace`), et un « rerun complet »
+   *  ne repartirait pas d'une ardoise vraiment vierge. Détruit sans recours
+   *  les corrections manuelles existantes : à l'appelant de faire confirmer
+   *  ce geste avant d'appeler cette méthode (pas fait ici, pour rester une
+   *  opération pure comme le reste de ce fichier). */
+  async reinitialiserAffectations(): Promise<{ok: true} | {ok: false; raison: string}> {
+    const patches = this.data.places
+      .filter((p) => p.Benevole != null || p.Verrouillee)
+      .map((p) => ({id: p.id, benevoleId: null, origine: 'Manuel' as const, verrouillee: false, score: 0}));
+    if (patches.length === 0) { return {ok: true}; }
+    if (this.ecriture) {
+      try {
+        await this.ecriture.modifierPlaces(patches);
+      } catch {
+        return {ok: false, raison: "Échec de l'écriture dans le document Grist connecté. Réessayez."};
+      }
+    }
+    for (const patch of patches) {
+      const place = this.data.places.find((p) => p.id === patch.id);
+      if (!place) { continue; }
+      place.Benevole = patch.benevoleId;
+      place.Origine = patch.origine;
+      place.Verrouillee = patch.verrouillee;
+      place.Score = patch.score;
+    }
+    this.notifier();
+    return {ok: true};
+  }
+
   // --- Simulation ------------------------------------------------------------
 
   /** Clone profond et indépendant, pour simuler une modification (aperçu

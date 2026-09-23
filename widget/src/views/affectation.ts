@@ -24,6 +24,7 @@ import {lancerAlgorithme, type ResumeLancement} from '../logic/moteur-pont';
 import {classerCandidats, raisonsPlaceVide} from '../moteur/adaptateur-magasin';
 import type {CodeAnomalie, GraviteAnomalie} from '../moteur';
 import type {Magasin} from '../store';
+import {PAS_SECONDES} from '../temps';
 import {carteCandidatCompacte} from '../ui/candidat-carte';
 import {formatHeures, h, icone, ICONES, vider} from '../ui/dom';
 
@@ -66,6 +67,30 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
     if (dernierResume.echecEcriture) {
       dernierMessage = {texte: dernierResume.echecEcriture, ton: 'danger'};
     }
+    rafraichir();
+  }
+
+  /**
+   * Réinitialise tout le planning (demande d'Antoine, 2026-09-23) : détruit
+   * sans recours toute correction manuelle sur l'ensemble du festival, pas
+   * seulement le jour affiché — un geste irréversible, donc confirmé
+   * explicitement (point soulevé par le coordinateur), avec le nombre de
+   * places concernées annoncé avant de trancher.
+   */
+  async function executerReinitialisation(): Promise<void> {
+    const nbAffectees = m.places.filter((p) => p.Benevole != null || p.Verrouillee).length;
+    if (nbAffectees === 0) { return; }
+    const confirme = window.confirm(
+      `Réinitialiser TOUT le planning (${nbAffectees} place${nbAffectees > 1 ? 's' : ''} affectée${nbAffectees > 1 ? 's' : ''} ou verrouillée${nbAffectees > 1 ? 's' : ''}, tous les jours confondus) ?\n\n`
+      + "Ce geste vide et déverrouille chaque place, y compris vos corrections manuelles : irréversible. Vous pourrez ensuite relancer l'algorithme sur une ardoise vierge.",
+    );
+    if (!confirme) { return; }
+    dernierMessage = null;
+    dernierResume = null;
+    const resultat = await m.reinitialiserAffectations();
+    dernierMessage = resultat.ok
+      ? {texte: `${nbAffectees} place${nbAffectees > 1 ? 's' : ''} réinitialisée${nbAffectees > 1 ? 's' : ''}.`, ton: 'ok'}
+      : {texte: resultat.raison, ton: 'danger'};
     rafraichir();
   }
 
@@ -359,15 +384,37 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
         return rang[a.c.statut] - rang[b.c.statut];
       });
 
-    const roster = m.benevoles
+    // Roster limité aux bénévoles ayant au moins une disponibilité ce
+    // jour-là (demande d'Antoine, 2026-09-23) : les quarts du jour affiché
+    // viennent des mêmes macro-créneaux que `sousCreneauxDuJour` ci-dessus,
+    // pas des sous-créneaux (une dispo se déclare par macro-créneau, voir
+    // l'écran Disponibilités), donc reconstruits séparément à partir de
+    // `jour.macros`.
+    const quartsDuJour = new Set<number>();
+    for (const macro of jour?.macros ?? []) {
+      for (let t = macro.Debut; t < macro.Fin; t += PAS_SECONDES) { quartsDuJour.add(t); }
+    }
+    const benevolesDisposCeJour = new Set(
+      m.disponibilites
+        .filter((d) => d.Statut !== 'Indisponible' && quartsDuJour.has(d.Quart_heure))
+        .map((d) => d.Benevole),
+    );
+
+    const rosterFiltreEquipeRecherche = m.benevoles
       .filter((b) => equipeFiltre === 'toutes' || b.Equipe === equipeFiltre)
-      .filter((b) => rechercheRoster.trim() === '' || b.Nom.toLowerCase().includes(rechercheRoster.trim().toLowerCase()))
+      .filter((b) => rechercheRoster.trim() === '' || b.Nom.toLowerCase().includes(rechercheRoster.trim().toLowerCase()));
+    const roster = rosterFiltreEquipeRecherche
+      .filter((b) => benevolesDisposCeJour.has(b.id))
       .sort((a, b) => a.Nom.localeCompare(b.Nom, 'fr'));
 
     vider(container);
     container.append(
       h('div', {class: 'affectation__lancement', style: {display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', flexWrap: 'wrap'}},
         h('button', {class: 'btn btn--primary', type: 'button', onclick: executerAlgorithme}, "Lancer l'algorithme"),
+        h('button', {
+          class: 'btn btn--ghost', type: 'button', title: 'Vide et déverrouille tout le planning, tous les jours confondus',
+          onclick: () => { void executerReinitialisation(); },
+        }, 'Réinitialiser tout'),
         h('span', {class: 'view__intro', style: {margin: '0'}},
           "Remplit tout le planning non verrouillé à partir des indicatifs positionnés et des disponibilités (§7.5.1). Peut se relancer à volonté : les corrections manuelles, verrouillées, ne sont jamais reprises."),
       ),
@@ -413,7 +460,9 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
             roster.length === 0
               ? h('p', {class: 'empty'}, m.benevoles.length === 0
                 ? "Aucun bénévole importé pour l'instant : rien à affecter tant que le fil Disponibilités n'a pas importé les bénévoles."
-                : 'Aucun bénévole ne correspond à ce filtre.')
+                : rosterFiltreEquipeRecherche.length === 0
+                  ? 'Aucun bénévole ne correspond à ce filtre.'
+                  : `Aucun bénévole disponible ${jour ? jour.libelle.toLowerCase() : 'ce jour'} : le roster n'affiche que ceux qui ont déclaré au moins une disponibilité ce jour-là.`)
               : roster.map((b) => rosterCard(ix, b)),
           ),
         ),
