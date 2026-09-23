@@ -263,51 +263,62 @@ describe('créneaux propres à une mission (retour Antoine 2026-09-23, §6.2 : �
     };
   }
 
-  it('la grille montre l’union des créneaux applicables (4 colonnes), pas seulement les communs', () => {
+  // La frise (retour Antoine 2026-09-23 : un tableau à colonnes communes
+  // explose dès que plusieurs missions divergent) n'a pas de colonnes
+  // partagées entre missions : chaque ligne ne montre que ses propres blocs,
+  // reliés à leur ligne via le même `style.gridRow` que `ui/frise.ts` leur
+  // pose (aucun autre lien dans le DOM entre un bloc et sa mission).
+  function blocsDeLigne(nomMission: string): HTMLElement[] {
+    const labels = Array.from(container.querySelectorAll<HTMLElement>('.timeline__label'));
+    const label = labels.find((l) => l.textContent?.includes(nomMission))!;
+    const rangee = label.style.gridRow;
+    return Array.from(container.querySelectorAll<HTMLElement>('.timeline__bloc'))
+      .filter((b) => b.style.gridRow === rangee);
+  }
+
+  it('chaque mission ne montre que ses créneaux applicables, plus de colonnes communes à toutes', () => {
     const m = new Magasin(modele());
     montrerIndicatifs(container, m);
-    expect(container.querySelectorAll('.grille thead th')).toHaveLength(1 + 4); // Mission + 4 créneaux
+    expect(blocsDeLigne('Buvette')).toHaveLength(2); // ses 2 propres, jamais les communs qu'elle n'utilise plus
+    expect(blocsDeLigne('Accueil')).toHaveLength(2); // ses 2 communs à elle, jamais les propres de Buvette
   });
 
-  it('le binôme de la mission A apparaît sous sa colonne propre, pas perdu au commun qu’elle n’utilise plus', () => {
+  it('le binôme de la mission A apparaît sous son créneau propre, l’autre propre reste vide', () => {
     const m = new Magasin(modele());
     montrerIndicatifs(container, m);
-    const lignes = container.querySelectorAll('.grille tbody tr');
-    const ligneA = Array.from(lignes).find((tr) => tr.textContent?.includes('Buvette'))!;
-    const cellules = ligneA.querySelectorAll('td');
-    // [0] mission, puis colonnes triées par Debut : commun 10-11, propre A
-    // 10h30-11h30, commun 11-12, propre A 11h30-12h30.
-    expect(cellules[0]!.textContent).toContain('Buvette');
-    expect(cellules[1]!.className).toContain('besoin-cell--na'); // commun 10-11 : ne s'applique plus à A
-    expect(cellules[2]!.querySelector('.groupe-chip')).not.toBeNull(); // son propre 10h30-11h30
-    expect(cellules[3]!.className).toContain('besoin-cell--na'); // commun 11-12 : idem
-    expect(cellules[4]!.className).toContain('besoin-cell--vide'); // son propre 11h30-12h30, pas encore de besoin
+    const blocs = blocsDeLigne('Buvette');
+    const avecBinome = blocs.find((b) => b.querySelector('.groupe-chip'));
+    expect(avecBinome).not.toBeUndefined();
+    expect(avecBinome!.textContent).toContain('10h30-11h30 (propre A)');
+    const autre = blocs.find((b) => b !== avecBinome)!;
+    expect(autre.className).toContain('besoin-cell--vide');
+    expect(autre.title).toBe('11h30-12h30 (propre A)');
   });
 
-  it('la mission B, non concernée, garde ses communs et voit les propres de A comme non applicables', () => {
+  it('la mission B, non concernée, garde ses deux communs et ne voit jamais les propres de A', () => {
     const m = new Magasin(modele());
     montrerIndicatifs(container, m);
-    const lignes = container.querySelectorAll('.grille tbody tr');
-    const ligneB = Array.from(lignes).find((tr) => tr.textContent?.includes('Accueil'))!;
-    const cellules = ligneB.querySelectorAll('td');
-    expect(cellules[1]!.querySelector('.groupe-chip')).toBeNull();
-    expect(cellules[1]!.className).not.toContain('besoin-cell--na'); // son commun à elle, applicable
-    expect(cellules[2]!.className).toContain('besoin-cell--na'); // propre de A, pas le sien
-    expect(cellules[4]!.className).toContain('besoin-cell--na'); // idem
+    const blocs = blocsDeLigne('Accueil');
+    expect(blocs).toHaveLength(2);
+    expect(blocs.some((b) => b.textContent?.includes('10h-11h (commun)'))).toBe(true);
+    expect(blocs.some((b) => b.title === '11h-12h (commun)' && b.className.includes('besoin-cell--vide'))).toBe(true);
+    expect(blocs.some((b) => b.textContent?.includes('propre A'))).toBe(false);
+    expect(blocs.every((b) => b.querySelector('.groupe-chip') === null)).toBe(true); // aucun binôme positionné pour B
   });
 
   it('un redimensionnement fait ailleurs (vue Missions) se répercute ici sans démonter la vue', async () => {
     const m = new Magasin(modele());
     montrerIndicatifs(container, m);
-    const libelleAvant = container.querySelector('.grille thead th:nth-child(3)')?.textContent;
+    const blocAvant = blocsDeLigne('Buvette').find((b) => b.querySelector('.groupe-chip'))!;
+    const libelleAvant = blocAvant.textContent;
 
     // Même écriture que la vue Missions (`Magasin.redimensionnerCreneauMission`,
-    // glisser en tenant Alt) — les deux vues partagent le même Magasin, donc
-    // pas besoin de remonter la vue pour voir le changement (retour Antoine :
+    // poignée de bord) — les deux vues partagent le même Magasin, donc pas
+    // besoin de remonter la vue pour voir le changement (retour Antoine :
     // « il faut que les créneaux affichés s'adaptent en temps réel »).
     await m.redimensionnerCreneauMission(10, 1, false, 1800);
-    const libelleApres = container.querySelector('.grille thead th:nth-child(3)')?.textContent;
+    const blocApres = blocsDeLigne('Buvette').find((b) => b.querySelector('.groupe-chip'))!;
 
-    expect(libelleApres).not.toBe(libelleAvant);
+    expect(blocApres.textContent).not.toBe(libelleAvant);
   });
 });

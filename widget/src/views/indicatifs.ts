@@ -3,26 +3,33 @@
  * charges. Reprise de zéro (première version jugée inutilisable par Antoine)
  * — l'ancienne vue montrait un indicatif hors de tout contexte, dans une
  * liste plate puis une rangée de cartes reliées par des flèches. Celle-ci
- * réutilise au contraire la même grille missions × sous-créneaux que la vue
- * Missions (déjà validée) : chaque case affiche directement le ou les
- * indicatifs qui y sont positionnés, et sélectionner un indicatif surligne
- * sa trajectoire *dans* la grille plutôt que de l'extraire vers une vue à
- * part. Sélectionner une puce ouvre le détail (composition, trajectoire) et
- * permet de repositionner une étape (§7.5 point 4) en la glissant vers une
- * autre case, ou par un clic classer/cibler pour l'accessibilité clavier.
+ * réutilise au contraire la même frise que la vue Missions (`ui/frise.ts`,
+ * retour d'Antoine du 2026-09-23 : un tableau à colonnes communes explose
+ * dès que plusieurs missions divergent sur des créneaux propres à des
+ * bornes différentes — la plupart des colonnes deviennent alors « non
+ * applicable » pour la plupart des missions, noyant les binômes réellement
+ * positionnés) : chaque ligne de mission montre directement ses propres
+ * créneaux, positionnés dans le temps, sans jamais avoir besoin d'aligner
+ * ses bornes sur celles d'une autre mission. Sélectionner une puce ouvre le
+ * détail (composition, trajectoire) et permet de repositionner une étape
+ * (§7.5 point 4) en la glissant vers une autre case, ou par un clic
+ * classer/cibler pour l'accessibilité clavier.
  *
- * Ce que cette vue ne fait pas : affecter un·e bénévole à une place. C'est
- * le rôle de la vue Missions (et, à terme, de l'outil d'affectation dédié) —
- * ici, une place se lit et se verrouille, mais ne se pourvoit pas.
+ * Ce que cette vue ne fait pas : affecter un·e bénévole à une place, ni
+ * déplacer/redimensionner un créneau. C'est le rôle de la vue Missions (et,
+ * à terme, de l'outil d'affectation dédié) — ici, une place se lit et se
+ * verrouille, mais ne se pourvoit pas ; un créneau se positionne dans le
+ * temps, mais n'est jamais glissable depuis cette vue.
  */
 
-import type {Groupe, Id, Mission, SousCreneau} from '../domain/types';
+import type {Besoin, Epoch, Groupe, Id, Mission, SousCreneau} from '../domain/types';
 import {
-  type Index, couvertureBesoin, indexer, placesDuGroupe, positionsDuGroupe, regrouperParJour,
+  type Index, type Jour, couvertureBesoin, indexer, placesDuGroupe, positionsDuGroupe, regrouperParJour,
   sousCreneauxApplicables,
 } from '../logic/derive';
 import type {Magasin} from '../store';
 import {fermerPanneau, h, ouvrirPanneau, vider} from '../ui/dom';
+import {type BlocFrise, construireFrise} from '../ui/frise';
 
 type ModeCible = {groupeId: Id; positionId: Id | null; mode: 'deplacer' | 'ajouter'};
 
@@ -68,7 +75,6 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
     const missions = m.missions
       .filter((mi) => equipeFiltre === 'toutes' || mi.Equipe === equipeFiltre)
       .sort((a, b) => a.Equipe - b.Equipe || a.Nom.localeCompare(b.Nom, 'fr'));
-    const colonnes = colonnesUnion(missions, tousSousCreneaux);
 
     vider(container);
     container.append(
@@ -84,7 +90,7 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
               ? h('p', {class: 'empty'}, equipeFiltre === 'toutes'
                 ? 'Aucune mission définie. Créez vos missions avant de positionner des indicatifs.'
                 : 'Aucune mission pour cette équipe. Changez de filtre ou créez-en une.')
-              : construireGrille(ix, missions, colonnes, tousSousCreneaux),
+              : construireTimelineIndicatifs(ix, missions, jour!, tousSousCreneaux),
       ),
     );
 
@@ -95,19 +101,14 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
     }
   }
 
-  /** Colonnes de la grille : l'union des sous-créneaux applicables à chaque
-   *  mission affichée, pas la liste brute du jour — sans quoi une mission
-   *  ayant des créneaux propres (glisser/redimensionner dans la vue
-   *  Missions, §6.2) verrait ses binômes dans une colonne orpheline pendant
-   *  que sa ligne affiche une case vide trompeuse au créneau commun qu'elle
-   *  n'utilise plus (retour Antoine 2026-09-23). Dédupliquée par id : la
-   *  plupart des missions partagent les mêmes communs. */
-  function colonnesUnion(missions: Mission[], tousSousCreneaux: SousCreneau[]): SousCreneau[] {
-    const vues = new Map<Id, SousCreneau>();
-    for (const mission of missions) {
-      for (const sc of sousCreneauxApplicables(mission, tousSousCreneaux)) { vues.set(sc.id, sc); }
-    }
-    return Array.from(vues.values()).sort((a, b) => a.Debut - b.Debut || a.id - b.id);
+  /** Axe commun du jour affiché — mêmes bornes que la frise Missions (même
+   *  calcul, non exporté de `grille.ts` : trois lignes d'arithmétique, pas
+   *  une règle métier susceptible de diverger comme l'était
+   *  `sousCreneauxApplicables`). */
+  function axeJour(jour: Jour): {debut: Epoch; fin: Epoch} {
+    const debut = Math.min(...jour.macros.map((ma) => ma.Debut));
+    const fin = Math.max(...jour.macros.map((ma) => ma.Fin));
+    return {debut, fin};
   }
 
   // --- Barre d'outils : jour + équipe (mêmes contrôles que la vue Missions) --
@@ -144,49 +145,77 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
     );
   }
 
-  // --- Grille : identique dans sa structure à la vue Missions ---------------
+  // --- Frise : une ligne par mission, ses créneaux positionnés dans le temps
 
-  function construireGrille(
-    ix: Index, missions: Mission[], colonnes: SousCreneau[], tousSousCreneaux: SousCreneau[],
+  /** Un bloc de la frise Indicatifs : un sous-créneau applicable à la
+   *  mission (commun ou propre, §6.2), avec son besoin éventuel déjà résolu.
+   *  Jamais `deplacable` (voir l'en-tête du fichier) : la frise n'attache
+   *  alors aucun écouteur de glisser à elle, laissant le champ libre à nos
+   *  propres `dragover`/`dragleave`/`drop` posés directement par
+   *  `celluleIndicatifs` sur le contenu du bloc — un binôme se glisse
+   *  toujours entre besoins, jamais un créneau dans le temps. */
+  interface BlocIndicatif extends BlocFrise {
+    readonly sc: SousCreneau;
+    readonly mission: Mission;
+    readonly besoin: Besoin | null;
+  }
+
+  function construireTimelineIndicatifs(
+    ix: Index, missions: Mission[], jour: Jour, tousSousCreneaux: SousCreneau[],
   ): Node {
-    const thead = h('thead', null, h('tr', null,
-      h('th', {class: 'mission-cell'}, 'Mission'),
-      ...colonnes.map((sc) => h('th', null, sc.Libelle)),
-    ));
-    const tbody = h('tbody');
-    for (const mission of missions) {
+    const axe = axeJour(jour);
+    const lignes = missions.map((mission) => {
       const lieu = ix.lieu.get(mission.Lieu);
       const equipe = ix.equipe.get(mission.Equipe)!;
-      const applicables = new Set(sousCreneauxApplicables(mission, tousSousCreneaux).map((sc) => sc.id));
-      const tr = h('tr', null,
-        h('td', {class: 'mission-cell'},
+      const blocs: BlocIndicatif[] = sousCreneauxApplicables(mission, tousSousCreneaux).map((sc) => {
+        const besoin = m.besoins.find((b) => b.Mission === mission.id && b.Sous_creneau === sc.id) ?? null;
+        return {
+          // Un besoin a un id global unique : réutilisé tel quel, il retrouve
+          // le bon bloc dans le DOM sans jamais confondre deux missions qui
+          // partagent encore le même commun. Une case sans besoin n'a besoin
+          // d'aucune interaction (glisser exclu) : un identifiant synthétique
+          // hors de la plage des besoins réels suffit.
+          id: besoin ? besoin.id : -(sc.id * 100_000 + mission.id),
+          debut: sc.Debut, fin: sc.Fin, deplacable: false,
+          sc, mission, besoin,
+        };
+      });
+      return {
+        id: mission.id,
+        libelle: h('span', null,
           h('span', {class: 'dot', style: {background: equipe.Couleur, marginRight: '6px'}}),
           h('span', {class: 'nom'}, mission.Nom),
           h('span', {class: 'lieu'}, lieu?.Nom ?? ''),
         ),
-      );
-      for (const sc of colonnes) {
-        if (!applicables.has(sc.id)) {
-          tr.append(h('td', {
-            class: 'besoin-cell besoin-cell--na',
-            title: "Ce créneau ne s'applique pas à cette mission (créneau propre d'une autre mission, ou créneau commun qu'elle n'utilise plus)",
-          }));
-          continue;
-        }
-        const besoin = m.besoins.find((b) => b.Mission === mission.id && b.Sous_creneau === sc.id);
-        if (!besoin) {
-          tr.append(h('td', {class: 'besoin-cell besoin-cell--vide'}));
-          continue;
-        }
-        tr.append(h('td', {class: 'besoin-cell'}, celluleIndicatifs(ix, besoin.id)));
-      }
-      tbody.append(tr);
-    }
-    return h('div', {class: 'grille-wrap'}, h('table', {class: 'grille'}, thead, tbody));
+        blocs,
+      };
+    });
+
+    return construireFrise(lignes, {
+      axeDebut: axe.debut,
+      axeFin: axe.fin,
+      classesBloc: (bloc) => (bloc.besoin ? '' : 'besoin-cell--vide'),
+      titreBloc: (bloc) => (bloc.besoin ? undefined : bloc.sc.Libelle),
+      rendreBloc: (bloc) => (bloc.besoin ? [celluleIndicatifs(ix, bloc.besoin.id)] : []),
+      // Le clic utile (sélectionner une puce, cibler un besoin en mode
+      // cible) est déjà géré par les écouteurs posés sur le contenu du bloc
+      // dans `celluleIndicatifs` ; un clic hors de tout contenu (rare, une
+      // case sans besoin) n'a rien à déclencher.
+      onClicBloc: () => {},
+      onClicPiste: () => {},
+      // Jamais appelés : tous les blocs sont `deplacable: false` (voir plus
+      // haut), mais le type de `construireFrise` les exige.
+      onDeplacer: async () => ({ok: false, raison: 'Indicatifs ne déplace pas les créneaux — utilisez la vue Missions.'}),
+      onRedimensionner: async () => (
+        {ok: false, raison: 'Indicatifs ne redimensionne pas les créneaux — utilisez la vue Missions.'}
+      ),
+      surErreur: () => {},
+    });
   }
 
   function celluleIndicatifs(ix: Index, besoinId: Id): HTMLElement {
     const c = couvertureBesoin(m, ix, besoinId);
+    const sc = ix.sousCreneau.get(c.besoin.Sous_creneau)!;
     const sousEffectif = c.pourvues < c.besoin.Effectif_min;
     const surEffectif = c.pourvues > c.besoin.Effectif_max;
     const surlignee = groupeSelectionne != null && c.groupesPositionnes.some((g) => g.groupe.id === groupeSelectionne);
@@ -197,6 +226,10 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
     const cellule = h('div', {
       class: `indicatif-cell${modeCible ? ' indicatif-cell--cible' : ''}${surlignee ? ' indicatif-cell--surlignee' : ''}`,
     },
+      // L'horaire n'a plus d'en-tête de colonne partagé (frise, retour
+      // Antoine 2026-09-23) : chaque bloc porte le sien, comme la vue
+      // Missions le fait déjà pour ses propres blocs.
+      h('span', {class: 'besoin-cell__libelle'}, sc.Libelle),
       h('div', {class: `indicatif-cell__eff${sousEffectif ? ' indicatif-cell__eff--sous' : ''}`},
         h('span', null, `min ${c.besoin.Effectif_min}`),
         h('span', {

@@ -891,12 +891,14 @@ table.grille .mission-cell .lieu {
   font-size: 11px;
 }
 
-/* ---------- Frise Missions (CSS Grid) ----------
+/* ---------- Frise Missions et Indicatifs (CSS Grid) ----------
    Remplace l'ancien tableau à colonnes répétées par sous-créneau (demande
-   d'Antoine du 2026-09-22 : une frise commune, en-tête unique, pas de
-   colonne qui se répète en scrollant). `table.grille`/`.besoin-cell` et
-   compagnie, ci-dessus, restent utilisés tels quels par la vue Indicatifs
-   (même grille, même jour, même filtre) : ne pas les retoucher ici. */
+   d'Antoine du 2026-09-22 pour Missions, puis du 2026-09-23 pour Indicatifs
+   : un tableau à colonnes communes explose dès que plusieurs missions
+   divergent sur des créneaux propres à des bornes différentes). Les deux
+   vues partagent maintenant cette frise (`ui/frise.ts`) — `table.grille`/
+   `.grille-wrap`/`.mission-cell` ci-dessus n'ont plus d'appelant, gardées
+   ici en l'état plutôt que retirées à la volée dans ce correctif. */
 
 .timeline-wrap {
   overflow-x: auto;
@@ -1130,15 +1132,6 @@ table.grille .mission-cell .lieu {
   );
 }
 
-/* Vue Indicatifs uniquement : un créneau qui ne s'applique pas à cette
-   mission (créneau propre d'une autre mission, ou commun qu'elle n'utilise
-   plus, §6.2) — sciemment distinct de --vide (hachures) pour ne jamais
-   ressembler à une case qu'on pourrait remplir. */
-.besoin-cell--na {
-  background: var(--surface-muted);
-  opacity: 0.55;
-}
-
 .besoin {
   all: unset;
   cursor: pointer;
@@ -1271,12 +1264,14 @@ table.grille .mission-cell .lieu {
   margin-top: 3px;
 }
 
-/* ---------- Indicatifs (grille + trajectoire) ----------
-   La vue réutilise .grille-wrap / table.grille / .mission-cell /
-   .besoin-cell de la vue Missions (même grille, même jour, même filtre
-   équipe) : seul le contenu d'une case change, pour rester dans le même
-   repère visuel plutôt que de retomber dans une page à part déconnectée du
-   planning (cause du rejet de la première version). */
+/* ---------- Indicatifs (frise + trajectoire) ----------
+   La vue réutilise la frise de la vue Missions (`ui/frise.ts`/`.timeline*`,
+   même jour, même filtre équipe, depuis le 2026-09-23) : seul le contenu
+   d'un bloc change (`.indicatif-cell` ci-dessous), pour rester dans le
+   même repère visuel plutôt que de retomber dans une page à part
+   déconnectée du planning (cause du rejet de la toute première version) —
+   et pour ne plus dépendre de colonnes communes à toutes les missions, qui
+   explosaient dès que leurs créneaux propres divergeaient (§6.2). */
 
 .indicatifs-layout {
   display: flex;
@@ -1303,6 +1298,8 @@ table.grille .mission-cell .lieu {
   display: flex;
   flex-direction: column;
   gap: 5px;
+  width: 100%;
+  box-sizing: border-box;
   min-height: 52px;
   padding: 2px;
   border-radius: var(--radius-sm);
