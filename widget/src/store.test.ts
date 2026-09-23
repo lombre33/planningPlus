@@ -653,6 +653,60 @@ describe('Magasin.supprimerMacroCreneau', () => {
     expect(m.macroCreneaux).toBe(avantMacros);
     expect(m.sousCreneaux).toBe(avantSous);
   });
+
+  it("forcé, retire aussi les besoins et positions de groupe des sous-créneaux emportés ; missions et groupes/places restent (retour d'Antoine du 2026-09-23)", async () => {
+    const {m, macroId} = modeleUnMacro();
+    await m.redecouperSousCreneaux(macroId, 60);
+    const sousCreneauId = m.sousCreneaux[0]!.id;
+    const besoinId = await m.creerBesoin(1, sousCreneauId);
+    const groupeId = await m.creerGroupeSurBesoin(besoinId);
+
+    const resultat = await m.supprimerMacroCreneau(macroId, true);
+
+    expect(resultat).toEqual({ok: true});
+    expect(m.macroCreneaux).toHaveLength(0);
+    expect(m.sousCreneaux).toHaveLength(0);
+    expect(m.besoins).toHaveLength(0);
+    expect(m.positionsGroupe).toHaveLength(0);
+    // Le groupe (l'indicatif) et son roster de places restent : seule la
+    // position qui le rattachait à ce besoin a disparu, il redevient libre.
+    expect(m.groupes.map((g) => g.id)).toContain(groupeId);
+    expect(m.places.filter((p) => p.Groupe === groupeId)).toHaveLength(2);
+  });
+
+  it('forcé mais sans rien à cascader (aucun besoin) se comporte comme la suppression simple', async () => {
+    const {m, macroId} = modeleUnMacro();
+    await m.redecouperSousCreneaux(macroId, 60);
+
+    const resultat = await m.supprimerMacroCreneau(macroId, true);
+
+    expect(resultat).toEqual({ok: true});
+    expect(m.macroCreneaux).toHaveLength(0);
+    expect(m.sousCreneaux).toHaveLength(0);
+  });
+
+  it('forcé en mode connecté, transmet positions, besoins, sous-créneaux et macro en un seul appel du pont', async () => {
+    const {m, macroId} = modeleUnMacro();
+    await m.redecouperSousCreneaux(macroId, 60);
+    const sousCreneauId = m.sousCreneaux[0]!.id;
+    const besoinId = await m.creerBesoin(1, sousCreneauId);
+    const groupeId = await m.creerGroupeSurBesoin(besoinId);
+    const positionId = m.positionsGroupe.find((p) => p.Groupe === groupeId)!.id;
+    const idsSous = m.sousCreneaux.map((s) => s.id).sort((a, b) => a - b);
+    const appels: string[] = [];
+    m.brancherEcriture(ecritureDeTest({
+      supprimerMacroCreneau: async (macroCreneauId, sousCreneauIds, besoinIds, positionIds) => {
+        appels.push(JSON.stringify([
+          macroCreneauId, [...sousCreneauIds].sort((a, b) => a - b), besoinIds, positionIds,
+        ]));
+      },
+    }));
+
+    const resultat = await m.supprimerMacroCreneau(macroId, true);
+
+    expect(resultat).toEqual({ok: true});
+    expect(appels).toEqual([JSON.stringify([macroId, idsSous, [besoinId], [positionId]])]);
+  });
 });
 
 describe('Magasin.creerSousCreneauMission', () => {

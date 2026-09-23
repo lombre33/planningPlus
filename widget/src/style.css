@@ -935,11 +935,23 @@ table.grille .mission-cell .lieu {
   font-weight: 400;
 }
 
+/* « 16:00 » ne tient pas dans les 22px d'un quart d'heure (LARGEUR_QUART_PX,
+   ui/frise.ts) : centré, le texte débordait des deux côtés, mais le quart
+   suivant (une div vide, plus tard dans le DOM, même z-index) peignait son
+   propre fond par-dessus la moitié droite — ne laissant visible que
+   « 16: » (repéré par Antoine le 2026-09-23, capture à l'appui : « 16:( »
+   au lieu de « 16:00 »). Aligné à gauche contre la bordure de l'heure et
+   posé au-dessus (z-index de `.timeline__coin`), il ne déborde plus que
+   vers les quarts suivants — vides, jamais un autre horaire — qu'il peut
+   maintenant recouvrir sans rien perdre. */
 .axe-quart--heure {
   font-size: 11px;
   font-weight: 700;
   color: var(--text-muted);
   border-left: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+  z-index: 3;
 }
 
 .timeline__label {
@@ -955,6 +967,13 @@ table.grille .mission-cell .lieu {
 
 .timeline__label .nom { font-weight: 600; display: block; }
 .timeline__label .lieu { color: var(--text-muted); font-size: 11px; }
+
+.timeline__label__bouton-propre {
+  display: block;
+  margin-top: 4px;
+  padding: 1px 6px;
+  font-size: 10.5px;
+}
 
 /* Le fond de chaque ligne de mission : hachuré et cliquable sur toute la
    plage (crée un créneau propre à l'horaire cliqué). Ce qui en reste

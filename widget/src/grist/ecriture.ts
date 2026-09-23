@@ -374,6 +374,15 @@ export function actionsSupprimerBesoin(besoinId: Id): UserAction[] {
   return [['RemoveRecord', 'Besoins', besoinId]];
 }
 
+/** Supprime plusieurs besoins en un seul aller-retour (suppression forcée
+ *  d'un macro-créneau, §8 vue Agenda, 2026-09-23 : chaque besoin de ses
+ *  sous-créneaux s'en va explicitement, Grist ne cascade pas). N'efface
+ *  pas les positions de groupe qui les référencent. */
+export function actionsSupprimerBesoins(besoinIds: readonly Id[]): UserAction[] {
+  if (besoinIds.length === 0) { return []; }
+  return [['BulkRemoveRecord', 'Besoins', [...besoinIds]]];
+}
+
 // --- Groupe, positions, roster --------------------------------------------
 
 export interface NouveauGroupe {
@@ -440,6 +449,15 @@ export function actionsDeplacerPositionGroupe(positionId: Id, nouveauBesoinId: I
 /** Retire un groupe d'un besoin (la position disparaît, le groupe et ses places restent). */
 export function actionsRetirerPositionGroupe(positionId: Id): UserAction[] {
   return [['RemoveRecord', 'Positions_groupe', positionId]];
+}
+
+/** Retire plusieurs positions en un seul aller-retour (suppression forcée
+ *  d'un macro-créneau, §8 vue Agenda, 2026-09-23) : les groupes (binômes)
+ *  et leurs places restent, seules les positions disparaissent — les
+ *  binômes redeviennent libres. */
+export function actionsRetirerPositionsGroupe(positionIds: readonly Id[]): UserAction[] {
+  if (positionIds.length === 0) { return []; }
+  return [['BulkRemoveRecord', 'Positions_groupe', [...positionIds]]];
 }
 
 export interface NouvellePlace {

@@ -63,13 +63,17 @@ export interface EcritureGrist {
    *  ensemble (voir `Magasin.enregistrerMacroCreneau`, qui ne les sépare
    *  jamais côté appelant). */
   modifierMacroCreneau(id: Id, macro: {nom: string; debut: Epoch; fin: Epoch}): Promise<void>;
-  /** Supprime un macro-créneau déjà réel et les sous-créneaux donnés (les
-   *  siens) en un seul aller-retour (`RemoveRecord` + `BulkRemoveRecord`) —
-   *  Grist ne cascade pas les suppressions, donc les sous-créneaux à
-   *  emporter sont fournis explicitement par l'appelant (voir
-   *  `Magasin.supprimerMacroCreneau`, qui garde le même garde-fou que
-   *  `redecouperSousCreneaux` : refus si l'un d'eux porte déjà un besoin). */
-  supprimerMacroCreneau(macroCreneauId: Id, sousCreneauIds: readonly Id[]): Promise<void>;
+  /** Supprime un macro-créneau déjà réel, ses sous-créneaux (les siens),
+   *  et — suppression forcée seulement (`Magasin.supprimerMacroCreneau`,
+   *  `forcer: true`, demande d'Antoine du 2026-09-23) — les besoins de ces
+   *  sous-créneaux et les positions de groupe (binômes) sur ces besoins,
+   *  en un seul aller-retour. Grist ne cascade pas les suppressions, donc
+   *  chaque ligne qui ne vit que par ce qui part est fournie explicitement
+   *  par l'appelant ; `besoinIds`/`positionIds` restent vides quand rien
+   *  n'est à cascader (refus par défaut, hors suppression forcée). */
+  supprimerMacroCreneau(
+    macroCreneauId: Id, sousCreneauIds: readonly Id[], besoinIds: readonly Id[], positionIds: readonly Id[],
+  ): Promise<void>;
   /** Écrit un artiste (un passage : nom, lieu, horaires) et rend l'id que
    *  Grist lui attribue — voir `Magasin.enregistrerArtiste`, qui l'attend
    *  avant d'insérer localement, pour la même raison que `creerMission`.
@@ -383,29 +387,44 @@ export class Magasin {
   /** Supprime un macro-créneau et ses sous-créneaux (Grist ne cascade pas —
    *  demande du fil Agenda, 2026-09-22, pour le bouton de suppression de la
    *  vue Agenda). Même garde-fou que `redecouperSousCreneaux` (aligné le
-   *  2026-09-23, écart repéré par le fil Cahier des charges) : refuse si
-   *  l'un des sous-créneaux porte déjà une mission — un besoin positionné
-   *  dessus, ou un créneau propre à une mission (`Sous_creneau.Mission`)
-   *  qui n'a pas forcément de `Besoin` — plutôt que d'orpheliner ou
-   *  d'effacer silencieusement ce travail. */
-  async supprimerMacroCreneau(macroId: Id): Promise<{ok: true} | {ok: false; raison: string}> {
+   *  2026-09-23, écart repéré par le fil Cahier des charges) : refuse par
+   *  défaut si l'un des sous-créneaux porte déjà une mission — un besoin
+   *  positionné dessus, ou un créneau propre à une mission
+   *  (`Sous_creneau.Mission`) qui n'a pas forcément de `Besoin` — plutôt
+   *  que d'orpheliner ou d'effacer silencieusement ce travail.
+   *
+   *  `forcer` (retour d'Antoine du 2026-09-23, geste posé par la vue
+   *  Agenda) passe outre ce refus : les positions de groupe (binômes) sur
+   *  les besoins de ces sous-créneaux, ces besoins, puis les sous-créneaux
+   *  eux-mêmes (communs et propres) partent avec le macro-créneau. Les
+   *  missions et les groupes (binômes, avec leurs places) ne sont jamais
+   *  touchés : un groupe positionné ici redevient seulement libre — sa
+   *  ligne `Groupe` et son roster `Places` vivent indépendamment de
+   *  `PositionGroupe`, qui est tout ce qui le rattachait à ces besoins. */
+  async supprimerMacroCreneau(macroId: Id, forcer = false): Promise<{ok: true} | {ok: false; raison: string}> {
     const macro = this.data.macroCreneaux.find((m) => m.id === macroId);
     if (!macro) { return {ok: false, raison: 'Macro-créneau introuvable.'}; }
     const sousCreneauxDuMacro = this.data.sousCreneaux.filter((s) => s.Macro_creneau === macroId);
-    const aUneMission = sousCreneauxDuMacro.some((s) => s.Mission != null || this.data.besoins.some((b) => b.Sous_creneau === s.id));
-    if (aUneMission) {
+    const sousCreneauIds = sousCreneauxDuMacro.map((s) => s.id);
+    const besoinsDuMacro = this.data.besoins.filter((b) => sousCreneauIds.includes(b.Sous_creneau));
+    const aUneMission = sousCreneauxDuMacro.some((s) => s.Mission != null) || besoinsDuMacro.length > 0;
+    if (aUneMission && !forcer) {
       return {
         ok: false,
         raison: 'Des missions sont déjà positionnées sur ce macro-créneau : la suppression n\'est pas possible sans risquer de perdre ce travail.',
       };
     }
+    const besoinIds = besoinsDuMacro.map((b) => b.id);
+    const positionIds = this.data.positionsGroupe.filter((p) => besoinIds.includes(p.Besoin)).map((p) => p.id);
     if (this.ecriture) {
       try {
-        await this.ecriture.supprimerMacroCreneau(macroId, sousCreneauxDuMacro.map((s) => s.id));
+        await this.ecriture.supprimerMacroCreneau(macroId, sousCreneauIds, besoinIds, positionIds);
       } catch {
         return {ok: false, raison: 'Échec de l\'écriture dans le document Grist : la suppression a été annulée.'};
       }
     }
+    this.data.positionsGroupe = this.data.positionsGroupe.filter((p) => !positionIds.includes(p.id));
+    this.data.besoins = this.data.besoins.filter((b) => !besoinIds.includes(b.id));
     this.data.sousCreneaux = this.data.sousCreneaux.filter((s) => s.Macro_creneau !== macroId);
     this.data.macroCreneaux = this.data.macroCreneaux.filter((m) => m.id !== macroId);
     this.notifier();

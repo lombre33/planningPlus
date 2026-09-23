@@ -152,6 +152,19 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
           h('span', {class: 'dot', style: {background: equipe.Couleur, marginRight: '6px'}}),
           h('span', {class: 'nom'}, mission.Nom),
           h('span', {class: 'lieu'}, lieu?.Nom ?? ''),
+          // Un découpage automatique tapisse le jour de communs bord à bord
+          // (repéré à l'écran le 2026-09-23, en écho au retour d'Antoine
+          // « je ne vois pas la fonctionnalité de glisser/redimensionner » :
+          // sans le moindre quart d'heure vide, la piste — seul déclencheur
+          // du créneau propre, seul type glissable, `deplacable: estPropre`
+          // ci-dessus — n'a jamais nulle part où recevoir ce clic. Ce bouton
+          // reste donc le seul chemin garanti vers un créneau propre, tiling
+          // complet ou non.
+          h('button', {
+            class: 'btn btn--ghost btn--sm timeline__label__bouton-propre', type: 'button',
+            title: 'Donner à cette mission un créneau à elle, décalé ou en pause par rapport à la trame commune',
+            onclick: () => ouvrirCreationCreneauMission(mission, jour, axe.debut),
+          }, '+ créneau'),
         ),
         blocs,
       };
