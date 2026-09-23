@@ -1,11 +1,9 @@
 # PlanningPlus — Cahier des charges
 
-**Version :** v1.12 (§7.2 : le binôme souhaité passe objectif 2, devant
-l'artiste souhaité qui recule en objectif 7 — renversement volontaire
-d'Antoine, 2026-09-23 17h49, ce que ça implique côté moteur noté pour le
-fil Algorithme ; priorité de mission en cas de pénurie reconfirmée par
-Antoine, déjà en place et testée — v1.11 avait posé §8 : correctif Artistes
-et mécanisme du filtre global, voir aussi v1.6 à v1.10)
+**Version :** v1.13 (§7.1 : nouvelle contrainte dure — un bénévole n'a
+qu'un seul indicatif par jour, l'exclusivité reste à câbler côté moteur,
+noté pour le fil Algorithme — Antoine, 2026-09-23 20h38 ; historique des
+versions précédentes dans `git log` sur ce fichier)
 **Statut :** structure et règles validées (§6.3, §7.5) ; développement agile
 par incréments courts depuis le 2026-09-22 (§11.1) ; document tenu à jour au
 fil du code plutôt qu'en fin de sprint, sur consigne du coordinateur
@@ -503,6 +501,23 @@ explicite la règle du §5.4 (rien de significatif ne vit hors du document).
 2. Un bénévole n'est affecté que sur des quarts d'heure où il est disponible.
 3. Les compétences requises par la mission sont détenues par le bénévole.
 4. Une affectation verrouillée n'est jamais déplacée.
+5. **Un bénévole n'a qu'un seul indicatif par jour (macro-créneau)** : une
+   fois affecté à un indicatif, il y reste pour toute la journée — c'est
+   l'indicatif entier qui doit être compatible, pas seulement le créneau en
+   cours de remplissage (voir §6.3 : « les missions tournent, pas les
+   personnes »). *(Antoine, 2026-09-23 20h38, dans le fil Algorithme.)*
+
+   *(Vérifié dans le moteur le même jour : `evaluerEligibilite` compare déjà
+   la disponibilité du bénévole à `quartsParGroupe`, l'ensemble des quarts
+   couverts par toutes les positions de l'indicatif — pas seulement celle en
+   cours de remplissage, donc déjà correct sur ce point précis. Il manque en
+   revanche l'exclusivité par jour elle-même : rien n'empêche aujourd'hui un
+   bénévole d'être affecté à un indicatif le matin et à un *autre* indicatif
+   l'après-midi du même macro-créneau, dès lors que leurs quarts ne se
+   recouvrent pas — seule la contrainte 1 ci-dessus est vérifiée. Reste à
+   ajouter : un bénévole déjà affecté à un indicatif sur le macro-créneau du
+   jour doit devenir inéligible à tout autre indicatif sur ce même jour.
+   Pour le fil Algorithme d'affectation.)*
 
 *(L'effectif maximum d'un besoin n'est plus une contrainte dure : le dépasser
 reste possible — un renfort ponctuel — et remonte en anomalie « sur-effectif »
