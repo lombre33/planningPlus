@@ -30,6 +30,7 @@ import {
   actionsRetirerPositionGroupe, actionsRetirerPositionsGroupe, actionsSupprimerBesoins, actionsSupprimerDisponibilites,
   actionsSupprimerMacroCreneau, actionsSupprimerSousCreneaux,
   appliquerActions,
+  colonnesDeTable,
   decoderNombre,
   LIBELLE_PAR_TABLE, lireDocument, zipperTable,
 } from './grist';
@@ -197,6 +198,17 @@ function construireEcritureGrist(
       const ids = table.id ?? [];
       const colonne = table[colId] ?? [];
       return new Map(ids.map((id, i) => [id as Id, colonne[i]]));
+    },
+    async colonnesTable(tableId) {
+      // Lecture directe des tables système (mêmes deux tables et même id
+      // réel que `reglerAffichageTablesCreees` juste au-dessus, pour un
+      // usage différent) : pas de résolution canonique ici non plus,
+      // `tableId` est déjà l'identifiant réel du document.
+      const [lignesTables, lignesColonnes] = await Promise.all([
+        docApi.fetchTable('_grist_Tables').then(zipperTable),
+        docApi.fetchTable('_grist_Tables_column').then(zipperTable),
+      ]);
+      return colonnesDeTable(lignesTables, lignesColonnes, tableId);
     },
     async definirParametre(cle, valeur) {
       const [retVal] = await appliquerActions(docApi, actionsDefinirParametre(cle, valeur, lignesParametres), resolution);

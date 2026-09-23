@@ -31,6 +31,7 @@ function ecritureDeTest(partielle: Partial<EcritureGrist> = {}): EcritureGrist {
     supprimerPosition: nonBranchee('supprimerPosition'),
     definirAbsence: nonBranchee('definirAbsence'),
     valeursColonneBrute: nonBranchee('valeursColonneBrute'),
+    colonnesTable: nonBranchee('colonnesTable'),
     definirParametre: nonBranchee('definirParametre'),
     remplacerDisponibilites: nonBranchee('remplacerDisponibilites'),
     ...partielle,
@@ -1314,6 +1315,29 @@ describe('Magasin.valeursColonneBrute', () => {
 
     expect(appels).toEqual([{tableId: 'Souhaits_artistes', colId: 'Reponse'}]);
     expect(valeurs).toEqual(new Map([[1, 'a'], [2, 'b']]));
+  });
+});
+
+describe('Magasin.colonnesTable', () => {
+  it('sans écrivain branché (mode démo, clone), rend un tableau vide', async () => {
+    const m = new Magasin(normaliser());
+    expect(await m.colonnesTable('Benevoles')).toEqual([]);
+  });
+
+  it('avec une écriture branchée, transmet tableId tel quel et rend son résultat', async () => {
+    const appels: unknown[] = [];
+    const m = new Magasin(normaliser());
+    m.brancherEcriture(ecritureDeTest({
+      colonnesTable: async (tableId) => {
+        appels.push({tableId});
+        return [{colId: 'Reponse', label: 'Réponse', type: 'Text'}];
+      },
+    }));
+
+    const colonnes = await m.colonnesTable('Benevoles');
+
+    expect(appels).toEqual([{tableId: 'Benevoles'}]);
+    expect(colonnes).toEqual([{colId: 'Reponse', label: 'Réponse', type: 'Text'}]);
   });
 });
 

@@ -108,6 +108,7 @@ describe('montrerGrille sur un document vide', () => {
       supprimerPosition: async () => {},
       definirAbsence: async () => {},
       valeursColonneBrute: async () => new Map(),
+      colonnesTable: async () => [],
       definirParametre: async () => {},
       remplacerDisponibilites: async () => {},
     };
