@@ -263,4 +263,36 @@ describe('sousCreneauxApplicables (§6.2, « communs, avec exceptions ») — pa
     const propreAutre = {id: 1, Macro_creneau: 1, Mission: autreMission.id, Libelle: '10h-11h', Debut: 0, Fin: 3600} as SousCreneau;
     expect(sousCreneauxApplicables(mission, [propreAutre])).toEqual([]);
   });
+
+  it("des bornes désalignées entre missions (longueurs différentes, chevauchement partiel, hors quart d'heure) ne font jamais lever d'exception", () => {
+    // Chaque mission a redimensionné ses propres créneaux indépendamment
+    // (retour d'Antoine du 2026-09-23, glisser depuis les poignées) : rien
+    // ne garantit plus que les bornes tombent sur le même quart d'heure
+    // d'une mission à l'autre, ni même qu'elles ne se chevauchent pas.
+    const propreBuvette1 = {
+      id: 10, Macro_creneau: 1, Mission: mission.id, Libelle: 'a', Debut: 137, Fin: 2513,
+    } as SousCreneau; // durée non multiple de 900s, bornes hors quart d'heure
+    const propreBuvette2 = {
+      id: 11, Macro_creneau: 1, Mission: mission.id, Libelle: 'b', Debut: 2000, Fin: 3000,
+    } as SousCreneau; // chevauche partiellement propreBuvette1
+    const propreSecurite = {
+      id: 12, Macro_creneau: 1, Mission: autreMission.id, Libelle: 'c', Debut: -450, Fin: 400,
+    } as SousCreneau; // borne négative, longueur très différente
+    const tous = [propreBuvette1, propreBuvette2, propreSecurite];
+
+    expect(() => sousCreneauxApplicables(mission, tous)).not.toThrow();
+    expect(() => sousCreneauxApplicables(autreMission, tous)).not.toThrow();
+    expect(sousCreneauxApplicables(mission, tous)).toEqual([propreBuvette1, propreBuvette2]);
+    expect(sousCreneauxApplicables(autreMission, tous)).toEqual([propreSecurite]);
+
+    // colonnesUnion (indicatifs.ts) et construireTimeline (grille.ts) partent
+    // toutes deux de l'union de ces listes par id : jamais de doublon ni
+    // d'exception même quand deux missions n'ont, entre elles, plus aucune
+    // borne en commun.
+    const union = new Map<number, SousCreneau>();
+    for (const m of [mission, autreMission]) {
+      for (const sc of sousCreneauxApplicables(m, tous)) { union.set(sc.id, sc); }
+    }
+    expect([...union.values()].sort((a, b) => a.Debut - b.Debut)).toEqual([propreSecurite, propreBuvette1, propreBuvette2]);
+  });
 });
