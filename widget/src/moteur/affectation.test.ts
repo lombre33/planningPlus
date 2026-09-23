@@ -297,6 +297,36 @@ describe('calculerAffectation — jamais de double réservation', () => {
     // le solveur ne produit donc jamais l'anomalie « double engagement » (§7.4).
     expect(resultat.anomalies.some((a) => a.code === 'double_engagement')).toBe(false);
   });
+
+  it("n'affecte jamais le même bénévole à deux groupes différents le même jour (macro-créneau), même sans chevauchement horaire (demande d'Antoine, 2026-09-23)", () => {
+    const missionA = creerMission();
+    const missionB = creerMission();
+    // Même jour (macroCreneauId: 1 par défaut), matin puis après-midi : aucun chevauchement horaire.
+    const sousCreneauA = creerSousCreneau(h(0, 10), h(0, 11));
+    const sousCreneauB = creerSousCreneau(h(0, 14), h(0, 15));
+    const besoinA = creerBesoin(missionA.id, sousCreneauA.id, {effectifMin: 1, effectifMax: 1});
+    const besoinB = creerBesoin(missionB.id, sousCreneauB.id, {effectifMin: 1, effectifMax: 1});
+    const groupeA = creerGroupe();
+    const groupeB = creerGroupe();
+    const positionA = creerPositionGroupe(groupeA.id, besoinA.id);
+    const positionB = creerPositionGroupe(groupeB.id, besoinB.id);
+    const placeA = creerPlace(groupeA.id, 1);
+    const placeB = creerPlace(groupeB.id, 1);
+    const seulBenevole = creerBenevole();
+
+    const resultat = calculerAffectation(donnees({
+      benevoles: [seulBenevole], missions: [missionA, missionB], sousCreneaux: [sousCreneauA, sousCreneauB],
+      besoins: [besoinA, besoinB], groupes: [groupeA, groupeB], positionsGroupe: [positionA, positionB],
+      places: [placeA, placeB],
+      disponibilites: [
+        ...disponibilitesIntervalle(seulBenevole.id, h(0, 10), h(0, 11)),
+        ...disponibilitesIntervalle(seulBenevole.id, h(0, 14), h(0, 15)),
+      ],
+    }));
+
+    const affectes = resultat.propositions.filter((p) => p.benevoleIdApres != null);
+    expect(affectes.length).toBeLessThanOrEqual(1); // un seul indicatif ce jour-là, jamais les deux
+  });
 });
 
 describe('calculerAffectation — périmètre et verrouillage', () => {
