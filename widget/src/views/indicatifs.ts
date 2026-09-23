@@ -24,9 +24,10 @@
 
 import type {Besoin, Epoch, Groupe, Id, Mission, SousCreneau} from '../domain/types';
 import {
-  type Index, type Jour, couvertureBesoin, indexer, placesDuGroupe, positionsDuGroupe, regrouperParJour,
-  sousCreneauxApplicables,
+  type Candidat, type Index, type Jour, couvertureBesoin, indexer, placesDuGroupe, positionsDuGroupe,
+  regrouperParJour, sousCreneauxApplicables,
 } from '../logic/derive';
+import {classerCandidats} from '../moteur/adaptateur-magasin';
 import type {Magasin} from '../store';
 import {fermerPanneau, h, ouvrirPanneau, vider} from '../ui/dom';
 import {type BlocFrise, construireFrise} from '../ui/frise';
@@ -39,6 +40,10 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
   let groupeSelectionne: Id | null = null;
   let modeCible: ModeCible | null = null;
   let dernierMessage: {texte: string; ton: 'ok' | 'danger'} | null = null;
+  /** Place dont le panneau montre la liste de candidats suggérés (retour
+   *  Antoine 2026-09-23, point 9 : cliquer #1/#2). Purement informatif —
+   *  jamais d'affectation depuis cette vue, voir `panneauIndicatif`. */
+  let placeCandidatsVisible: Id | null = null;
 
   // État transitoire du glisser-déposer natif (pas dans le magasin : ça ne
   // survit pas à un rafraîchissement, et n'a pas à le faire).
@@ -127,7 +132,7 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
     return h('div', {class: 'agenda__toolbar'},
       ...jours.map((j, i) => h('button', {
         class: `btn btn--sm${i === jourIndex ? ' btn--primary' : ''}`, type: 'button',
-        onclick: () => { jourIndex = i; groupeSelectionne = null; modeCible = null; rafraichir(); },
+        onclick: () => { jourIndex = i; groupeSelectionne = null; modeCible = null; placeCandidatsVisible = null; rafraichir(); },
       }, j.libelle.split(' ').slice(0, 1).join(' '))),
       h('select', {
         class: 'select',
@@ -356,6 +361,7 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
       e.stopPropagation();
       if (modeCible) { return; }
       groupeSelectionne = groupeSelectionne === groupe.id ? null : groupe.id;
+      placeCandidatsVisible = null;
       rafraichir();
     });
     chip.addEventListener('dragstart', () => {
@@ -372,6 +378,28 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
 
   // --- Panneau latéral : composition + trajectoire --------------------------
 
+  /** Candidats classés pour une place vide non verrouillée (retour Antoine
+   *  2026-09-23, point 9 : cliquer #1/#2) — réutilise le même classement que
+   *  la vue Affectation (`classerCandidats`, `moteur/adaptateur-magasin.ts`),
+   *  y compris les bénévoles partiellement disponibles, jamais un nouveau
+   *  classement écrit ici. Purement informatif, sans bouton d'affectation :
+   *  cette vue ne pourvoit toujours pas de place (voir le paragraphe sous la
+   *  composition, `panneauIndicatif`). */
+  function candidatsSuggeres(ix: Index, groupeId: Id): HTMLElement {
+    const candidats: Candidat[] = classerCandidats(m, ix, groupeId).slice(0, 5);
+    if (candidats.length === 0) {
+      return h('p', {class: 'empty', style: {margin: '4px 0 8px'}}, 'Aucun bénévole disponible ne ressort du classement.');
+    }
+    return h('div', {style: {display: 'flex', flexDirection: 'column', gap: '6px', margin: '4px 0 8px'}},
+      ...candidats.map((c) => h('div', {class: 'candidat'},
+        h('div', {class: 'candidat__head'}, h('span', {class: 'candidat__nom'}, c.nom)),
+        c.tags.length > 0
+          ? h('div', {class: 'candidat__raisons'}, ...c.tags.map((t) => h('span', {class: `tag tag--${t.sens}`}, t.texte)))
+          : null,
+      )),
+    );
+  }
+
   function panneauIndicatif(ix: Index, groupeId: Id): void {
     const groupe = ix.groupe.get(groupeId)!;
     const equipe = ix.equipe.get(groupe.Equipe)!;
@@ -387,27 +415,42 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
         ),
         h('button', {
           class: 'btn btn--ghost btn--sm', type: 'button',
-          onclick: () => { groupeSelectionne = null; rafraichir(); },
+          onclick: () => { groupeSelectionne = null; placeCandidatsVisible = null; rafraichir(); },
         }, 'Fermer'),
       ),
 
       h('div', null,
         h('div', {class: 'section-title'}, h('h2', null, 'Composition')),
         h('div', {class: 'card', style: {display: 'flex', flexDirection: 'column', gap: '6px'}},
-          ...places.map((place) => h('div', {class: 'membre'},
-            h('span', {class: 'rang mono'}, `#${place.Rang}`),
-            place.Benevole != null
-              ? h('span', {style: {flex: '1'}}, ix.benevole.get(place.Benevole)!.Nom)
-              : h('span', {style: {flex: '1', color: 'var(--text-faint)'}}, 'Non pourvue'),
-            h('button', {
-              class: 'btn btn--ghost btn--sm', type: 'button',
-              title: place.Verrouillee ? 'Déverrouiller' : 'Verrouiller',
-              onclick: () => m.basculerVerrouillage(place.id),
-            }, place.Verrouillee ? '🔒' : '🔓'),
-          )),
+          ...places.map((place) => {
+            const suggerable = place.Benevole == null && !place.Verrouillee;
+            return h('div', null,
+              h('div', {class: 'membre'},
+                suggerable
+                  ? h('button', {
+                    class: 'rang mono', type: 'button', style: {background: 'none', border: 'none', cursor: 'pointer', padding: '0'},
+                    title: 'Voir des bénévoles suggérés pour cette place',
+                    onclick: () => {
+                      placeCandidatsVisible = placeCandidatsVisible === place.id ? null : place.id;
+                      rafraichir();
+                    },
+                  }, `#${place.Rang}`)
+                  : h('span', {class: 'rang mono'}, `#${place.Rang}`),
+                place.Benevole != null
+                  ? h('span', {style: {flex: '1'}}, ix.benevole.get(place.Benevole)!.Nom)
+                  : h('span', {style: {flex: '1', color: 'var(--text-faint)'}}, 'Non pourvue'),
+                h('button', {
+                  class: 'btn btn--ghost btn--sm', type: 'button',
+                  title: place.Verrouillee ? 'Déverrouiller' : 'Verrouiller',
+                  onclick: () => m.basculerVerrouillage(place.id),
+                }, place.Verrouillee ? '🔒' : '🔓'),
+              ),
+              placeCandidatsVisible === place.id ? candidatsSuggeres(ix, groupe.id) : null,
+            );
+          }),
         ),
         h('p', {class: 'view__intro', style: {marginTop: '8px', marginBottom: '0'}},
-          "L'affectation des bénévoles se fait depuis la vue Missions — ici, une place se verrouille mais ne se pourvoit pas.",
+          "L'affectation des bénévoles se fait depuis la vue Missions — ici, une place se verrouille et peut vous suggérer des candidats classés (#1/#2), mais ne se pourvoit pas depuis ce panneau.",
         ),
       ),
 

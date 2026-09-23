@@ -408,6 +408,78 @@ describe('couleur de la puce par créneau (retour Antoine 2026-09-23, point 3)',
   });
 });
 
+describe('panneau : candidats suggérés sur #1/#2 (retour Antoine 2026-09-23, point 9)', () => {
+  const DEBUT = 1_700_000_000;
+  const QUARTS = [DEBUT, DEBUT + 900, DEBUT + 1800, DEBUT + 2700];
+
+  function modele(): Modele {
+    return {
+      ...modeleVide(),
+      equipes: [{id: 1, Nom: 'Bars', Couleur: '#c00', Referent: null, Notes: ''}],
+      benevoles: [{
+        id: 1, Nom: 'Ada', Contact: '', Equipe: 1, Competences: [],
+        Quota_heures_min: 0, Quota_heures_max: 40, Statut: 'Actif', Notes: '',
+      }],
+      missions: [{id: 1, Nom: 'Buvette', Description: '', Lieu: 1, Equipe: 1, Priorite: 'Normale', Competences_requises: []}],
+      lieux: [{id: 1, Nom: 'Scène A', Description: ''}],
+      macroCreneaux: [{id: 1, Nom: 'Vendredi', Debut: DEBUT, Fin: DEBUT + 30_000}],
+      sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: '10h-11h', Debut: DEBUT, Fin: DEBUT + 3600}],
+      disponibilites: QUARTS.map((q) => ({Benevole: 1, Quart_heure: q, Statut: 'Disponible', Artiste: null})),
+    };
+  }
+
+  async function preparerAvecPanneauOuvert(): Promise<Magasin> {
+    const m = new Magasin(modele());
+    await m.creerBesoin(1, 1);
+    await m.creerGroupeSurBesoin(m.besoins[0]!.id);
+    montrerIndicatifs(container, m);
+    container.querySelector<HTMLButtonElement>('.groupe-chip')!.click();
+    return m;
+  }
+
+  function boutonRang(rang: string): HTMLButtonElement {
+    return Array.from(document.querySelectorAll<HTMLButtonElement>('#panneau-lateral .rang'))
+      .find((b) => b.textContent === rang)!;
+  }
+
+  it('#1 et #2 sont cliquables tant que la place est vide et non verrouillée', async () => {
+    await preparerAvecPanneauOuvert();
+    expect(boutonRang('#1').tagName).toBe('BUTTON');
+    expect(boutonRang('#2').tagName).toBe('BUTTON');
+  });
+
+  it('cliquer #1 affiche un bénévole disponible et classé, sans bouton d’affectation', async () => {
+    await preparerAvecPanneauOuvert();
+
+    boutonRang('#1').click();
+
+    const candidats = document.querySelectorAll('#panneau-lateral .candidat');
+    expect(candidats).toHaveLength(1);
+    expect(candidats[0]!.querySelector('.candidat__nom')?.textContent).toBe('Ada');
+    expect(candidats[0]!.querySelector('button')).toBeNull();
+  });
+
+  it('recliquer #1 referme la liste', async () => {
+    await preparerAvecPanneauOuvert();
+
+    boutonRang('#1').click();
+    boutonRang('#1').click();
+
+    expect(document.querySelectorAll('#panneau-lateral .candidat')).toHaveLength(0);
+  });
+
+  it('ne propose rien pour une place déjà pourvue ou verrouillée', async () => {
+    const m = await preparerAvecPanneauOuvert();
+    const groupeId = m.groupes[0]!.id;
+    const [p1, p2] = m.places.filter((p) => p.Groupe === groupeId);
+    await m.assignerPlace(p1!.id, 1);
+    await m.basculerVerrouillage(p2!.id);
+
+    expect(document.querySelectorAll('#panneau-lateral .rang').length).toBe(2);
+    expect(document.querySelectorAll('#panneau-lateral button.rang')).toHaveLength(0);
+  });
+});
+
 describe('créneaux propres à une mission (retour Antoine 2026-09-23, §6.2 : « communs, avec exceptions »)', () => {
   // Mission A (id 1) a matérialisé ses deux créneaux propres (décalés de
   // 30 min par rapport aux communs, comme le fait un glisser dans la vue
