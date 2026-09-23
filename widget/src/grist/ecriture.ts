@@ -566,6 +566,17 @@ export function actionsEcrireDisponibilites(disponibilites: readonly NouvelleDis
   ]];
 }
 
+/** Retire des disponibilités en masse (un ré-import ou une resaisie remplace
+ *  l'ensemble existant plutôt que de le fusionner ligne à ligne — même
+ *  logique que `actionsSupprimerBesoins`/`actionsRetirerPositionsGroupe`).
+ *  Aucune table ne référence une ligne de `Disponibilites` par son
+ *  identifiant (le type de domaine n'en a même pas), donc rien à repointer
+ *  après coup, contrairement à un sous-créneau. */
+export function actionsSupprimerDisponibilites(ids: readonly Id[]): UserAction[] {
+  if (ids.length === 0) { return []; }
+  return [['BulkRemoveRecord', 'Disponibilites', [...ids]]];
+}
+
 // --- Bénévoles (statut, compétences) ---------------------------------------
 
 /** Met à jour les compétences d'un bénévole (colonne `ChoiceList`) : exemple d'utilisation d'`encoderListe`. */
@@ -643,4 +654,15 @@ export function actionsEnregistrerHeureCoupure(
   lignesExistantes: readonly (LigneParametre & {id: Id})[],
 ): UserAction[] {
   return upsertParametres([[CLE_HEURE_COUPURE, String(heure)]], lignesExistantes);
+}
+
+/** Enregistre une clé/valeur quelconque dans `Parametres` (upsert) : même
+ *  `upsertParametres` privé qu'`actionsEnregistrerHeureCoupure`, mais sur
+ *  une clé fournie par l'appelant plutôt que fixée ici — pour un réglage
+ *  qui n'a pas encore sa propre fonction dédiée. */
+export function actionsDefinirParametre(
+  cle: string, valeur: string,
+  lignesExistantes: readonly (LigneParametre & {id: Id})[],
+): UserAction[] {
+  return upsertParametres([[cle, valeur]], lignesExistantes);
 }

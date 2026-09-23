@@ -8,6 +8,7 @@ import {
   actionsCreerSousCreneaux,
   actionsDefinirAbsence,
   actionsDefinirCompetencesBenevole,
+  actionsDefinirParametre,
   actionsDefinirPlaces,
   actionsDeplacerMacroCreneau,
   actionsDeplacerPositionGroupe,
@@ -24,6 +25,7 @@ import {
   actionsRenommerMacroCreneau,
   actionsRetirerPositionGroupe,
   actionsSupprimerBesoin,
+  actionsSupprimerDisponibilites,
   actionsSupprimerGroupe,
   actionsSupprimerMacroCreneau,
   actionsSupprimerMission,
@@ -373,6 +375,18 @@ describe('actionsEcrireDisponibilites', () => {
   });
 });
 
+describe('actionsSupprimerDisponibilites', () => {
+  it('construit un BulkRemoveRecord', () => {
+    expect(actionsSupprimerDisponibilites([10, 11, 12])).toEqual([
+      ['BulkRemoveRecord', 'Disponibilites', [10, 11, 12]],
+    ]);
+  });
+
+  it('ne construit aucune action pour une liste vide', () => {
+    expect(actionsSupprimerDisponibilites([])).toEqual([]);
+  });
+});
+
 describe('actionsDefinirCompetencesBenevole', () => {
   it('encode la ChoiceList avec le code L', () => {
     expect(actionsDefinirCompetencesBenevole(1, ['Majeur', 'SST'])).toEqual([
@@ -433,6 +447,19 @@ describe('upsert sur Parametres', () => {
 
     // Une clé déjà présente ne doit jamais réapparaître comme AddRecord.
     expect(actions.some((a) => a[0] === 'AddRecord' && (a[3] as {Cle: string}).Cle === 'pas_secondes')).toBe(false);
+  });
+
+  it('actionsDefinirParametre crée la ligne pour une clé quelconque absente', () => {
+    expect(actionsDefinirParametre('cle_arbitraire', 'valeur', [])).toEqual([
+      ['AddRecord', 'Parametres', null, {Cle: 'cle_arbitraire', Valeur: 'valeur'}],
+    ]);
+  });
+
+  it('actionsDefinirParametre met à jour la ligne existante plutôt que d\'en créer une deuxième', () => {
+    const existantes = [{id: 55, cle: 'cle_arbitraire', valeur: 'ancienne'}];
+    expect(actionsDefinirParametre('cle_arbitraire', 'nouvelle', existantes)).toEqual([
+      ['UpdateRecord', 'Parametres', 55, {Valeur: 'nouvelle'}],
+    ]);
   });
 });
 
