@@ -315,6 +315,16 @@ export interface ExplicationScore {
 export interface CandidatEligible {
   benevoleId: Id;
   score: number;
+  /**
+   * Le même score, sans le terme de conflit artiste (objectif 7). Sert au
+   * solveur (`affectation.ts`) à classer les candidats sur les objectifs 2 à
+   * 6 d'abord — le conflit artiste, dernier de la liste depuis le
+   * renversement du 2026-09-23 (§7.2), ne départage qu'à égalité sur tout le
+   * reste, jamais avant : un simple terme de plus dans la somme pondérée ne
+   * suffirait pas, ses poids par défaut (`conflitArtiste: -0.4` contre
+   * `affiniteEnsemble: 0.1`) l'emportant toujours sur le binôme souhaité.
+   */
+  scoreSansConflitArtiste: number;
   explication: ExplicationScore;
 }
 

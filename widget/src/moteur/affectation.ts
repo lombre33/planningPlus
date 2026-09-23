@@ -221,16 +221,42 @@ function remplir(
       .sort((a, b) => a.rang - b.rang);
 
     for (const place of rangsVides) {
+      // Un candidat en conflit artiste n'entre dans la compétition pour CETTE
+      // place que si le besoin en a encore effectivement besoin à cet
+      // instant précis (§7.2 objectif 7, inchangé : « violable seulement si
+      // nécessaire pour couvrir un besoin ») — recalculé place par place,
+      // pas une fois pour tout le groupe, pour qu'un groupe qui a plus de
+      // places que son minimum n'ouvre le conflit artiste qu'aux places qui
+      // en ont réellement besoin.
+      const secoursPermis = meilleurPool === 'secours'
+        || estNecessairePourMinimum(ctx, meilleurGroupeId, decisionsParPlace);
       const candidats: CandidatEligible[] = [];
       for (const benevole of ctx.donnees.benevoles) {
         const statut = evaluerEligibilite(ctx, etat, meilleurGroupeId, benevole.id);
         if (!statut.eligible) { continue; }
-        if (statut.conflitArtiste && meilleurPool !== 'secours') { continue; }
+        if (statut.conflitArtiste && !secoursPermis) { continue; }
         candidats.push(calculerScore(
           ctx, etat, parametres, meilleurGroupeId, benevole.id, statut.conflitArtiste, decisionsParPlace, place.id,
         ));
       }
-      const gagnant = [...candidats].sort((a, b) => b.score - a.score || a.benevoleId - b.benevoleId)[0];
+      // Classement à deux niveaux, pas un simple tri par score : depuis le
+      // 2026-09-23 (demande d'Antoine, « par défaut on va valider le binôme
+      // souhaité »), l'artiste souhaité (objectif 7, dernier de la liste)
+      // ne départage plus qu'à égalité sur tous les objectifs qui le
+      // précèdent (binôme, missions souhaitées, équipe, équité) — pas avant.
+      // Avec les poids par défaut (`affiniteEnsemble: 0.1` contre
+      // `conflitArtiste: -0.4`), un simple tri par score global ne
+      // suffirait pas à faire gagner le binôme sur l'artiste (voir la note
+      // du cahier des charges §7.2) ; `scoreSansConflitArtiste` classe donc
+      // en premier sur les objectifs 2 à 6, et seul un ex æquo strict sur ce
+      // plan se départage par la préférence artiste (propre bat conflit),
+      // puis par le score complet, comme avant.
+      const gagnant = [...candidats].sort((a, b) => (
+        b.scoreSansConflitArtiste - a.scoreSansConflitArtiste
+        || Number(a.explication.conflitArtiste) - Number(b.explication.conflitArtiste)
+        || b.score - a.score
+        || a.benevoleId - b.benevoleId
+      ))[0];
       if (!gagnant) {
         causeNonPourvueParPlace.set(place.id, 'aucun_candidat');
         continue;

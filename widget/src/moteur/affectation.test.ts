@@ -237,6 +237,34 @@ describe("calculerAffectation — ordre des priorités d'Antoine (2026-09-23)", 
     const proposition = resultat.propositions.find((p) => p.placeId === place.id);
     expect(proposition).toMatchObject({benevoleIdApres: aChoisi.id});
   });
+
+  it("le binôme souhaité passe devant l'artiste à voir (§7.2, renversement du 2026-09-23 17h49) : à égalité de mission, un candidat en conflit artiste mais en affinité « Ensemble » avec un coéquipier déjà en place bat un candidat propre sans affinité", () => {
+    const mission = creerMission();
+    const sousCreneau = creerSousCreneau(h(0, 10), h(0, 11));
+    const besoin = creerBesoin(mission.id, sousCreneau.id, {effectifMin: 2, effectifMax: 2, tailleGroupe: 2});
+    const groupe = creerGroupe({taille: 2});
+    const position = creerPositionGroupe(groupe.id, besoin.id);
+    const dejaLa = creerBenevole();
+    const enConflitAvecBinome = creerBenevole();
+    const propreSansAffinite = creerBenevole();
+    const placeDejaLa = creerPlace(groupe.id, 1, {benevoleId: dejaLa.id, verrouillee: true});
+    const placeAPourvoir = creerPlace(groupe.id, 2);
+
+    const resultat = calculerAffectation(donnees({
+      benevoles: [dejaLa, enConflitAvecBinome, propreSansAffinite], missions: [mission], sousCreneaux: [sousCreneau],
+      besoins: [besoin], groupes: [groupe], positionsGroupe: [position], places: [placeDejaLa, placeAPourvoir],
+      disponibilites: [
+        ...disponibilitesIntervalle(dejaLa.id, h(0, 10), h(0, 11)),
+        ...disponibilitesIntervalle(enConflitAvecBinome.id, h(0, 10), h(0, 11), 'Artiste', 900, 99),
+        ...disponibilitesIntervalle(propreSansAffinite.id, h(0, 10), h(0, 11)),
+      ],
+      affinites: [creerAffinite(dejaLa.id, enConflitAvecBinome.id, 'Ensemble')],
+    }));
+
+    const proposition = resultat.propositions.find((p) => p.placeId === placeAPourvoir.id);
+    expect(proposition).toMatchObject({benevoleIdApres: enConflitAvecBinome.id});
+    expect(resultat.anomalies.some((a) => a.code === 'conflit_artiste')).toBe(true);
+  });
 });
 
 describe('calculerAffectation — jamais de double réservation', () => {

@@ -220,6 +220,7 @@ export function calculerScore(
     + scoreAffinite
     + scoreEquipe,
   );
+  const scoreSansConflitArtiste = clamp01(0.5 + scoreSouhait + scoreEquite + scoreAffinite + scoreEquipe);
 
   const explication: ExplicationScore = {
     competencesOk: true, // seuls les candidats déjà éligibles atteignent le scoring
@@ -232,5 +233,5 @@ export function calculerScore(
     affinite: scoreAffinite > 0 ? 'positive' : scoreAffinite < 0 ? 'negative' : 'neutre',
   };
 
-  return {benevoleId, score, explication};
+  return {benevoleId, score, scoreSansConflitArtiste, explication};
 }
