@@ -1,0 +1,188 @@
+/* Feuille de style des deux vues imprimables (roster bénévoles, plannings
+   par équipe — demande d'Antoine du 2026-09-23). Réutilise le mécanisme
+   d'impression existant (#zone-impression / .impression-active, posé par
+   app.ts et style.css) sans y toucher : tout ce qui suit est propre à ces
+   deux vues.
+
+   Orientation paysage posée sur une page CSS nommée plutôt que sur `@page`
+   directement, pour ne jamais changer l'orientation par défaut (portrait)
+   de la feuille de route bénévole, qui partage le même mécanisme
+   d'impression. */
+
+.impression-roster, .impression-equipes {
+  page: impression-planning;
+}
+
+@page impression-planning {
+  size: landscape;
+  margin: 10mm;
+}
+
+/* ---------- Aperçu à l'écran ---------- */
+
+.impression-barre {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.impression-scroll {
+  overflow: auto;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+table.impression-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+}
+
+table.impression-table th, table.impression-table td {
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.impression-table__coin {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  background: var(--surface);
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.impression-table__heure {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 400;
+  color: var(--text-faint);
+  text-align: left;
+  padding: 2px 0 2px 2px;
+}
+
+.impression-table__heure--limite-macro {
+  border-left: 2px solid var(--border-strong);
+}
+
+.impression-table__entete {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
+  padding: 6px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.impression-table__entite {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface);
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+
+.impression-table__indicatif {
+  padding: 3px 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.impression-bloc {
+  padding: 1px 3px;
+  vertical-align: middle;
+  line-height: 1.2;
+}
+
+.impression-bloc--libre { background: var(--surface); }
+.impression-bloc--indisponible { background: var(--surface-muted); }
+.impression-bloc--assignee { background: var(--brand-tint); }
+.impression-bloc--limite-macro { border-left: 2px solid var(--border-strong); }
+
+.impression-bloc__texte {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
+}
+
+.impression-equipes__equipe {
+  margin-bottom: 24px;
+}
+
+.impression-equipes__titre {
+  margin: 0 0 8px;
+}
+
+/* ---------- Impression ---------- */
+
+@media print {
+  .impression-roster, .impression-equipes {
+    background: #fff;
+    color: #111;
+  }
+
+  .impression-barre { display: none; }
+
+  .impression-scroll {
+    overflow: visible;
+    max-width: none;
+    border: none;
+    border-radius: 0;
+  }
+
+  table.impression-table {
+    width: 100% !important;
+  }
+
+  table.impression-table th, table.impression-table td {
+    border-bottom: 1px solid #ccc;
+    padding: 1px 2px;
+  }
+
+  .impression-table__coin, .impression-table__entite, .impression-table__entete {
+    position: static;
+    background: #fff;
+  }
+
+  .impression-table__heure { position: static; }
+
+  .impression-bloc--libre { background: #fff; }
+  .impression-bloc--indisponible { background: #ececec; }
+  .impression-bloc--assignee { background: #dbe4ff; }
+
+  .impression-equipes__equipe {
+    break-after: page;
+    margin-bottom: 0;
+  }
+
+  .impression-equipes__equipe:last-child {
+    break-after: auto;
+  }
+}
