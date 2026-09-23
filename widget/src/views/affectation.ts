@@ -21,7 +21,7 @@ import {TYPE_BENEVOLE_DRAG as TYPE_BENEVOLE, TYPE_PLACE_DRAG as TYPE_PLACE} from
 import {type Candidat, type Index, couvertureBesoin, heuresAffectees, indexer, regrouperParJour} from '../logic/derive';
 import {type DiffAnomalies, apercuAffectation, apercuEchange, verifierDepot} from '../logic/glisser-deposer';
 import {lancerAlgorithme, type ResumeLancement} from '../logic/moteur-pont';
-import {classerCandidats, raisonsPlaceVide} from '../moteur/adaptateur-magasin';
+import {candidatsBloquesPourPlaceVide, classerCandidats, raisonsPlaceVide} from '../moteur/adaptateur-magasin';
 import type {CodeAnomalie, GraviteAnomalie} from '../moteur';
 import type {Magasin} from '../store';
 import {PAS_SECONDES} from '../temps';
@@ -45,6 +45,7 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
   let jourIndex = 0;
   let equipeFiltre: Id | 'toutes' = 'toutes';
   let rechercheRoster = '';
+  let nonAffectesSeulement = false;
   let voirTout = false;
   let dernierMessage: {texte: string; ton: Ton} | null = null;
   let dernierResume: ResumeLancement | null = null;
@@ -233,11 +234,26 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
     return classerCandidats(m, ix, groupe.id).slice(0, 5);
   }
 
-  function placeSlot(ix: Index, place: Place): HTMLElement {
+  /**
+   * Point 4 (nuit du 2026-09-23) : uniquement sur une place vide, non
+   * verrouillée, d'une mission prioritaire (Critique), et seulement quand
+   * aucun candidat propre n'existe déjà (sinon `candidatsPourPlaceVide`
+   * ci-dessus suffit) — pas la peine de montrer des candidats bloqués là où
+   * un candidat sans sacrifice est disponible.
+   */
+  function candidatsBloquesVide(ix: Index, place: Place, missionPrioritaire: boolean, candidatsVide: Candidat[]): Candidat[] {
+    if (place.Verrouillee || !missionPrioritaire || candidatsVide.length > 0) { return []; }
+    const groupe = ix.groupe.get(place.Groupe);
+    if (!groupe) { return []; }
+    return candidatsBloquesPourPlaceVide(m, ix, groupe.id);
+  }
+
+  function placeSlot(ix: Index, place: Place, missionPrioritaire: boolean): HTMLElement {
     const benevole = place.Benevole != null ? ix.benevole.get(place.Benevole) : null;
     const pourquoi = benevole ? pourquoiCeBenevole(ix, place, benevole.id) : null;
     const raisonsVide = benevole ? [] : pourquoiVide(place);
     const candidatsVide = benevole ? [] : candidatsPourPlaceVide(ix, place);
+    const candidatsBloques = benevole ? [] : candidatsBloquesVide(ix, place, missionPrioritaire, candidatsVide);
     const classes = ['place-slot'];
     classes.push(benevole ? 'place-slot--occupee' : 'place-slot--vide');
     if (place.Verrouillee) { classes.push('place-slot--verrouillee'); }
@@ -287,6 +303,15 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
               {avecScore: false},
             )))
             : null,
+          candidatsBloques.length > 0
+            ? h('div', {class: 'place-slot__candidats'},
+              h('span', {class: 'place-slot__raison-vide'}, 'Mission prioritaire : candidats possibles au prix d\'une contrainte'),
+              ...candidatsBloques.map((c) => carteCandidatCompacte(
+                c,
+                () => deposerBenevoleSurPlace(c.benevoleId, place.id),
+                {avecScore: false},
+              )))
+            : null,
         ),
       place.Verrouillee
         ? h('span', {class: 'pill pill--neutral'}, icone(ICONES.cadenas), 'Verrouillée')
@@ -309,11 +334,11 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
     return slot;
   }
 
-  function groupeCarte(ix: Index, groupe: Groupe): Node {
+  function groupeCarte(ix: Index, groupe: Groupe, missionPrioritaire: boolean): Node {
     const places = m.places.filter((p) => p.Groupe === groupe.id).sort((a, b) => a.Rang - b.Rang);
     return h('div', {class: 'groupe-carte'},
       h('span', {class: 'groupe-carte__code'}, groupe.Code),
-      ...places.map((place) => placeSlot(ix, place)),
+      ...places.map((place) => placeSlot(ix, place, missionPrioritaire)),
     );
   }
 
@@ -326,6 +351,9 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
     const c = couvertureBesoin(m, ix, besoin.id);
     const fourchette = besoin.Effectif_max > besoin.Effectif_min
       ? `${c.pourvues}/${besoin.Effectif_min}–${besoin.Effectif_max}` : `${c.pourvues}/${besoin.Effectif_min}`;
+    // Point 4 (nuit du 2026-09-23) : « mission prioritaire » = Critique,
+    // même seuil que le rouge/orange de la vue Indicatifs (point 3).
+    const missionPrioritaire = mission?.Priorite === 'Critique';
     return h('div', {class: 'besoin-carte'},
       h('div', {class: 'besoin-carte__tete'},
         h('div', null,
@@ -337,7 +365,7 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
       ),
       c.groupesPositionnes.length === 0
         ? h('p', {class: 'empty'}, "Aucun indicatif n'est encore positionné sur ce besoin.")
-        : h('div', {class: 'besoin-carte__groupes'}, ...c.groupesPositionnes.map((g) => groupeCarte(ix, g.groupe))),
+        : h('div', {class: 'besoin-carte__groupes'}, ...c.groupesPositionnes.map((g) => groupeCarte(ix, g.groupe, missionPrioritaire))),
     );
   }
 
@@ -400,9 +428,14 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
         .map((d) => d.Benevole),
     );
 
+    // Point 5 (nuit du 2026-09-23) : un simple filtre, pas un nouveau
+    // classement — "affecté" veut dire tenir au moins une place, n'importe
+    // où dans le festival, pas seulement le jour affiché.
+    const benevolesAffectes = new Set(m.places.filter((p) => p.Benevole != null).map((p) => p.Benevole));
     const rosterFiltreEquipeRecherche = m.benevoles
       .filter((b) => equipeFiltre === 'toutes' || b.Equipe === equipeFiltre)
-      .filter((b) => rechercheRoster.trim() === '' || b.Nom.toLowerCase().includes(rechercheRoster.trim().toLowerCase()));
+      .filter((b) => rechercheRoster.trim() === '' || b.Nom.toLowerCase().includes(rechercheRoster.trim().toLowerCase()))
+      .filter((b) => !nonAffectesSeulement || !benevolesAffectes.has(b.id));
     const roster = rosterFiltreEquipeRecherche
       .filter((b) => benevolesDisposCeJour.has(b.id))
       .sort((a, b) => a.Nom.localeCompare(b.Nom, 'fr'));
@@ -454,6 +487,13 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
             },
               h('option', {value: 'toutes'}, 'Toutes les équipes'),
               ...m.equipes.map((eq) => h('option', {value: String(eq.id), selected: equipeFiltre === eq.id}, eq.Nom)),
+            ),
+            h('label', {class: 'field', style: {flexDirection: 'row', alignItems: 'center', gap: '6px'}},
+              h('input', {
+                type: 'checkbox', checked: nonAffectesSeulement,
+                onchange: (e: Event) => { nonAffectesSeulement = (e.target as HTMLInputElement).checked; rafraichir(); },
+              }),
+              h('span', null, 'Non affectés seulement'),
             ),
           ),
           h('div', {class: 'affectation__roster-liste'},
