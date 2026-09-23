@@ -9,6 +9,17 @@
 type Attrs = Record<string, string | number | boolean | EventListener | Partial<CSSStyleDeclaration> | undefined | null>;
 type Enfant = Node | string | number | null | undefined | false;
 
+/** Clés qui doivent être posées comme propriété DOM plutôt que comme
+ *  attribut HTML : soit l'attribut ne les reflète pas du tout
+ *  (`defaultValue`, `defaultChecked` n'ont pas d'attribut correspondant —
+ *  `defaultValue` n'est qu'un alias de l'attribut `value`, sans effet posé
+ *  sous son propre nom), soit la valeur affichée dépend d'un format que le
+ *  navigateur n'accepte pas toujours en attribut (`value` sur un champ
+ *  `datetime-local`, notamment) — constaté en vrai sur le panneau
+ *  disponibilités, où `value` posé en attribut laissait `.value` vide à
+ *  l'écran malgré la valeur portée par l'élément. */
+const PROPRIETES_DOM: ReadonlySet<string> = new Set(['value', 'defaultValue', 'checked', 'defaultChecked', 'selected']);
+
 export function h<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   attrs?: Attrs | null,
@@ -24,6 +35,8 @@ export function h<K extends keyof HTMLElementTagNameMap>(
         el.className = String(valeur);
       } else if (cle === 'style' && typeof valeur === 'object') {
         Object.assign(el.style, valeur);
+      } else if (PROPRIETES_DOM.has(cle)) {
+        (el as unknown as Record<string, unknown>)[cle] = valeur;
       } else if (typeof valeur === 'boolean') {
         if (valeur) { el.setAttribute(cle, ''); }
       } else {
