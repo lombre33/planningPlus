@@ -1787,10 +1787,21 @@ table.grille .mission-cell .lieu {
   width: 16px;
 }
 
-.place-slot__nom {
+.place-slot__contenu {
   flex: 1;
+  min-width: 0;
+}
+
+.place-slot__nom {
   font-size: 12px;
   font-weight: 600;
+}
+
+.place-slot__pourquoi {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 3px;
 }
 
 .place-slot__vide-texte {

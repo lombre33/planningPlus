@@ -130,9 +130,15 @@ const ORDRE_PREFERENCE: NiveauPreferenceMission[] = ['Refuse', 'Réticent', 'Neu
  * réimplémentation indépendante du score. Voir l'écart n°1 en tête de
  * fichier : les inéligibles restent filtrés ici, comme dans l'ancien mock.
  */
-export function classerCandidats(m: Magasin, ix: Index, groupeId: Id, options: {exclure?: Id} = {}): Candidat[] {
+export function classerCandidats(
+  m: Magasin, ix: Index, groupeId: Id, options: {exclure?: Id; placeIdCible?: Id} = {},
+): Candidat[] {
   const donnees = versDonneesPlanning(m);
-  const classement = moteurClasserCandidats(donnees, groupeId);
+  // `placeIdCible` libère d'abord l'occupant actuel de cette place (voir le
+  // moteur, `classerCandidats`) : sans ça, l'occupant d'une place déjà
+  // pourvue est toujours exclu de son propre classement (« deja_occupe »),
+  // ce qui empêche d'expliquer pourquoi il est là (`views/affectation.ts`).
+  const classement = moteurClasserCandidats(donnees, groupeId, options.placeIdCible);
 
   const resultats: Candidat[] = [];
   for (const c of classement) {
@@ -158,6 +164,17 @@ export function classerCandidats(m: Magasin, ix: Index, groupeId: Id, options: {
     if (meilleurSouhait === 'Souhaite fortement') { tags.push({texte: 'souhaite fortement', sens: 'plus'}); }
     else if (meilleurSouhait === 'Intéressé') { tags.push({texte: 'intéressé', sens: 'plus'}); }
     else if (meilleurSouhait === 'Réticent') { tags.push({texte: 'réticent', sens: 'moins'}); }
+
+    // Le binôme souhaité (§7.2 objectif 2, devant l'artiste depuis le
+    // 2026-09-23) est ce qui peut faire accepter le conflit artiste
+    // ci-dessous : les deux tags doivent donc pouvoir apparaître ensemble,
+    // pour qu'on lise « avec son binôme, au prix de l'artiste » plutôt que
+    // de ne voir que le sacrifice.
+    if (c.explication.affinite === 'positive') {
+      tags.push({texte: 'binôme souhaité', sens: 'plus'});
+    } else if (c.explication.affinite === 'negative') {
+      tags.push({texte: 'binôme à éviter', sens: 'moins'});
+    }
 
     if (c.explication.conflitArtiste) {
       tags.push({texte: 'veut voir un artiste sur ce créneau', sens: 'moins'});

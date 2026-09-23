@@ -88,6 +88,71 @@ describe('classerCandidats (adaptateur)', () => {
   });
 });
 
+/**
+ * Un groupe de taille 2 (BAR2), une place déjà tenue par Zoé, une place à
+ * pourvoir — pour exercer le tag de binôme souhaité (§7.2 objectif 2,
+ * demande d'Antoine 2026-09-23), qui manquait : l'affinité était déjà
+ * calculée dans le score du moteur (`explication.affinite`), mais jamais
+ * traduite en tag lisible pour l'écran (voir la note du coordinateur sur
+ * l'explicabilité).
+ */
+function construireModeleBinome(typeAffinite: 'Ensemble' | 'Éviter'): Modele {
+  return {
+    equipes: [{id: 1, Nom: 'Bars', Couleur: '#c00', Referent: null, Notes: ''}],
+    lieux: [],
+    benevoles: [
+      {id: 1, Nom: 'Zoé', Contact: '', Equipe: 1, Competences: [], Quota_heures_min: 0, Quota_heures_max: 40, Statut: 'Actif', Notes: ''},
+      {id: 2, Nom: 'Alix', Contact: '', Equipe: 1, Competences: [], Quota_heures_min: 0, Quota_heures_max: 40, Statut: 'Actif', Notes: ''},
+    ],
+    missions: [{id: 1, Nom: 'Bar', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []}],
+    artistes: [],
+    macroCreneaux: [{id: 1, Nom: 'Samedi', Debut: 0, Fin: 3600}],
+    sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: 'SC1', Debut: 0, Fin: 3600}],
+    besoins: [{id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 2, Effectif_max: 2, Taille_groupe: 2}],
+    groupes: [{id: 1, Code: 'BAR2', Taille: 2, Equipe: 1, Notes: ''}],
+    positionsGroupe: [{id: 1, Groupe: 1, Besoin: 1}],
+    places: [
+      {id: 1, Groupe: 1, Rang: 1, Benevole: 1, Origine: 'Algorithme', Verrouillee: true, Score: 0},
+      {id: 2, Groupe: 1, Rang: 2, Benevole: null, Origine: 'Algorithme', Verrouillee: false, Score: 0},
+    ],
+    disponibilites: [0, 900, 1800, 2700].flatMap((q) => [
+      {Benevole: 1, Quart_heure: q, Statut: 'Disponible' as const, Artiste: null},
+      {Benevole: 2, Quart_heure: q, Statut: 'Disponible' as const, Artiste: null},
+    ]),
+    souhaitsMissions: [],
+    affinites: [{id: 1, Benevole_A: 1, Benevole_B: 2, Type: typeAffinite}],
+  };
+}
+
+describe('classerCandidats (adaptateur) — tag de binôme souhaité', () => {
+  it('ajoute un tag « plus » quand le candidat a une affinité « Ensemble » avec un coéquipier déjà en place', () => {
+    const m = new Magasin(construireModeleBinome('Ensemble'));
+    const ix = indexer(m);
+    const candidats = classerCandidats(m, ix, 1);
+    const alix = candidats.find((c) => c.benevoleId === 2);
+    expect(alix?.tags.map((t) => t.texte)).toContain('binôme souhaité');
+    expect(alix?.tags.find((t) => t.texte === 'binôme souhaité')?.sens).toBe('plus');
+  });
+
+  it('ajoute un tag « moins » quand le candidat a une affinité « Éviter » avec un coéquipier déjà en place', () => {
+    const m = new Magasin(construireModeleBinome('Éviter'));
+    const ix = indexer(m);
+    const candidats = classerCandidats(m, ix, 1);
+    const alix = candidats.find((c) => c.benevoleId === 2);
+    expect(alix?.tags.find((t) => t.texte.includes('éviter'))?.sens).toBe('moins');
+  });
+
+  it("avec placeIdCible, inclut l'occupant actuel de cette place dans le classement (sinon exclu comme « déjà occupé » de son propre groupe)", () => {
+    const m = new Magasin(construireModeleBinome('Ensemble'));
+    const ix = indexer(m);
+    // Sans placeIdCible : Zoé (déjà sur la place 1 du même groupe) est exclue de son propre classement.
+    expect(classerCandidats(m, ix, 1).map((c) => c.benevoleId)).not.toContain(1);
+    // Avec placeIdCible : Zoé redevient candidate, pour qu'on puisse expliquer pourquoi elle est là.
+    const avecCible = classerCandidats(m, ix, 1, {placeIdCible: 1});
+    expect(avecCible.map((c) => c.benevoleId)).toContain(1);
+  });
+});
+
 describe('calculerAnomalies (adaptateur)', () => {
   it('ne signale PAS de sous-effectif sur un besoin sans aucun indicatif positionné', () => {
     const m = new Magasin(construireModele());

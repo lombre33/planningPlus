@@ -18,9 +18,10 @@
 
 import type {Benevole, Besoin, Groupe, Id, Place} from '../domain/types';
 import {TYPE_BENEVOLE_DRAG as TYPE_BENEVOLE, TYPE_PLACE_DRAG as TYPE_PLACE} from '../logic/dnd-types';
-import {type Index, couvertureBesoin, heuresAffectees, indexer, regrouperParJour} from '../logic/derive';
+import {type Candidat, type Index, couvertureBesoin, heuresAffectees, indexer, regrouperParJour} from '../logic/derive';
 import {type DiffAnomalies, apercuAffectation, apercuEchange, verifierDepot} from '../logic/glisser-deposer';
 import {lancerAlgorithme, type ResumeLancement} from '../logic/moteur-pont';
+import {classerCandidats} from '../moteur/adaptateur-magasin';
 import type {CodeAnomalie, GraviteAnomalie} from '../moteur';
 import type {Magasin} from '../store';
 import {formatHeures, h, icone, ICONES, vider} from '../ui/dom';
@@ -157,8 +158,23 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
     return types.includes(TYPE_BENEVOLE) || types.includes(TYPE_PLACE);
   }
 
+  /**
+   * Pourquoi ce bénévole est ici plutôt qu'un autre (question du
+   * coordinateur, 2026-09-23) : les mêmes tags qu'un remplaçant proposé
+   * (`classerCandidats`, déjà utilisés en Jour J), mais pour l'occupant
+   * actuel plutôt qu'une suggestion — un arbitrage gagné (« avec un binôme
+   * souhaité ») se lit à côté d'un arbitrage perdu accepté quand même
+   * (« veut voir un artiste »), sans jamais montrer le score.
+   */
+  function pourquoiCeBenevole(ix: Index, place: Place, benevoleId: Id): Candidat | null {
+    const groupe = ix.groupe.get(place.Groupe);
+    if (!groupe) { return null; }
+    return classerCandidats(m, ix, groupe.id, {placeIdCible: place.id}).find((c) => c.benevoleId === benevoleId) ?? null;
+  }
+
   function placeSlot(ix: Index, place: Place): HTMLElement {
     const benevole = place.Benevole != null ? ix.benevole.get(place.Benevole) : null;
+    const pourquoi = benevole ? pourquoiCeBenevole(ix, place, benevole.id) : null;
     const classes = ['place-slot'];
     classes.push(benevole ? 'place-slot--occupee' : 'place-slot--vide');
     if (place.Verrouillee) { classes.push('place-slot--verrouillee'); }
@@ -190,7 +206,12 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
     },
       h('span', {class: 'place-slot__rang mono'}, `#${place.Rang}`),
       benevole
-        ? h('span', {class: 'place-slot__nom'}, benevole.Nom)
+        ? h('div', {class: 'place-slot__contenu'},
+          h('span', {class: 'place-slot__nom'}, benevole.Nom),
+          pourquoi && pourquoi.tags.length > 0
+            ? h('div', {class: 'place-slot__pourquoi'}, ...pourquoi.tags.map((t) => h('span', {class: `tag tag--${t.sens}`}, t.texte)))
+            : null,
+        )
         : h('span', {class: 'place-slot__vide-texte'}, 'Glissez un bénévole ici'),
       place.Verrouillee
         ? h('span', {class: 'pill pill--neutral'}, icone(ICONES.cadenas), 'Verrouillée')
