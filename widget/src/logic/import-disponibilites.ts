@@ -112,3 +112,39 @@ export function fusionnerDisponibilites(base: readonly Disponibilite[], surcharg
   for (const d of surcharges) { parQuart.set(d.Quart_heure, d); }
   return [...parQuart.values()].sort((a, b) => a.Quart_heure - b.Quart_heure);
 }
+
+export interface ImportDisponibilitesBenevole {
+  /** Toutes les lignes déduites automatiquement (macro-créneaux "Disponible"
+   *  / "Indisponible" + souhaits d'artiste), prêtes à écrire telles quelles. */
+  disponibilites: Disponibilite[];
+  /** Les macro-créneaux dont la réponse brute n'a pas été reconnue : rien
+   *  n'a été déduit pour eux, la saisie reste à faire à la main (point 1B,
+   *  interface dédiée). */
+  macroCreneauxAManuel: Id[];
+}
+
+/**
+ * Combine, pour un seul bénévole, l'ensemble de ses réponses macro-créneau
+ * et ses souhaits d'artiste en un seul jeu de lignes `Disponibilite` — ce
+ * que la vue d'import a besoin d'écrire en une fois. Ordonne les entrées
+ * par bénévole plutôt que par macro-créneau : c'est aussi la maille
+ * attendue par `Magasin` pour remplacer une plage à la fois (§6.4, une
+ * ligne par bénévole et par quart d'heure).
+ */
+export function disponibilitesBenevolePourFestival(
+  benevoleId: Id,
+  reponsesParMacroCreneau: ReadonlyMap<Id, {macro: Pick<MacroCreneau, 'Debut' | 'Fin'>; reponse: string | null | undefined}>,
+  nomsArtistesSouhaites: readonly string[],
+  artistes: readonly Artiste[],
+  libelles: LibellesReponseMacroCreneau = LIBELLES_REPONSE_PAR_DEFAUT,
+): ImportDisponibilitesBenevole {
+  const base: Disponibilite[] = [];
+  const macroCreneauxAManuel: Id[] = [];
+  for (const [macroCreneauId, {macro, reponse}] of reponsesParMacroCreneau) {
+    const resultat = disponibilitesDepuisReponseMacroCreneau(benevoleId, macro, reponse, libelles);
+    if (resultat.statut === 'Manuelle') { macroCreneauxAManuel.push(macroCreneauId); continue; }
+    base.push(...resultat.disponibilites);
+  }
+  const surcharges = disponibilitesDepuisSouhaitsArtistes(benevoleId, nomsArtistesSouhaites, artistes);
+  return {disponibilites: fusionnerDisponibilites(base, surcharges), macroCreneauxAManuel};
+}

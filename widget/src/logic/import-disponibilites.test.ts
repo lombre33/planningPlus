@@ -1,8 +1,8 @@
 import {describe, expect, it} from 'vitest';
 import type {Artiste} from '../domain/types';
 import {
-  classerReponseMacroCreneau, disponibilitesDepuisReponseMacroCreneau, disponibilitesDepuisSouhaitsArtistes,
-  fusionnerDisponibilites, LIBELLES_REPONSE_PAR_DEFAUT,
+  classerReponseMacroCreneau, disponibilitesBenevolePourFestival, disponibilitesDepuisReponseMacroCreneau,
+  disponibilitesDepuisSouhaitsArtistes, fusionnerDisponibilites, LIBELLES_REPONSE_PAR_DEFAUT,
 } from './import-disponibilites';
 
 describe('classerReponseMacroCreneau', () => {
@@ -92,5 +92,33 @@ describe('fusionnerDisponibilites', () => {
   it('ignore les libellés par défaut exportés pour vérifier la valeur exacte attendue', () => {
     expect(LIBELLES_REPONSE_PAR_DEFAUT.toutLeCreneau).toContain('Tout le créneau');
     expect(LIBELLES_REPONSE_PAR_DEFAUT.pasDisponibleDuTout).toContain('Pas disponible du tout');
+  });
+});
+
+describe('disponibilitesBenevolePourFestival', () => {
+  const artistes: Artiste[] = [{id: 9, Nom: 'Marée Haute', Lieu: 1, Debut: 1800, Fin: 2700}];
+
+  it('combine plusieurs macro-créneaux et les souhaits d\'artiste, et signale les réponses manuelles', () => {
+    const reponses = new Map([
+      [1, {macro: {Debut: 0, Fin: 1800}, reponse: 'Tout le créneau'}],
+      [2, {macro: {Debut: 1800, Fin: 3600}, reponse: 'Pas disponible du tout'}],
+      [3, {macro: {Debut: 3600, Fin: 5400}, reponse: 'dispo après 18h'}],
+    ]);
+    const resultat = disponibilitesBenevolePourFestival(1, reponses, ['Marée Haute'], artistes);
+
+    expect(resultat.macroCreneauxAManuel).toEqual([3]);
+    // Macro 1 : 2 quarts "Disponible". Macro 2 : 2 quarts "Indisponible", mais le
+    // souhait d'artiste (1800-2700) écrase le premier de ces deux quarts en "Artiste".
+    expect(resultat.disponibilites).toEqual([
+      {Benevole: 1, Quart_heure: 0, Statut: 'Disponible', Artiste: null},
+      {Benevole: 1, Quart_heure: 900, Statut: 'Disponible', Artiste: null},
+      {Benevole: 1, Quart_heure: 1800, Statut: 'Artiste', Artiste: 9},
+      {Benevole: 1, Quart_heure: 2700, Statut: 'Indisponible', Artiste: null},
+    ]);
+  });
+
+  it('sans aucune réponse ni souhait, ne produit rien', () => {
+    const resultat = disponibilitesBenevolePourFestival(1, new Map(), [], []);
+    expect(resultat).toEqual({disponibilites: [], macroCreneauxAManuel: []});
   });
 });
