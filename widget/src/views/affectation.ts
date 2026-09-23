@@ -293,17 +293,20 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
   }
 
   function besoinCarte(ix: Index, besoin: Besoin): Node {
-    const mission = ix.mission.get(besoin.Mission)!;
-    const sousCreneau = ix.sousCreneau.get(besoin.Sous_creneau)!;
+    // Mission/sous-créneau orphelins possibles (référence vers une ligne
+    // supprimée ailleurs, même défaut que l'équipe corrigé le 2026-09-23) :
+    // ne doit pas planter tout l'écran Affectation.
+    const mission = ix.mission.get(besoin.Mission);
+    const sousCreneau = ix.sousCreneau.get(besoin.Sous_creneau);
     const c = couvertureBesoin(m, ix, besoin.id);
     const fourchette = besoin.Effectif_max > besoin.Effectif_min
       ? `${c.pourvues}/${besoin.Effectif_min}–${besoin.Effectif_max}` : `${c.pourvues}/${besoin.Effectif_min}`;
     return h('div', {class: 'besoin-carte'},
       h('div', {class: 'besoin-carte__tete'},
         h('div', null,
-          h('span', {class: 'besoin-carte__mission'}, mission.Nom),
+          h('span', {class: 'besoin-carte__mission'}, mission?.Nom ?? '?'),
           h('br'),
-          h('span', {class: 'besoin-carte__sous-creneau'}, sousCreneau.Libelle),
+          h('span', {class: 'besoin-carte__sous-creneau'}, sousCreneau?.Libelle ?? '?'),
         ),
         h('span', {class: `pill pill--${c.statut === 'ok' ? 'ok' : c.statut === 'partiel' ? 'warn' : 'danger'}`}, fourchette),
       ),
