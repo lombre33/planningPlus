@@ -10,6 +10,7 @@ import type {
   Affinite, Artiste, Benevole, Besoin, Disponibilite, Epoch, Equipe, Groupe, Id, Lieu, MacroCreneau,
   Mission, Modele, OriginePlace, Place, PositionGroupe, SouhaitMission, SousCreneau,
 } from './domain/types';
+import type {ColonneTable} from './logic/parametres-benevoles';
 import {cleJourFestival, libelleHeurePlage, PAS_SECONDES} from './temps';
 
 type Listener = () => void;
@@ -160,18 +161,23 @@ export interface EcritureGrist {
    *  ici. `placeIdsLiberees` est toujours vide pour un retour (`absent:
    *  false`), un retour ne libère jamais rien ; voir `Magasin.definirAbsence`. */
   definirAbsence(benevoleId: Id, absent: boolean, placeIdsLiberees: readonly Id[]): Promise<void>;
-  /** Seule méthode de lecture de cette interface (le reste n'est que de
-   *  l'écriture, voir l'en-tête) : les valeurs brutes d'UNE colonne d'une
-   *  table quelconque du document, id de ligne Grist réel en clé — jamais
-   *  décodées, jamais interprétées. Sert à lire des colonnes qui n'existent
-   *  que dans le document d'Antoine (imports de souhaits, réponses de
-   *  disponibilité en macro-créneau…), jamais nos propres tables : ce sont
-   *  les siennes, on les lit, on ne les modifie ni ne les renomme jamais
-   *  (voir `Magasin.valeursColonneBrute`). `tableId`/`colId` sont les
-   *  identifiants réels du document (pas de résolution canonique ici,
-   *  contrairement au reste de cette interface — ces colonnes n'ont pas de
-   *  nom canonique côté PlanningPlus). */
+  /** Les valeurs brutes d'UNE colonne d'une table quelconque du document, id
+   *  de ligne Grist réel en clé — jamais décodées, jamais interprétées. Sert
+   *  à lire des colonnes qui n'existent que dans le document d'Antoine
+   *  (imports de souhaits, réponses de disponibilité en macro-créneau…),
+   *  jamais nos propres tables : ce sont les siennes, on les lit, on ne les
+   *  modifie ni ne les renomme jamais (voir `Magasin.valeursColonneBrute`).
+   *  `tableId`/`colId` sont les identifiants réels du document (pas de
+   *  résolution canonique ici, contrairement au reste de cette interface —
+   *  ces colonnes n'ont pas de nom canonique côté PlanningPlus). */
   valeursColonneBrute(tableId: string, colId: string): Promise<Map<Id, unknown>>;
+  /** La liste des colonnes d'une table quelconque du document (id, libellé,
+   *  type Grist brut) — mêmes règles que `valeursColonneBrute` juste
+   *  au-dessus (lecture seule sur les tables d'Antoine, `tableId` réel, pas
+   *  de résolution canonique) : sert à proposer à l'écran les colonnes
+   *  qu'il a lui-même ajoutées, sans jamais y toucher (voir
+   *  `Magasin.colonnesTable`, `grist/colonnesDeTable`). */
+  colonnesTable(tableId: string): Promise<ColonneTable[]>;
   /** Enregistre un réglage scalaire quelconque de `Parametres` (upsert par
    *  clé) — voir `Magasin.definirParametre`. Clé libre, non fixée ici : ce
    *  pont ne connaît pas les réglages eux-mêmes, seulement comment les
@@ -283,6 +289,13 @@ export class Magasin {
    *  document connecté (démo, tests, clone de simulation) : rien à lire. */
   async valeursColonneBrute(tableId: string, colId: string): Promise<Map<Id, unknown>> {
     return this.ecriture ? this.ecriture.valeursColonneBrute(tableId, colId) : new Map();
+  }
+
+  /** Liste les colonnes d'une table brute du document connecté — voir
+   *  `EcritureGrist.colonnesTable` ci-dessus. Tableau vide sans document
+   *  connecté (démo, tests, clone de simulation) : rien à lire. */
+  async colonnesTable(tableId: string): Promise<ColonneTable[]> {
+    return this.ecriture ? this.ecriture.colonnesTable(tableId) : [];
   }
 
   /** Enregistre un réglage scalaire de `Parametres` (upsert par clé) — voir
