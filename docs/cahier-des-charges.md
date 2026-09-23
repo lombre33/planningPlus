@@ -1,8 +1,7 @@
 # PlanningPlus — Cahier des charges
 
-**Version :** v1.7 (suite du rattrapage du 2026-09-23 : suppression forcée
-d'un macro-créneau, lieu facultatif sur mission et artiste, Alt+glisser
-ajoute une position d'indicatif — voir aussi v1.6)
+**Version :** v1.8 (retrait du mode démonstration, 2026-09-23 : le widget ne
+vise plus que l'intérieur d'un document Grist — voir aussi v1.6, v1.7)
 **Statut :** structure et règles validées (§6.3, §7.5) ; développement agile
 par incréments courts depuis le 2026-09-22 (§11.1) ; document tenu à jour au
 fil du code plutôt qu'en fin de sprint, sur consigne du coordinateur
@@ -188,21 +187,21 @@ des contraintes A et B mais n'avait pas été rassemblée en un seul endroit.
   aperçu avant validation plutôt qu'appliquée directement. Grist gère
   lui-même la synchronisation des écritures concurrentes au niveau du
   document ; ce point n'appelle pas de mécanisme supplémentaire pour la v1.
-- **États au démarrage (vérifiés à l'écran, mis à jour le 2026-09-22).** Le
-  widget distingue : pas d'hôte Grist (ou timeout, ou échec de connexion) →
-  **mode démonstration**, sur un jeu de données factice, jamais confondu
-  avec un vrai document ; hôte Grist présent, tables du §6 toutes présentes
-  (vides ou non) → connecté, sur les vraies données, y compris à vide
-  (jamais de repli silencieux sur la démo) ; hôte Grist présent mais au
-  moins une table PlanningPlus absente → le widget **les crée lui-même**
-  (voir §5.1) plutôt que de se contenter de les nommer, pour qu'un document
-  Grist tout neuf devienne utilisable sans étape manuelle. Si une écriture
-  échoue malgré tout (création de table comprise), une fois la connexion
-  confirmée, un écran nomme précisément l'échec plutôt que de basculer sur
-  la démo ou de rester muet — la démo ne sert jamais après connexion,
-  seulement hors hôte Grist. Le mode démonstration reste un comportement
-  prévu et volontaire, pas un filet de secours à retirer : il permet de
-  découvrir l'outil sans document préparé.
+- **Aucun mode démonstration : le widget ne vise que l'intérieur d'un
+  document Grist (retiré le 2026-09-23, retour d'Antoine).** « Ce n'est même
+  pas la peine de prévoir un cas pour le widget lancé en dehors de Grist, ça
+  n'a pas de sens, il ne sera utilisé que dans Grist » — le jeu de données
+  factice, le délai de détection d'hôte et l'écran dédié « hors Grist » sont
+  retirés, pas seulement désactivés : aucun code ne les remplace. Deux issues
+  restent, une fois la connexion à un document Grist établie : toutes les
+  tables PlanningPlus attendues existent (vides ou non) → connecté, sur les
+  vraies données, y compris à vide, un document flambant neuf étant le
+  premier jour d'un vrai utilisateur et non une panne (§1.1) ; il en manque
+  au moins une, ou une écriture échoue (création de table comprise, §5.1) →
+  un écran nomme précisément ce qui manque ou a échoué. Lancé hors d'un
+  document Grist, le widget échoue simplement à sa première requête, sans
+  écran dédié pour ce cas — accepté comme non-problème par Antoine, pour ne
+  pas alourdir le code d'un chemin que personne n'emprunte.
 
 ## 6. Modèle de données
 
@@ -771,10 +770,10 @@ mesure, sans remplacer celui-ci.)*
 **Périmètre technique (confirmé par Antoine, 2026-09-22 : « on ne parle plus
 de la maquette »).** La V0.1 est du code réel dans le widget, écrivant dans
 un vrai document Grist — pas la maquette Artifact isolée, qui n'est plus la
-cible. Une fonctionnalité qui ne vivrait que sur le jeu de démonstration
-n'est pas livrée. Cela ne remet pas en cause le mode démonstration (§5.4) : c'est le
-comportement prévu et déjà vérifié quand aucun document Grist n'est branché,
-pas quelque chose à retirer.
+cible. Une fonctionnalité qui ne vivrait que sur un jeu de données factice
+n'est pas livrée. *(Mise à jour du 2026-09-23 : le mode démonstration évoqué
+ici la veille a depuis été retiré, pas seulement laissé de côté — voir
+§5.4.)*
 
 Hors de ce périmètre pour la V0.1 (mais dans le produit complet décrit
 ailleurs dans ce document) : l'algorithme d'affectation, le catalogue
