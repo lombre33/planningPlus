@@ -126,6 +126,29 @@ describe('montrerArtistes — frise commune au quart d’heure', () => {
     container.remove();
   });
 
+  it("le bouton « + passage » de la ligne (même geste que « + créneau » sur une ligne de mission, grille.ts) "
+    + 'ouvre un nouveau passage pour ce même artiste, nom verrouillé, sans dépendre d’une zone de piste libre à cliquer', async () => {
+    const m = new Magasin(modeleAvecPassage());
+    const container = document.createElement('div');
+    document.body.append(container);
+    montrerArtistes(container, m);
+
+    const boutonLigne = Array.from(container.querySelectorAll('.timeline__label button'))
+      .find((b) => b.textContent === '+ passage') as HTMLButtonElement;
+    expect(boutonLigne).toBeTruthy();
+    boutonLigne.click();
+
+    const champNom = document.querySelector('input[placeholder="Nom de l’artiste"]') as HTMLInputElement;
+    expect(champNom.value).toBe('Nuit Blanche');
+    expect(champNom.disabled).toBe(true);
+
+    (Array.from(document.querySelectorAll('button')).find((b) => b.textContent === 'Créer') as HTMLButtonElement).click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(m.artistes.filter((a) => a.Nom === 'Nuit Blanche')).toHaveLength(2);
+    container.remove();
+  });
+
   it('un relâchement sans déplacement (delta nul) est un simple clic : ouvre l’édition, ne modifie aucun horaire', () => {
     const m = new Magasin(modeleAvecPassage());
     const container = document.createElement('div');
