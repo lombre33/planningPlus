@@ -18,10 +18,12 @@
 
 import type {Benevole, Besoin, Groupe, Id, Place} from '../domain/types';
 import {TYPE_BENEVOLE_DRAG as TYPE_BENEVOLE, TYPE_PLACE_DRAG as TYPE_PLACE} from '../logic/dnd-types';
-import {type Candidat, type Index, couvertureBesoin, heuresAffectees, indexer, regrouperParJour} from '../logic/derive';
+import {
+  type Candidat, type Index, couvertureBesoin, heuresAffectees, indexer, positionsDuGroupe, regrouperParJour,
+} from '../logic/derive';
 import {type DiffAnomalies, apercuAffectation, apercuEchange, verifierDepot} from '../logic/glisser-deposer';
 import {lancerAlgorithme, type ResumeLancement} from '../logic/moteur-pont';
-import {candidatsBloquesPourPlaceVide, classerCandidats, raisonsPlaceVide} from '../moteur/adaptateur-magasin';
+import {classerCandidats, raisonsPlaceVide} from '../moteur/adaptateur-magasin';
 import type {CodeAnomalie, GraviteAnomalie} from '../moteur';
 import type {Magasin} from '../store';
 import {PAS_SECONDES} from '../temps';
@@ -231,29 +233,35 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
     if (place.Verrouillee) { return []; }
     const groupe = ix.groupe.get(place.Groupe);
     if (!groupe) { return []; }
-    return classerCandidats(m, ix, groupe.id).slice(0, 5);
+    return classerCandidats(m, ix, groupe.id);
   }
 
   /**
-   * Point 4 (nuit du 2026-09-23) : uniquement sur une place vide, non
-   * verrouillée, d'une mission prioritaire (Critique), et seulement quand
-   * aucun candidat propre n'existe déjà (sinon `candidatsPourPlaceVide`
-   * ci-dessus suffit) — pas la peine de montrer des candidats bloqués là où
-   * un candidat sans sacrifice est disponible.
+   * Point 4 (nuit du 2026-09-23, corrigé après relecture du coordinateur) :
+   * Antoine veut des bénévoles SANS indicatif ce jour-là qui pourraient
+   * prendre une place vide d'une mission prioritaire au prix d'une
+   * contrainte qu'il peut choisir de lever lui-même (voir un artiste,
+   * binôme…) — pas les contraintes dures (compétence, indisponibilité) qui
+   * ne se lèvent pas sur un coup de tête. `classerCandidats` ne renvoie déjà
+   * que des éligibles ; un tag "moins" dessus est justement une de ces
+   * contraintes molles. On ne recalcule rien de nouveau côté moteur.
    */
-  function candidatsBloquesVide(ix: Index, place: Place, missionPrioritaire: boolean, candidatsVide: Candidat[]): Candidat[] {
-    if (place.Verrouillee || !missionPrioritaire || candidatsVide.length > 0) { return []; }
-    const groupe = ix.groupe.get(place.Groupe);
-    if (!groupe) { return []; }
-    return candidatsBloquesPourPlaceVide(m, ix, groupe.id);
+  function candidatsBloquesVide(
+    classement: Candidat[], missionPrioritaire: boolean, candidatsVide: Candidat[], nonAffectesCeJour: Set<Id>,
+  ): Candidat[] {
+    if (!missionPrioritaire || candidatsVide.length > 0) { return []; }
+    return classement
+      .filter((c) => nonAffectesCeJour.has(c.benevoleId) && c.tags.some((t) => t.sens === 'moins'))
+      .slice(0, 5);
   }
 
-  function placeSlot(ix: Index, place: Place, missionPrioritaire: boolean): HTMLElement {
+  function placeSlot(ix: Index, place: Place, missionPrioritaire: boolean, nonAffectesCeJour: Set<Id>): HTMLElement {
     const benevole = place.Benevole != null ? ix.benevole.get(place.Benevole) : null;
     const pourquoi = benevole ? pourquoiCeBenevole(ix, place, benevole.id) : null;
     const raisonsVide = benevole ? [] : pourquoiVide(place);
-    const candidatsVide = benevole ? [] : candidatsPourPlaceVide(ix, place);
-    const candidatsBloques = benevole ? [] : candidatsBloquesVide(ix, place, missionPrioritaire, candidatsVide);
+    const classementVide = benevole ? [] : candidatsPourPlaceVide(ix, place);
+    const candidatsVide = classementVide.filter((c) => c.tags.every((t) => t.sens !== 'moins')).slice(0, 5);
+    const candidatsBloques = benevole ? [] : candidatsBloquesVide(classementVide, missionPrioritaire, candidatsVide, nonAffectesCeJour);
     const classes = ['place-slot'];
     classes.push(benevole ? 'place-slot--occupee' : 'place-slot--vide');
     if (place.Verrouillee) { classes.push('place-slot--verrouillee'); }
@@ -334,15 +342,15 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
     return slot;
   }
 
-  function groupeCarte(ix: Index, groupe: Groupe, missionPrioritaire: boolean): Node {
+  function groupeCarte(ix: Index, groupe: Groupe, missionPrioritaire: boolean, nonAffectesCeJour: Set<Id>): Node {
     const places = m.places.filter((p) => p.Groupe === groupe.id).sort((a, b) => a.Rang - b.Rang);
     return h('div', {class: 'groupe-carte'},
       h('span', {class: 'groupe-carte__code'}, groupe.Code),
-      ...places.map((place) => placeSlot(ix, place, missionPrioritaire)),
+      ...places.map((place) => placeSlot(ix, place, missionPrioritaire, nonAffectesCeJour)),
     );
   }
 
-  function besoinCarte(ix: Index, besoin: Besoin): Node {
+  function besoinCarte(ix: Index, besoin: Besoin, nonAffectesCeJour: Set<Id>): Node {
     // Mission/sous-créneau orphelins possibles (référence vers une ligne
     // supprimée ailleurs, même défaut que l'équipe corrigé le 2026-09-23) :
     // ne doit pas planter tout l'écran Affectation.
@@ -365,7 +373,7 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
       ),
       c.groupesPositionnes.length === 0
         ? h('p', {class: 'empty'}, "Aucun indicatif n'est encore positionné sur ce besoin.")
-        : h('div', {class: 'besoin-carte__groupes'}, ...c.groupesPositionnes.map((g) => groupeCarte(ix, g.groupe, missionPrioritaire))),
+        : h('div', {class: 'besoin-carte__groupes'}, ...c.groupesPositionnes.map((g) => groupeCarte(ix, g.groupe, missionPrioritaire, nonAffectesCeJour))),
     );
   }
 
@@ -428,14 +436,23 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
         .map((d) => d.Benevole),
     );
 
-    // Point 5 (nuit du 2026-09-23) : un simple filtre, pas un nouveau
-    // classement — "affecté" veut dire tenir au moins une place, n'importe
-    // où dans le festival, pas seulement le jour affiché.
-    const benevolesAffectes = new Set(m.places.filter((p) => p.Benevole != null).map((p) => p.Benevole));
+    // Point 5 (nuit du 2026-09-23, corrigé après relecture du coordinateur) :
+    // un simple filtre, pas un nouveau classement — mais "affecté" doit
+    // suivre le même filtre par jour que le reste de la vue (roster compris,
+    // demande d'Antoine du 20h38), pas "tous jours confondus" : un bénévole
+    // pris samedi mais libre dimanche doit pouvoir ressortir non affecté le
+    // dimanche. Réutilisé tel quel par `candidatsBloquesVide` (point 4).
+    const benevolesAffectesCeJour = new Set(
+      m.places
+        .filter((p) => p.Benevole != null)
+        .filter((p) => positionsDuGroupe(m, ix, p.Groupe).some(({sousCreneau}) => sousCreneauxDuJour.has(sousCreneau.id)))
+        .map((p) => p.Benevole),
+    );
+    const nonAffectesCeJour = new Set(m.benevoles.filter((b) => !benevolesAffectesCeJour.has(b.id)).map((b) => b.id));
     const rosterFiltreEquipeRecherche = m.benevoles
       .filter((b) => equipeFiltre === 'toutes' || b.Equipe === equipeFiltre)
       .filter((b) => rechercheRoster.trim() === '' || b.Nom.toLowerCase().includes(rechercheRoster.trim().toLowerCase()))
-      .filter((b) => !nonAffectesSeulement || !benevolesAffectes.has(b.id));
+      .filter((b) => !nonAffectesSeulement || nonAffectesCeJour.has(b.id));
     const roster = rosterFiltreEquipeRecherche
       .filter((b) => benevolesDisposCeJour.has(b.id))
       .sort((a, b) => a.Nom.localeCompare(b.Nom, 'fr'));
@@ -511,7 +528,7 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
             ? h('p', {class: 'empty'}, besoinsExistantsDuJour.length === 0
               ? "Aucun besoin positionné ce jour : créez-en depuis la vue Missions."
               : "Rien à traiter ce jour : tous les besoins sont couverts. Cochez « afficher aussi les besoins déjà couverts » pour les revoir.")
-            : besoinsDuJour.map(({besoin}) => besoinCarte(ix, besoin)),
+            : besoinsDuJour.map(({besoin}) => besoinCarte(ix, besoin, nonAffectesCeJour)),
         ),
       ),
     );
