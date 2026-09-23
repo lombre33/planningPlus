@@ -382,14 +382,17 @@ export class Magasin {
 
   /** Supprime un macro-créneau et ses sous-créneaux (Grist ne cascade pas —
    *  demande du fil Agenda, 2026-09-22, pour le bouton de suppression de la
-   *  vue Agenda). Même garde-fou que `redecouperSousCreneaux` : refuse si
-   *  l'un des sous-créneaux porte déjà une mission (`Besoin`), plutôt que
-   *  d'orpheliner silencieusement une affectation en cours. */
+   *  vue Agenda). Même garde-fou que `redecouperSousCreneaux` (aligné le
+   *  2026-09-23, écart repéré par le fil Cahier des charges) : refuse si
+   *  l'un des sous-créneaux porte déjà une mission — un besoin positionné
+   *  dessus, ou un créneau propre à une mission (`Sous_creneau.Mission`)
+   *  qui n'a pas forcément de `Besoin` — plutôt que d'orpheliner ou
+   *  d'effacer silencieusement ce travail. */
   async supprimerMacroCreneau(macroId: Id): Promise<{ok: true} | {ok: false; raison: string}> {
     const macro = this.data.macroCreneaux.find((m) => m.id === macroId);
     if (!macro) { return {ok: false, raison: 'Macro-créneau introuvable.'}; }
     const sousCreneauxDuMacro = this.data.sousCreneaux.filter((s) => s.Macro_creneau === macroId);
-    const aUneMission = sousCreneauxDuMacro.some((s) => this.data.besoins.some((b) => b.Sous_creneau === s.id));
+    const aUneMission = sousCreneauxDuMacro.some((s) => s.Mission != null || this.data.besoins.some((b) => b.Sous_creneau === s.id));
     if (aUneMission) {
       return {
         ok: false,

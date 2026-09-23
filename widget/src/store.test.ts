@@ -583,6 +583,27 @@ describe('Magasin.supprimerMacroCreneau', () => {
     expect(m.sousCreneaux).toBe(avantSous);
   });
 
+  it('refuse et ne change rien si un sous-créneau est propre à une mission (sans besoin)', async () => {
+    const debut = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 10});
+    const fin = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 12});
+    const m = new Magasin({
+      equipes: [], lieux: [], benevoles: [], missions: [], artistes: [],
+      macroCreneaux: [{id: 1, Nom: 'Journée', Debut: debut, Fin: fin}],
+      sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: 1, Libelle: '10h-11h', Debut: debut, Fin: debut + 3600}],
+      besoins: [], groupes: [], positionsGroupe: [], places: [],
+      disponibilites: [], souhaitsMissions: [], affinites: [],
+    });
+    const avantMacros = m.macroCreneaux;
+    const avantSous = m.sousCreneaux;
+
+    const resultat = await m.supprimerMacroCreneau(1);
+
+    expect(resultat.ok).toBe(false);
+    if (!resultat.ok) { expect(resultat.raison).toMatch(/déjà positionnées/); }
+    expect(m.macroCreneaux).toBe(avantMacros);
+    expect(m.sousCreneaux).toBe(avantSous);
+  });
+
   it('renvoie une erreur pour un macro-créneau introuvable', async () => {
     const {m} = modeleUnMacro();
 
