@@ -801,6 +801,241 @@ describe('Magasin.creerSousCreneauMission', () => {
   });
 });
 
+describe('Magasin.copierCreneauxJour', () => {
+  const JOUR1_DEBUT = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 10});
+  const JOUR1_FIN = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 12});
+  const COMMUN_FIN = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 11});
+  const JOUR2_DEBUT = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 18, heures: 10});
+  const JOUR2_FIN = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 18, heures: 12});
+  const JOUR3_DEBUT = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 19, heures: 10});
+  const JOUR3_FIN = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 19, heures: 12});
+  const DUREE_COMMUN = COMMUN_FIN - JOUR1_DEBUT; // 1h, décalage nul depuis le début du macro-créneau
+
+  /** Deux jours (macro-créneaux 1 et 2) ; le jour source a un commun
+   *  (10h-11h) partagé par deux missions, chacune avec son besoin dessus, et
+   *  un indicatif déjà positionné sur celui de la première — de quoi éprouver
+   *  la déduplication du commun ET la copie de l'indicatif en un seul jeu de
+   *  données. `sousCreneauxCibleExtra` seed en plus des sous-créneaux déjà
+   *  présents sur le jour cible, pour éprouver la réutilisation d'une copie
+   *  déjà là (grille commune ou copie antérieure) sans reconstruire tout le
+   *  modèle à la main. */
+  function modeleDeuxJours(sousCreneauxCibleExtra: Modele['sousCreneaux'] = []): {
+    m: Magasin; macroSource: Id; macroCible: Id; macroVide: Id;
+    mission1: Id; mission2: Id; communSourceId: Id; besoin1: Id; besoin2: Id; groupeId: Id;
+  } {
+    const m = new Magasin({
+      equipes: [{id: 1, Nom: 'Bars', Couleur: '#c00', Referent: null, Notes: ''}],
+      lieux: [], benevoles: [], artistes: [],
+      missions: [
+        {id: 1, Nom: 'Buvette', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []},
+        {id: 2, Nom: 'Sécurité', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []},
+      ],
+      macroCreneaux: [
+        {id: 1, Nom: 'Vendredi', Debut: JOUR1_DEBUT, Fin: JOUR1_FIN},
+        {id: 2, Nom: 'Samedi', Debut: JOUR2_DEBUT, Fin: JOUR2_FIN},
+        {id: 3, Nom: 'Dimanche', Debut: JOUR3_DEBUT, Fin: JOUR3_FIN},
+      ],
+      sousCreneaux: [
+        {id: 10, Macro_creneau: 1, Mission: null, Libelle: '10h-11h', Debut: JOUR1_DEBUT, Fin: COMMUN_FIN},
+        ...sousCreneauxCibleExtra,
+      ],
+      besoins: [
+        {id: 100, Mission: 1, Sous_creneau: 10, Effectif_min: 1, Effectif_max: 2, Taille_groupe: 2},
+        {id: 101, Mission: 2, Sous_creneau: 10, Effectif_min: 1, Effectif_max: 1, Taille_groupe: 1},
+      ],
+      groupes: [{id: 500, Code: 'A1', Taille: 2, Equipe: 1, Notes: ''}],
+      positionsGroupe: [{id: 900, Groupe: 500, Besoin: 100}],
+      places: [
+        {id: 700, Groupe: 500, Rang: 1, Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0},
+        {id: 701, Groupe: 500, Rang: 2, Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0},
+      ],
+      disponibilites: [], souhaitsMissions: [], affinites: [],
+    });
+    return {
+      m, macroSource: 1, macroCible: 2, macroVide: 3,
+      mission1: 1, mission2: 2, communSourceId: 10, besoin1: 100, besoin2: 101, groupeId: 500,
+    };
+  }
+
+  it('refuse de copier un jour sur lui-même', async () => {
+    const {m, macroSource} = modeleDeuxJours();
+    const resultat = await m.copierCreneauxJour(macroSource, macroSource);
+    expect(resultat).toEqual({ok: false, raison: 'Le jour source et le jour cible sont identiques.'});
+  });
+
+  it("signale qu'il n'y a rien à copier si le jour source n'a aucun besoin construit", async () => {
+    const {m, macroVide, macroCible} = modeleDeuxJours();
+    const resultat = await m.copierCreneauxJour(macroVide, macroCible);
+    expect(resultat.ok).toBe(false);
+  });
+
+  it('déduplique un commun partagé par deux missions : une seule copie, avec Mission conservé à null', async () => {
+    const {m, macroSource, macroCible} = modeleDeuxJours();
+
+    const resultat = await m.copierCreneauxJour(macroSource, macroCible);
+
+    expect(resultat).toEqual({ok: true, sousCreneauxCrees: 1, besoinsCrees: 2, indicatifsRepositionnes: 1});
+    const copies = m.sousCreneaux.filter((s) => s.Macro_creneau === macroCible);
+    expect(copies).toHaveLength(1);
+    expect(copies[0]!.Mission).toBeNull();
+  });
+
+  it('place la copie au même horaire relatif au début du macro-créneau cible', async () => {
+    const {m, macroSource, macroCible} = modeleDeuxJours();
+    const macroSourceObj = m.macroCreneaux.find((ma) => ma.id === macroSource)!;
+    const macroCibleObj = m.macroCreneaux.find((ma) => ma.id === macroCible)!;
+    const source = m.sousCreneaux.find((s) => s.id === 10)!;
+
+    await m.copierCreneauxJour(macroSource, macroCible);
+
+    const copie = m.sousCreneaux.find((s) => s.Macro_creneau === macroCible)!;
+    expect(copie.Debut).toBe(macroCibleObj.Debut + (source.Debut - macroSourceObj.Debut));
+    expect(copie.Fin).toBe(macroCibleObj.Debut + (source.Fin - macroSourceObj.Debut));
+  });
+
+  it('crée un besoin par mission copiée, avec les mêmes effectifs, rattaché à la copie du sous-créneau', async () => {
+    const {m, macroSource, macroCible, mission1, mission2} = modeleDeuxJours();
+
+    await m.copierCreneauxJour(macroSource, macroCible);
+
+    const copie = m.sousCreneaux.find((s) => s.Macro_creneau === macroCible)!;
+    const b1 = m.besoins.find((b) => b.Mission === mission1 && b.Sous_creneau === copie.id)!;
+    const b2 = m.besoins.find((b) => b.Mission === mission2 && b.Sous_creneau === copie.id)!;
+    expect(b1).toMatchObject({Effectif_min: 1, Effectif_max: 2, Taille_groupe: 2});
+    expect(b2).toMatchObject({Effectif_min: 1, Effectif_max: 1, Taille_groupe: 1});
+  });
+
+  it('repositionne un indicatif déjà positionné sur le besoin copié, même Groupe — aucun nouveau créé', async () => {
+    const {m, macroSource, macroCible, mission1, groupeId} = modeleDeuxJours();
+    const nbGroupesAvant = m.groupes.length;
+    const nbPlacesAvant = m.places.length;
+
+    await m.copierCreneauxJour(macroSource, macroCible);
+
+    expect(m.groupes).toHaveLength(nbGroupesAvant); // jamais un nouveau Groupe
+    expect(m.places).toHaveLength(nbPlacesAvant); // ni de nouvelles places : le Groupe suit tel quel
+    const copie = m.sousCreneaux.find((s) => s.Macro_creneau === macroCible)!;
+    const besoinCopie = m.besoins.find((b) => b.Mission === mission1 && b.Sous_creneau === copie.id)!;
+    const position = m.positionsGroupe.find((p) => p.Besoin === besoinCopie.id);
+    expect(position?.Groupe).toBe(groupeId);
+  });
+
+  it('rejouée, ne crée aucun doublon (ni sous-créneau, ni besoin, ni position)', async () => {
+    const {m, macroSource, macroCible} = modeleDeuxJours();
+    await m.copierCreneauxJour(macroSource, macroCible);
+    const nbSousAvant = m.sousCreneaux.length;
+    const nbBesoinsAvant = m.besoins.length;
+    const nbPositionsAvant = m.positionsGroupe.length;
+
+    const resultat = await m.copierCreneauxJour(macroSource, macroCible);
+
+    expect(resultat).toEqual({ok: true, sousCreneauxCrees: 0, besoinsCrees: 0, indicatifsRepositionnes: 0});
+    expect(m.sousCreneaux).toHaveLength(nbSousAvant);
+    expect(m.besoins).toHaveLength(nbBesoinsAvant);
+    expect(m.positionsGroupe).toHaveLength(nbPositionsAvant);
+  });
+
+  it('réutilise un sous-créneau déjà présent au même horaire sur le jour cible plutôt que d’en recréer un', async () => {
+    // Un jour cible qui a déjà, par avance (grille commune ou copie antérieure),
+    // un commun exactement au même horaire relatif que celui du jour source.
+    const {m, macroSource, macroCible} = modeleDeuxJours([
+      {id: 777, Macro_creneau: 2, Mission: null, Libelle: 'déjà là', Debut: JOUR2_DEBUT, Fin: JOUR2_DEBUT + DUREE_COMMUN},
+    ]);
+
+    const resultat = await m.copierCreneauxJour(macroSource, macroCible);
+
+    expect(resultat).toEqual({ok: true, sousCreneauxCrees: 0, besoinsCrees: 2, indicatifsRepositionnes: 1});
+    expect(m.sousCreneaux.filter((s) => s.Macro_creneau === macroCible)).toHaveLength(1);
+    expect(m.besoins.some((b) => b.Sous_creneau === 777)).toBe(true);
+  });
+
+  it('en mode connecté, crée le sous-créneau dédupliqué via remplacerSousCreneaux puis les besoins et positions via le pont', async () => {
+    const {m, macroSource, macroCible, mission1, mission2, groupeId} = modeleDeuxJours();
+    const creations: {missionId: Id | null; debut: number; fin: number}[] = [];
+    const besoinsCrees: {missionId: Id; sousCreneauId: Id}[] = [];
+    const positions: {groupeId: Id; besoinId: Id}[] = [];
+    let prochainSousCreneauId = 900;
+    let prochainBesoinId = 950;
+    let prochainPositionId = 990;
+    m.brancherEcriture(ecritureDeTest({
+      remplacerSousCreneaux: async (idsASupprimer, nouveaux) => {
+        expect(idsASupprimer).toEqual([]);
+        creations.push(...nouveaux.map((n) => ({missionId: n.missionId, debut: n.debut, fin: n.fin})));
+        return nouveaux.map(() => prochainSousCreneauId++);
+      },
+      creerBesoin: async (besoin) => {
+        besoinsCrees.push({missionId: besoin.missionId, sousCreneauId: besoin.sousCreneauId});
+        return prochainBesoinId++;
+      },
+      ajouterPosition: async (g, besoinId) => {
+        positions.push({groupeId: g, besoinId});
+        return prochainPositionId++;
+      },
+    }));
+
+    const resultat = await m.copierCreneauxJour(macroSource, macroCible);
+
+    expect(resultat).toEqual({ok: true, sousCreneauxCrees: 1, besoinsCrees: 2, indicatifsRepositionnes: 1});
+    expect(creations).toEqual([{missionId: null, debut: JOUR2_DEBUT, fin: JOUR2_DEBUT + DUREE_COMMUN}]);
+    expect(besoinsCrees).toEqual([
+      {missionId: mission1, sousCreneauId: 900},
+      {missionId: mission2, sousCreneauId: 900},
+    ]);
+    expect(positions).toEqual([{groupeId, besoinId: 950}]);
+  });
+
+  it("en mode connecté, si la création d'un besoin échoue, ce qui a déjà été copié avant reste (rien perdu, rien en double au prochain essai)", async () => {
+    const {m, macroSource, macroCible, mission1, mission2} = modeleDeuxJours();
+    m.brancherEcriture(ecritureDeTest({
+      remplacerSousCreneaux: async (_ids, nouveaux) => nouveaux.map((_, i) => 900 + i),
+      creerBesoin: async (besoin) => {
+        if (besoin.missionId === mission1) { return 950; }
+        throw new Error('document indisponible');
+      },
+      ajouterPosition: async () => 1000, // l'indicatif de mission1 se repositionne sans souci
+    }));
+
+    const resultat = await m.copierCreneauxJour(macroSource, macroCible);
+
+    expect(resultat.ok).toBe(false);
+    if (resultat.ok) { throw new Error('devrait avoir échoué'); }
+    expect(resultat.raison).toContain('Sécurité');
+    const copie = m.sousCreneaux.find((s) => s.Macro_creneau === macroCible)!;
+    expect(copie).toBeDefined(); // le sous-créneau dédupliqué reste, même après l'échec du besoin
+    expect(m.besoins.some((b) => b.Mission === mission1 && b.Sous_creneau === copie.id)).toBe(true);
+    expect(m.besoins.some((b) => b.Mission === mission2 && b.Sous_creneau === copie.id)).toBe(false);
+  });
+
+  it("en mode connecté, si le repositionnement d'un indicatif échoue, le sous-créneau et le besoin déjà créés restent", async () => {
+    const {m, macroSource, macroCible, mission1} = modeleDeuxJours();
+    m.brancherEcriture(ecritureDeTest({
+      remplacerSousCreneaux: async (_ids, nouveaux) => nouveaux.map((_, i) => 900 + i),
+      creerBesoin: async () => 950,
+      ajouterPosition: async () => { throw new Error('document indisponible'); },
+    }));
+
+    const resultat = await m.copierCreneauxJour(macroSource, macroCible);
+
+    expect(resultat.ok).toBe(false);
+    if (resultat.ok) { throw new Error('devrait avoir échoué'); }
+    expect(resultat.raison).toContain('Buvette');
+    const copie = m.sousCreneaux.find((s) => s.Macro_creneau === macroCible)!;
+    expect(copie).toBeDefined();
+    expect(m.besoins.some((b) => b.Mission === mission1 && b.Sous_creneau === copie.id)).toBe(true);
+    expect(m.positionsGroupe.some((p) => p.Besoin !== 100 && p.Besoin !== 101)).toBe(false); // aucune position sur une copie
+  });
+
+  it('notifie les abonnés au moins une fois quand quelque chose a été copié', async () => {
+    const {m, macroSource, macroCible} = modeleDeuxJours();
+    let notifications = 0;
+    m.subscribe(() => { notifications += 1; });
+
+    await m.copierCreneauxJour(macroSource, macroCible);
+
+    expect(notifications).toBeGreaterThan(0);
+  });
+});
+
 describe('Magasin.deplacerCreneauxMission', () => {
   async function modeleDeuxCreneauxPropres(): Promise<{m: Magasin; macroId: Id; missionId: Id; c1: Id; c2: Id}> {
     const {m, macroId, missionId} = (() => {

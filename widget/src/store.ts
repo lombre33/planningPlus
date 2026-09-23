@@ -10,6 +10,7 @@ import type {
   Affinite, Artiste, Benevole, Besoin, Disponibilite, Epoch, Equipe, Groupe, Id, Lieu, MacroCreneau,
   Mission, Modele, OriginePlace, Place, PositionGroupe, SouhaitMission, SousCreneau,
 } from './domain/types';
+import {sousCreneauxApplicables} from './logic/derive';
 import type {ColonneTable, TableDocument} from './logic/parametres-benevoles';
 import {cleJourFestival, libelleHeurePlage, PAS_SECONDES} from './temps';
 
@@ -641,6 +642,152 @@ export class Magasin {
     });
     this.notifier();
     return id;
+  }
+
+  /** Copie sur un autre jour les créneaux qu'une ou plusieurs missions ont
+   *  déjà construits sur un jour source — demande d'Antoine du 2026-09-23 :
+   *  « une fois que j'ai créé les éléments pour un jour, les importer/copier
+   *  sur un autre », étendue le jour même à la copie des indicatifs déjà
+   *  positionnés, « le cas échéant ».
+   *
+   *  Un sous-créneau COMMUN partagé par plusieurs missions n'est répliqué
+   *  qu'UNE seule fois (`Mission` conservé tel quel, jamais forcé « propre » —
+   *  point relevé par le fil Indicatifs : c'est le même défaut de structure
+   *  qui a fait exploser sa propre vue le 2026-09-23), via une table de
+   *  correspondance ancien id → nouvel id partagée par toutes les missions
+   *  qui s'y rattachent. Purement additif : ne modifie, ne réordonne ni ne
+   *  supprime jamais rien côté jour source ou côté existant du jour cible.
+   *
+   *  Idempotent bloc par bloc : rejouer la copie retrouve, pour un
+   *  sous-créneau donné, une copie déjà là au même horaire relatif et avec
+   *  le même `Mission` plutôt que d'en recréer une, et un besoin déjà
+   *  présent pour cette mission sur cette copie n'est jamais recréé — une
+   *  copie relancée après un premier passage partiel reprend juste là où
+   *  elle s'était arrêtée, jamais en double.
+   *
+   *  Un indicatif déjà positionné sur un besoin copié est repositionné sur
+   *  sa copie via `ajouterPosition` — même `Groupe`, donc mêmes bénévoles
+   *  déjà affectés qui le suivent automatiquement : un binôme reste la même
+   *  entité sur tout le festival (modèle confirmé par le fil Indicatifs),
+   *  la copie ne crée jamais un nouveau `Groupe`. */
+  async copierCreneauxJour(
+    macroSourceId: Id, macroCibleId: Id,
+  ): Promise<
+    | {ok: true; sousCreneauxCrees: number; besoinsCrees: number; indicatifsRepositionnes: number}
+    | {ok: false; raison: string}
+  > {
+    if (macroSourceId === macroCibleId) {
+      return {ok: false, raison: 'Le jour source et le jour cible sont identiques.'};
+    }
+    const macroSource = this.data.macroCreneaux.find((ma) => ma.id === macroSourceId);
+    const macroCible = this.data.macroCreneaux.find((ma) => ma.id === macroCibleId);
+    if (!macroSource || !macroCible) { return {ok: false, raison: 'Macro-créneau introuvable.'}; }
+
+    const sousCreneauxSource = this.data.sousCreneaux.filter((s) => s.Macro_creneau === macroSourceId);
+    const aCopier: {mission: Mission; sc: SousCreneau; besoin: Besoin}[] = [];
+    for (const mission of this.data.missions) {
+      for (const sc of sousCreneauxApplicables(mission, sousCreneauxSource)) {
+        const besoin = this.data.besoins.find((b) => b.Mission === mission.id && b.Sous_creneau === sc.id);
+        if (besoin) { aCopier.push({mission, sc, besoin}); }
+      }
+    }
+    if (aCopier.length === 0) {
+      return {ok: false, raison: "Rien à copier : aucune mission n'a de besoin construit sur le jour source."};
+    }
+
+    // Sous-créneaux distincts à répliquer, dédupliqués par id (un commun
+    // partagé par plusieurs missions n'apparaît qu'une fois dans `aCopier`
+    // mais ne doit être copié qu'une fois).
+    const distincts = new Map<Id, SousCreneau>();
+    for (const {sc} of aCopier) { distincts.set(sc.id, sc); }
+
+    const correspondance = new Map<Id, Id>();
+    const aCreer: {source: SousCreneau; missionId: Id | null; libelle: string; debut: Epoch; fin: Epoch}[] = [];
+    for (const sc of distincts.values()) {
+      const debut = macroCible.Debut + (sc.Debut - macroSource.Debut);
+      const fin = macroCible.Debut + (sc.Fin - macroSource.Debut);
+      const dejaLa = this.data.sousCreneaux.find(
+        (c) => c.Macro_creneau === macroCibleId && c.Mission === sc.Mission && c.Debut === debut && c.Fin === fin,
+      );
+      if (dejaLa) { correspondance.set(sc.id, dejaLa.id); continue; }
+      aCreer.push({source: sc, missionId: sc.Mission, libelle: sc.Libelle, debut, fin});
+    }
+
+    if (aCreer.length > 0) {
+      let idsReels: Id[];
+      if (this.ecriture) {
+        try {
+          idsReels = await this.ecriture.remplacerSousCreneaux(
+            [],
+            aCreer.map((n) => ({macroCreneauId: macroCibleId, missionId: n.missionId, libelle: n.libelle, debut: n.debut, fin: n.fin})),
+          );
+        } catch (erreur) {
+          if (!(erreur instanceof SuppressionApresCreationEchouee)) {
+            return {ok: false, raison: "Échec de l'écriture dans le document Grist : la copie a été annulée."};
+          }
+          idsReels = erreur.idsReelsCrees as Id[];
+        }
+      } else {
+        const baseId = prochainId(this.data.sousCreneaux);
+        idsReels = aCreer.map((_, i) => baseId + i);
+      }
+      aCreer.forEach((n, i) => {
+        const id = idsReels[i]!;
+        correspondance.set(n.source.id, id);
+        this.data.sousCreneaux.push({id, Macro_creneau: macroCibleId, Mission: n.missionId, Libelle: n.libelle, Debut: n.debut, Fin: n.fin});
+      });
+      this.notifier();
+    }
+
+    let besoinsCrees = 0;
+    let indicatifsRepositionnes = 0;
+    for (const {mission, sc, besoin} of aCopier) {
+      const sousCreneauCibleId = correspondance.get(sc.id)!;
+      const dejaCopie = this.data.besoins.some((b) => b.Mission === mission.id && b.Sous_creneau === sousCreneauCibleId);
+      if (dejaCopie) { continue; }
+
+      let besoinCibleId: Id;
+      try {
+        besoinCibleId = this.ecriture
+          ? await this.ecriture.creerBesoin({
+            missionId: mission.id, sousCreneauId: sousCreneauCibleId,
+            effectifMin: besoin.Effectif_min, effectifMax: besoin.Effectif_max, tailleGroupe: besoin.Taille_groupe,
+          })
+          : prochainId(this.data.besoins);
+      } catch {
+        this.notifier();
+        return {
+          ok: false,
+          raison: `Échec de l'écriture dans le document Grist pour la mission « ${mission.Nom} » : la copie s'est arrêtée là. Ce qui a déjà été copié avant (${besoinsCrees} besoin(s), ${indicatifsRepositionnes} indicatif(s)) est conservé ; relancez la copie pour continuer, elle ne redouble jamais ce qui est déjà là.`,
+        };
+      }
+      this.data.besoins.push({
+        id: besoinCibleId, Mission: mission.id, Sous_creneau: sousCreneauCibleId,
+        Effectif_min: besoin.Effectif_min, Effectif_max: besoin.Effectif_max, Taille_groupe: besoin.Taille_groupe,
+      });
+      besoinsCrees += 1;
+
+      const positions = this.data.positionsGroupe.filter((p) => p.Besoin === besoin.id);
+      for (const position of positions) {
+        let positionId: Id;
+        try {
+          positionId = this.ecriture
+            ? await this.ecriture.ajouterPosition(position.Groupe, besoinCibleId)
+            : prochainId(this.data.positionsGroupe);
+        } catch {
+          this.notifier();
+          return {
+            ok: false,
+            raison: `Échec du repositionnement d'un indicatif pour la mission « ${mission.Nom} » : la copie s'est arrêtée là. Ce qui a déjà été copié avant (${besoinsCrees} besoin(s), ${indicatifsRepositionnes} indicatif(s)) est conservé ; relancez la copie pour continuer, elle ne redouble jamais ce qui est déjà là.`,
+          };
+        }
+        this.data.positionsGroupe.push({id: positionId, Groupe: position.Groupe, Besoin: besoinCibleId});
+        indicatifsRepositionnes += 1;
+      }
+    }
+
+    this.notifier();
+    return {ok: true, sousCreneauxCrees: aCreer.length, besoinsCrees, indicatifsRepositionnes};
   }
 
   /** Convertit en créneaux à `missionId` tous les créneaux communs qu'elle

@@ -57,6 +57,11 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
         h('button', {
           class: 'btn btn--primary btn--sm', type: 'button', onclick: () => ouvrirCreationMission(),
         }, '+ Nouvelle mission'),
+        jour && jours.length > 1
+          ? h('button', {
+            class: 'btn btn--ghost btn--sm', type: 'button', onclick: () => ouvrirCopieDepuisJour(jour, jours),
+          }, "Copier les créneaux d'un autre jour…")
+          : null,
         h('span', {class: 'view__intro', style: {margin: '0'}},
           "Le référentiel des missions — pas encore où ni quand : ça se joue case par case, ci-dessous."),
       ),
@@ -388,6 +393,84 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
         }, 'Créer'),
       ),
     ));
+  }
+
+  /** Reproduit sur `jourCible` les besoins déjà construits sur un autre jour
+   *  (demande d'Antoine du 2026-09-23 : « une fois que j'ai créé les
+   *  éléments pour un jour, les importer/copier sur un autre »), avec leurs
+   *  indicatifs déjà positionnés « le cas échéant ». Un « jour » peut
+   *  grouper plusieurs macro-créneaux (`Jour.macros`, très rare en pratique
+   *  — le cas courant reste un macro-créneau par jour de festival) : on les
+   *  apparie dans l'ordre chronologique et on copie chaque paire via
+   *  `Magasin.copierCreneauxJour`, qui fait tout le travail (dédup des
+   *  communs, non-régression, indicatifs) pour une seule paire de
+   *  macro-créneaux. N'écrase jamais rien côté jour cible — voir le
+   *  commentaire de `copierCreneauxJour` dans `store.ts`. */
+  function ouvrirCopieDepuisJour(jourCible: Jour, jours: Jour[]): void {
+    const autresJours = jours.filter((j) => j.cle !== jourCible.cle);
+    const champJour = h('select', {class: 'select'},
+      ...autresJours.map((j) => h('option', {value: j.cle}, j.libelle)),
+    ) as HTMLSelectElement;
+    const erreur = creerErreur();
+    let resultatTexte: {texte: string; ton: 'ok' | 'danger'} | null = null;
+    const zoneResultat = h('div') as HTMLElement;
+    const rafraichirResultat = (): void => {
+      vider(zoneResultat);
+      if (resultatTexte) { zoneResultat.append(h('span', {class: `pill pill--${resultatTexte.ton}`}, resultatTexte.texte)); }
+    };
+
+    ouvrirModal("Copier les créneaux d'un autre jour", (fermer) => {
+      const boutonCopier = h('button', {
+        class: 'btn btn--primary', type: 'button',
+        onclick: async () => {
+          const jourSource = autresJours.find((j) => j.cle === champJour.value);
+          if (!jourSource) { erreur.afficher('Merci de choisir un jour.'); return; }
+          erreur.effacer();
+          boutonCopier.setAttribute('disabled', 'true');
+          const paires = jourSource.macros
+            .map((source, i) => [source, jourCible.macros[i]] as const)
+            .filter((p): p is [MacroCreneau, MacroCreneau] => p[1] != null);
+          let sousCreneauxCrees = 0;
+          let besoinsCrees = 0;
+          let indicatifsRepositionnes = 0;
+          for (const [source, cible] of paires) {
+            const resultat = await m.copierCreneauxJour(source.id, cible.id);
+            if (!resultat.ok) {
+              resultatTexte = {texte: resultat.raison, ton: 'danger'};
+              rafraichirResultat();
+              boutonCopier.removeAttribute('disabled');
+              return;
+            }
+            sousCreneauxCrees += resultat.sousCreneauxCrees;
+            besoinsCrees += resultat.besoinsCrees;
+            indicatifsRepositionnes += resultat.indicatifsRepositionnes;
+          }
+          resultatTexte = besoinsCrees === 0
+            ? {texte: `Rien à copier depuis ${jourSource.libelle} : tout y était déjà présent sur ${jourCible.libelle}.`, ton: 'ok'}
+            : {
+              texte: `${besoinsCrees} besoin${besoinsCrees > 1 ? 's' : ''} copié${besoinsCrees > 1 ? 's' : ''} depuis ${jourSource.libelle}`
+                + (sousCreneauxCrees > 0 ? ` (${sousCreneauxCrees} créneau${sousCreneauxCrees > 1 ? 'x' : ''} créé${sousCreneauxCrees > 1 ? 's' : ''})` : '')
+                + (indicatifsRepositionnes > 0 ? `, ${indicatifsRepositionnes} indicatif${indicatifsRepositionnes > 1 ? 's' : ''} repositionné${indicatifsRepositionnes > 1 ? 's' : ''}` : '')
+                + '.',
+              ton: 'ok',
+            };
+          rafraichirResultat();
+          boutonCopier.removeAttribute('disabled');
+        },
+      }, 'Copier') as HTMLButtonElement;
+
+      return h('div', {style: {display: 'flex', flexDirection: 'column', gap: '14px'}},
+        h('p', {class: 'topbar__subtitle'},
+          `Reproduit sur ${jourCible.libelle} les besoins déjà construits sur le jour choisi ci-dessous, avec leurs indicatifs déjà positionnés le cas échéant. N'écrase jamais ce qui existe déjà sur ${jourCible.libelle}.`),
+        h('div', {class: 'field'}, h('label', null, 'Copier depuis'), champJour),
+        erreur.noeud,
+        zoneResultat,
+        h('div', {class: 'modal__actions'},
+          h('button', {class: 'btn btn--ghost', type: 'button', onclick: fermer}, 'Fermer'),
+          boutonCopier,
+        ),
+      );
+    });
   }
 
   function ouvrirDetailBesoin(besoinId: Id): void {
