@@ -1,9 +1,10 @@
 # PlanningPlus — Cahier des charges
 
-**Version :** v1.13 (§7.1 : nouvelle contrainte dure — un bénévole n'a
-qu'un seul indicatif par jour, l'exclusivité reste à câbler côté moteur,
-noté pour le fil Algorithme — Antoine, 2026-09-23 20h38 ; historique des
-versions précédentes dans `git log` sur ce fichier)
+**Version :** v1.14 (§7.1 : l'exclusivité « un indicatif par jour » est
+câblée (commit `7fc0b30`) ; §7.5 : bouton de réinitialisation complète et
+listing bénévoles limité aux dispos du jour, tous deux livrés le
+2026-09-23 par le fil Algorithme ; historique des versions précédentes
+dans `git log` sur ce fichier)
 **Statut :** structure et règles validées (§6.3, §7.5) ; développement agile
 par incréments courts depuis le 2026-09-22 (§11.1) ; document tenu à jour au
 fil du code plutôt qu'en fin de sprint, sur consigne du coordinateur
@@ -507,17 +508,16 @@ explicite la règle du §5.4 (rien de significatif ne vit hors du document).
    cours de remplissage (voir §6.3 : « les missions tournent, pas les
    personnes »). *(Antoine, 2026-09-23 20h38, dans le fil Algorithme.)*
 
-   *(Vérifié dans le moteur le même jour : `evaluerEligibilite` compare déjà
-   la disponibilité du bénévole à `quartsParGroupe`, l'ensemble des quarts
-   couverts par toutes les positions de l'indicatif — pas seulement celle en
-   cours de remplissage, donc déjà correct sur ce point précis. Il manque en
-   revanche l'exclusivité par jour elle-même : rien n'empêche aujourd'hui un
-   bénévole d'être affecté à un indicatif le matin et à un *autre* indicatif
-   l'après-midi du même macro-créneau, dès lors que leurs quarts ne se
-   recouvrent pas — seule la contrainte 1 ci-dessus est vérifiée. Reste à
-   ajouter : un bénévole déjà affecté à un indicatif sur le macro-créneau du
-   jour doit devenir inéligible à tout autre indicatif sur ce même jour.
-   Pour le fil Algorithme d'affectation.)*
+   *(Posée le 2026-09-23 20h38, câblée le jour même par le fil Algorithme,
+   commit `7fc0b30` : `evaluerEligibilite` refuse désormais un candidat déjà
+   affecté à un *autre* indicatif sur le même macro-créneau, même sans
+   chevauchement de quarts — raison `autre_indicatif_meme_jour`. S'ajoute à
+   la vérification déjà correcte de la disponibilité sur `quartsParGroupe`,
+   l'ensemble des quarts de toutes les positions de l'indicatif, pas
+   seulement celle en cours de remplissage. Deux points restent en attente
+   d'une réponse d'Antoine, volontairement non écrits ici : que faire d'une
+   violation de cette règle introduite à la main dans Grist (anomalie
+   éventuelle, §7.4), et si cette contrainte doit un jour être assouplie.)*
 
 *(L'effectif maximum d'un besoin n'est plus une contrainte dure : le dépasser
 reste possible — un renfort ponctuel — et remonte en anomalie « sur-effectif »
@@ -687,10 +687,26 @@ indépendamment de l'interface retenue.
    `Groupe` ni de `Positions_groupe` : il remplit les `Places` déjà
    positionnées (§6.3), en respectant les contraintes dures (§7.1) et en
    pondérant selon les objectifs (§7.2).
-2. **Résultat** : chaque `Place` remplie porte `Origine = Algorithme` et un
+2. **Réinitialisation complète**, un geste distinct du lancement : vide et
+   déverrouille chaque `Place` de tout le festival, corrections manuelles
+   verrouillées comprises — y compris une place verrouillée restée vide,
+   sinon l'algorithme l'ignore pour toujours (§7.1). Irréversible :
+   confirmation explicite annonçant le nombre de places concernées avant
+   d'agir. *(Demande d'Antoine, 2026-09-23 20h38, livrée le jour même par le
+   fil Algorithme — `Magasin.reinitialiserAffectations`. Portée
+   volontairement le festival entier, pas le seul jour affiché ; peut
+   devenir réglable par jour si Antoine le redemande — pas encore le cas.)*
+3. **Listing des bénévoles limité au jour affiché** : le panneau de
+   sélection ne montre que les bénévoles ayant déclaré au moins une
+   disponibilité (y compris « veut voir un artiste », pas seulement
+   « disponible ») sur les macro-créneaux du jour en cours — un bénévole
+   sans aucune disponibilité déclarée ce jour-là n'y figure pas. *(Demande
+   d'Antoine, 2026-09-23 20h38, livrée le jour même par le fil
+   Algorithme.)*
+4. **Résultat** : chaque `Place` remplie porte `Origine = Algorithme` et un
    `Score` ; chaque `Place` non pourvue reste vide et alimente l'anomalie
    « sous-effectif » (§7.4).
-3. **Correction manuelle, place par place.** Pour toute place, pourvue ou
+5. **Correction manuelle, place par place.** Pour toute place, pourvue ou
    non : voir les bénévoles éligibles, classés par le même score que
    l'algorithme et avec la même explication (équipe, souhait, artiste,
    quota — §7.2) ; choisir un bénévole dans cette liste l'affecte ; vider une
@@ -713,7 +729,7 @@ indépendamment de l'interface retenue.
    Sans ces deux points, quelqu'un qui corrige à la main ne comprend pas
    pourquoi un recalcul ignore son travail — c'est le genre de silence qui se
    paie le jour J.
-4. **Correction manuelle, indicatif par indicatif.** Un indicatif peut être
+6. **Correction manuelle, indicatif par indicatif.** Un indicatif peut être
    repositionné d'un besoin à un autre — une seule ligne de `Positions_groupe`
    change, rien d'autre (§6.3) — sans toucher aux personnes qui l'occupent.
    Il peut aussi être **ajouté** sur un second besoin sans quitter le
@@ -721,10 +737,10 @@ indépendamment de l'interface retenue.
    place — pour l'usage central du §6.3 (un indicatif positionné sur
    plusieurs besoins à la fois). *(Distinction geste par geste ajoutée le
    2026-09-23 : glisser déplace, Alt maintenu pendant le dépôt ajoute.)*
-5. **Recalcul partiel** après une correction manuelle ou une absence
+7. **Recalcul partiel** après une correction manuelle ou une absence
    déclarée : relancer l'algorithme sur le seul périmètre affecté reprend les
    places encore vides sans toucher aux places verrouillées (§7.3, §5.3).
-6. **Anomalies à jour en continu** (§7.4) : chaque correction met à jour la
+8. **Anomalies à jour en continu** (§7.4) : chaque correction met à jour la
    vue anomalies immédiatement, jamais en différé.
 
 C'est ce parcours, plus que les vues de consultation, qui décide si l'outil
