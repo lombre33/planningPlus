@@ -58,7 +58,7 @@ describe('création d’un passage, sans document Grist branché (mode démo)', 
     const m = new Magasin(modeleVide());
     montrerArtistes(container, m);
 
-    boutonTexte('+ Nouveau passage').click();
+    boutonTexte('+ Nouvel artiste').click();
     remplirFormulaire('Nuit Blanche', '2026-07-18T22:00', '2026-07-19T00:30');
     boutonTexte('Créer').click();
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -73,7 +73,7 @@ describe('création d’un passage, sans document Grist branché (mode démo)', 
     const m = new Magasin({...modeleVide(), lieux: []});
     montrerArtistes(container, m);
 
-    boutonTexte('+ Nouveau passage').click();
+    boutonTexte('+ Nouvel artiste').click();
     remplirFormulaire('Nuit Blanche', '2026-07-18T22:00', '2026-07-19T00:30');
     boutonTexte('Créer').click();
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -88,7 +88,7 @@ describe('création d’un passage, sans document Grist branché (mode démo)', 
     const m = new Magasin(modeleVide());
     montrerArtistes(container, m);
 
-    boutonTexte('+ Nouveau passage').click();
+    boutonTexte('+ Nouvel artiste').click();
     remplirFormulaire('Nuit Blanche', '2026-07-18T22:00', '2026-07-18T20:00');
     boutonTexte('Créer').click();
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -147,7 +147,7 @@ describe('document connecté : échec d’écriture puis nouvel essai', () => {
     m.brancherEcriture(ecriture);
     montrerArtistes(container, m);
 
-    boutonTexte('+ Nouveau passage').click();
+    boutonTexte('+ Nouvel artiste').click();
     remplirFormulaire('Nuit Blanche', '2026-07-18T22:00', '2026-07-19T00:30');
     boutonTexte('Créer').click();
     await new Promise((resolve) => setTimeout(resolve, 0));

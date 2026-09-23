@@ -112,7 +112,7 @@ function formulaire(
 }
 
 export function ouvrirModalCreationArtiste(m: Magasin): void {
-  formulaire(m, 'Nouveau passage', 'Créer', null, null, (patch) => m.enregistrerArtiste(patch));
+  formulaire(m, 'Nouvel artiste', 'Créer', null, null, (patch) => m.enregistrerArtiste(patch));
 }
 
 /** Un nouveau passage pour un artiste qui a déjà au moins une ligne dans la

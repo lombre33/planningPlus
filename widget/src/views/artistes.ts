@@ -85,14 +85,14 @@ export function montrerArtistes(container: HTMLElement, m: Magasin): () => void 
     const boutonNouveau = h('button', {
       class: 'btn btn--primary btn--sm', type: 'button',
       onclick: () => ouvrirModalCreationArtiste(m),
-    }, '+ Nouveau passage');
+    }, '+ Nouvel artiste');
 
     container.append(
       h('div', {class: 'agenda__toolbar'},
         boutonNouveau,
         h('span', {class: 'view__intro', style: {margin: '0'}},
           groupes.length === 0
-            ? 'Aucun artiste dans ce jeu de données : utilisez « + Nouveau passage » pour en créer un.'
+            ? 'Aucun artiste dans ce jeu de données : utilisez « + Nouvel artiste » pour en créer un.'
             : '« En conflit » compte les bénévoles qui veulent voir l\'artiste mais tiennent déjà une place sur ce '
               + 'créneau (préférence forte non respectée, §7.2).'),
       ),
