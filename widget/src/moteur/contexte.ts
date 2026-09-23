@@ -57,6 +57,8 @@ export interface Contexte {
   missionsParGroupe: Map<Id, Mission[]>;
   /** Quarts d'heure occupés par un groupe, dérivés de ses sous-créneaux. */
   quartsParGroupe: Map<Id, Set<number>>;
+  /** Macro-créneaux (jours) touchés par un groupe, dérivés de ses sous-créneaux. */
+  macroCreneauxParGroupe: Map<Id, Set<Id>>;
   /** Union des compétences requises par toutes les missions servies par le groupe. */
   competencesRequisesParGroupe: Map<Id, Set<string>>;
   /** Somme des durées (heures) de toutes les positions d'un groupe. */
@@ -118,6 +120,7 @@ export function construireContexte(
   const sousCreneauxParGroupe = new Map<Id, SousCreneau[]>();
   const missionsParGroupe = new Map<Id, Mission[]>();
   const quartsParGroupe = new Map<Id, Set<number>>();
+  const macroCreneauxParGroupe = new Map<Id, Set<Id>>();
   const competencesRequisesParGroupe = new Map<Id, Set<string>>();
   const heuresParGroupe = new Map<Id, number>();
 
@@ -126,6 +129,7 @@ export function construireContexte(
     const sousCreneaux: SousCreneau[] = [];
     const missionsParId = new Map<Id, Mission>();
     const quarts = new Set<number>();
+    const macroCreneaux = new Set<Id>();
     const competences = new Set<string>();
     let heures = 0;
 
@@ -140,6 +144,7 @@ export function construireContexte(
         for (const quart of quartsDIntervalle(sousCreneau.debut, sousCreneau.fin, parametres.pasSecondes)) {
           quarts.add(quart);
         }
+        macroCreneaux.add(sousCreneau.macroCreneauId);
       }
       if (mission) {
         missionsParId.set(mission.id, mission);
@@ -152,6 +157,7 @@ export function construireContexte(
     sousCreneauxParGroupe.set(groupe.id, sousCreneaux);
     missionsParGroupe.set(groupe.id, [...missionsParId.values()]);
     quartsParGroupe.set(groupe.id, quarts);
+    macroCreneauxParGroupe.set(groupe.id, macroCreneaux);
     competencesRequisesParGroupe.set(groupe.id, competences);
     heuresParGroupe.set(groupe.id, heures);
   }
@@ -173,6 +179,7 @@ export function construireContexte(
     sousCreneauxParGroupe,
     missionsParGroupe,
     quartsParGroupe,
+    macroCreneauxParGroupe,
     competencesRequisesParGroupe,
     heuresParGroupe,
   };

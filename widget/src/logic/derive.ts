@@ -370,9 +370,10 @@ export function feuilleBenevole(m: Magasin, ix: Index, benevoleId: Id): FeuilleB
   }));
 
   const totalHeures = etapes.reduce((somme, e) => somme + (e.fin - e.debut) / 3600, 0);
-  const equipe = ix.equipe.get(benevole.Equipe)!;
+  // Équipe orpheline possible (même défaut que rosterCard, corrigé le 2026-09-23) : ne doit pas planter la feuille de route.
+  const equipe = ix.equipe.get(benevole.Equipe);
 
-  return {benevole, equipeNom: equipe.Nom, etapes, totalHeures};
+  return {benevole, equipeNom: equipe?.Nom ?? '?', etapes, totalHeures};
 }
 
 // --- Vue équipe : indicatifs d'une équipe sur toute la durée ----------------

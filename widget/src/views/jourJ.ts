@@ -32,14 +32,16 @@ export function montrerJourJ(container: HTMLElement, m: Magasin): () => void {
         oninput: (e: Event) => { recherche = (e.target as HTMLInputElement).value; rafraichir(); },
       }),
       ...benevoles.map((b) => {
-        const equipe = ix.equipe.get(b.Equipe)!;
+        // Même défaut que `rosterCard` dans `views/affectation.ts`, corrigé
+        // le 2026-09-23 (équipe orpheline) : `equipe` peut être absente.
+        const equipe = ix.equipe.get(b.Equipe);
         const nbPlaces = m.places.filter((p) => p.Benevole === b.id).length;
         return h('div', {class: 'benevole-row'},
           h('div', null,
-            h('span', {class: 'dot', style: {background: equipe.Couleur, marginRight: '6px'}}),
+            h('span', {class: 'dot', style: {background: equipe?.Couleur ?? 'var(--text-faint)', marginRight: '6px'}}),
             h('span', {class: 'nom'}, b.Nom),
             h('br'),
-            h('span', {class: 'equipe'}, `${equipe.Nom} · ${nbPlaces} place${nbPlaces > 1 ? 's' : ''}`),
+            h('span', {class: 'equipe'}, `${equipe?.Nom ?? '?'} · ${nbPlaces} place${nbPlaces > 1 ? 's' : ''}`),
           ),
           h('div', {style: {display: 'flex', gap: '6px', alignItems: 'center'}},
             h('span', {class: `pill pill--${b.Statut === 'Actif' ? 'ok' : 'danger'}`}, b.Statut),

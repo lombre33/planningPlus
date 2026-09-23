@@ -334,6 +334,7 @@ export type RaisonInEligibilite =
   | 'competence_manquante'
   | 'refus_mission'
   | 'deja_occupe'
+  | 'autre_indicatif_meme_jour'
   | 'indisponible';
 
 /**

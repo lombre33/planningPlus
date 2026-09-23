@@ -22,22 +22,34 @@ export interface EtatOccupation {
   groupesParBenevole: Map<Id, Set<Id>>;
   /** Quarts d'heure occupés par un bénévole, dérivés de ses groupes actuels. */
   quartsParBenevole: Map<Id, Set<number>>;
+  /**
+   * Macro-créneau (jour) → groupe occupant, pour chaque jour où le bénévole
+   * tient déjà un groupe. Un bénévole ne tient jamais deux groupes différents
+   * sur le même jour (§7.1, demande d'Antoine du 2026-09-23), même quand
+   * leurs quarts ne se chevauchent pas littéralement.
+   */
+  joursParBenevole: Map<Id, Map<Id, Id>>;
 }
 
 function recalculerQuarts(etat: EtatOccupation, ctx: Contexte, benevoleId: Id): void {
   const groupes = etat.groupesParBenevole.get(benevoleId);
   const quarts = new Set<number>();
+  const jours = new Map<Id, Id>();
   if (groupes) {
     for (const groupeId of groupes) {
       for (const quart of ctx.quartsParGroupe.get(groupeId) ?? []) { quarts.add(quart); }
+      for (const macroCreneauId of ctx.macroCreneauxParGroupe.get(groupeId) ?? []) {
+        jours.set(macroCreneauId, groupeId);
+      }
     }
   }
   etat.quartsParBenevole.set(benevoleId, quarts);
+  etat.joursParBenevole.set(benevoleId, jours);
 }
 
 /** État d'occupation initial, reflétant les places déjà pourvues dans `ctx.donnees`. */
 export function construireEtatOccupation(ctx: Contexte): EtatOccupation {
-  const etat: EtatOccupation = {groupesParBenevole: new Map(), quartsParBenevole: new Map()};
+  const etat: EtatOccupation = {groupesParBenevole: new Map(), quartsParBenevole: new Map(), joursParBenevole: new Map()};
   for (const place of ctx.donnees.places) {
     if (place.benevoleId != null) {
       occuper(etat, ctx, place.groupeId, place.benevoleId);
@@ -107,6 +119,17 @@ export function evaluerEligibilite(ctx: Contexte, etat: EtatOccupation, groupeId
     for (const quart of quarts) {
       if (quartsOccupes.has(quart)) {
         return {eligible: false, raison: 'deja_occupe'};
+      }
+    }
+  }
+
+  const macroCreneaux = ctx.macroCreneauxParGroupe.get(groupeId) ?? new Set<Id>();
+  const joursOccupes = etat.joursParBenevole.get(benevoleId);
+  if (joursOccupes) {
+    for (const macroCreneauId of macroCreneaux) {
+      const groupeOccupant = joursOccupes.get(macroCreneauId);
+      if (groupeOccupant != null && groupeOccupant !== groupeId) {
+        return {eligible: false, raison: 'autre_indicatif_meme_jour'};
       }
     }
   }

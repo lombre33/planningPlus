@@ -149,13 +149,18 @@ export function classerCandidats(
     if (options.exclure != null && c.benevoleId === options.exclure) { continue; }
 
     const benevole = ix.benevole.get(c.benevoleId)!;
-    const equipe = ix.equipe.get(benevole.Equipe)!;
+    // `equipe` peut être `undefined` si le bénévole porte une référence
+    // d'équipe orpheline (vue confirmée cassée sur le banc le 2026-09-23,
+    // même défaut que `rosterCard` dans `views/affectation.ts`) — ce
+    // classement est appelé pour chaque place affichée, donc un seul
+    // candidat orphelin plantait tout l'écran, pas seulement sa carte.
+    const equipe = ix.equipe.get(benevole.Equipe);
     const tags: Candidat['tags'] = [];
 
     if (c.explication.equipeCorrespond === true) {
-      tags.push({texte: `équipe ${equipe.Nom}`, sens: 'plus'});
+      tags.push({texte: `équipe ${equipe?.Nom ?? '?'}`, sens: 'plus'});
     } else if (c.explication.equipeCorrespond === false) {
-      tags.push({texte: `hors équipe (${equipe.Nom})`, sens: 'moins'});
+      tags.push({texte: `hors équipe (${equipe?.Nom ?? '?'})`, sens: 'moins'});
     }
 
     const meilleurSouhait = c.explication.souhaitsMission.reduce<NiveauPreferenceMission | null>((meilleur, s) => {
@@ -189,7 +194,7 @@ export function classerCandidats(
       tags.push({texte: 'sous son quota minimum', sens: 'plus'});
     }
 
-    resultats.push({benevoleId: c.benevoleId, nom: benevole.Nom, equipeNom: equipe.Nom, score: c.score, tags});
+    resultats.push({benevoleId: c.benevoleId, nom: benevole.Nom, equipeNom: equipe?.Nom ?? '?', score: c.score, tags});
   }
 
   // Déjà trié éligibles-d'abord par score décroissant par le moteur.
@@ -202,6 +207,7 @@ const LIBELLE_RAISON: Record<RaisonInEligibilite, string> = {
   indisponible: 'personne de disponible sur ce créneau',
   competence_manquante: "personne n'a la compétence requise",
   deja_occupe: 'les bénévoles disponibles sont déjà occupés ailleurs sur ce créneau',
+  autre_indicatif_meme_jour: 'les bénévoles disponibles tiennent déjà un autre indicatif ce jour-là',
   refus_mission: 'les bénévoles disponibles ont refusé cette mission',
   statut_absent: 'les seuls bénévoles qui conviendraient sont marqués absents',
 };
@@ -295,8 +301,13 @@ export function proposerPermutation(m: Magasin, ix: Index, placeVacanteId: Id): 
     if (!resteAuDessusDuMinimum) { continue; }
 
     // Le donneur doit lui-même être un candidat propre (sans motif négatif)
-    // pour la place cible, sans quoi la permutation ne résout rien.
-    const evalCible = classerCandidats(m, ix, groupeCible.id).find((c) => c.benevoleId === donneur.Benevole);
+    // pour la place cible, sans quoi la permutation ne résout rien. On libère
+    // d'abord sa propre place (`placeIdCible: donneur.id`, même mécanisme que
+    // ci-dessus) : sinon l'exclusivité par jour (§7.1, 2026-09-23) le
+    // disqualifierait toujours pour un groupe cible du même jour que celui
+    // qu'il est justement en train de quitter.
+    const evalCible = classerCandidats(m, ix, groupeCible.id, {placeIdCible: donneur.id})
+      .find((c) => c.benevoleId === donneur.Benevole);
     if (!evalCible || evalCible.tags.some((t) => t.sens === 'moins')) { continue; }
 
     const candidatsPourDonneur = classerCandidats(m, ix, groupeDonneur.id, {exclure: donneur.Benevole});

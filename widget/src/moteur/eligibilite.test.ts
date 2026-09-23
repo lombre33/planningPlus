@@ -203,6 +203,32 @@ describe('evaluerEligibilite', () => {
     expect(evaluerEligibilite(ctx, etat, s2.groupe.id, benevole.id)).toEqual({eligible: true, conflitArtiste: false});
   });
 
+  it("exclut un bénévole déjà sur un autre indicatif le même jour, même sans chevauchement horaire (demande d'Antoine, 2026-09-23)", () => {
+    // Même macro-créneau (jour) par défaut (creerSousCreneau), matin puis après-midi : aucun chevauchement de quarts.
+    const s1 = scenarioSimple({debut: h(0, 10), fin: h(0, 11)});
+    const s2 = scenarioSimple({debut: h(0, 14), fin: h(0, 15)});
+    const benevole = creerBenevole();
+    const d = donnees({
+      benevoles: [benevole],
+      missions: [s1.mission, s2.mission],
+      sousCreneaux: [s1.sousCreneau, s2.sousCreneau],
+      besoins: [s1.besoin, s2.besoin],
+      groupes: [s1.groupe, s2.groupe],
+      positionsGroupe: [s1.position, s2.position],
+      places: [s1.place, s2.place],
+      disponibilites: [
+        ...disponibilitesIntervalle(benevole.id, h(0, 10), h(0, 11)),
+        ...disponibilitesIntervalle(benevole.id, h(0, 14), h(0, 15)),
+      ],
+    });
+    const ctx = construireContexte(d, PARAMETRES_PAR_DEFAUT);
+    const etat = construireEtatOccupation(ctx);
+    occuper(etat, ctx, s1.groupe.id, benevole.id);
+    expect(evaluerEligibilite(ctx, etat, s2.groupe.id, benevole.id)).toEqual({eligible: false, raison: 'autre_indicatif_meme_jour'});
+    liberer(etat, ctx, s1.groupe.id, benevole.id);
+    expect(evaluerEligibilite(ctx, etat, s2.groupe.id, benevole.id)).toEqual({eligible: true, conflitArtiste: false});
+  });
+
   it('gère correctement un créneau qui franchit minuit (indisponibilité au milieu de la nuit)', () => {
     const s = scenarioSimple({debut: h(0, 22), fin: h(1, 2)}); // 22h → 2h le lendemain
     const disponibleEnPartie = creerBenevole();

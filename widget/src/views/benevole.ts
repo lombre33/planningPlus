@@ -98,17 +98,18 @@ export function montrerBenevole(container: HTMLElement, m: Magasin): () => void 
         onclick: () => imprimerToutes(),
       }, 'Imprimer toutes les feuilles'),
       ...benevoles.map((b: Benevole) => {
-        const equipe = ix.equipe.get(b.Equipe)!;
+        // Équipe orpheline possible (même défaut corrigé ailleurs le 2026-09-23) : ne doit pas planter la liste.
+        const equipe = ix.equipe.get(b.Equipe);
         const nbEtapes = feuilleBenevole(m, ix, b.id)?.etapes.length ?? 0;
         return h('div', {
           class: `benevole-row${b.id === benevoleId ? ' benevole-row--actif' : ''}`,
           onclick: () => { benevoleId = b.id; rafraichir(); },
         },
           h('div', null,
-            h('span', {class: 'dot', style: {background: equipe.Couleur, marginRight: '6px'}}),
+            h('span', {class: 'dot', style: {background: equipe?.Couleur ?? 'var(--text-faint)', marginRight: '6px'}}),
             h('span', {class: 'nom'}, b.Nom),
             h('br'),
-            h('span', {class: 'equipe'}, `${equipe.Nom} · ${nbEtapes} étape${nbEtapes > 1 ? 's' : ''}`),
+            h('span', {class: 'equipe'}, `${equipe?.Nom ?? '?'} · ${nbEtapes} étape${nbEtapes > 1 ? 's' : ''}`),
           ),
         );
       }),
