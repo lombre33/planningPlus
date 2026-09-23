@@ -10,7 +10,7 @@ import type {
   Affinite, Artiste, Benevole, Besoin, Disponibilite, Epoch, Equipe, Groupe, Id, Lieu, MacroCreneau,
   Mission, Modele, OriginePlace, Place, PositionGroupe, SouhaitMission, SousCreneau,
 } from './domain/types';
-import {libelleHeurePlage, PAS_SECONDES} from './temps';
+import {cleJourFestival, libelleHeurePlage, PAS_SECONDES} from './temps';
 
 type Listener = () => void;
 
@@ -114,6 +114,12 @@ export interface EcritureGrist {
   creerBesoin(besoin: {
     missionId: Id; sousCreneauId: Id; effectifMin: number; effectifMax: number; tailleGroupe: number;
   }): Promise<Id>;
+  /** Repointe un ou plusieurs besoins déjà réels vers un autre sous-créneau
+   *  déjà réel, en place (même id de besoin) — voir
+   *  `Magasin.materialiserCreneauxPropres` : convertir un créneau commun en
+   *  créneau propre à une mission crée une copie sous un nouvel id, et les
+   *  besoins de cette mission sur le commun doivent suivre vers elle. */
+  repointerBesoins(patches: readonly {id: Id; sousCreneauId: Id}[]): Promise<void>;
   /** Écrit un indicatif (`Groupe`) et rend son id réel — première étape de
    *  `Magasin.creerGroupeSurBesoin`. */
   creerGroupe(groupe: {code: string; taille: number; equipeId: Id}): Promise<Id>;
@@ -463,23 +469,108 @@ export class Magasin {
     return id;
   }
 
-  /** Déplace un créneau propre à une mission de `deltaSecondes`, avec tous
-   *  ceux de la même mission qui le suivent dans le temps — « une suite de
+  /** Convertit en créneaux à `missionId` tous les créneaux communs qu'elle
+   *  voit actuellement ce jour-là (§6.2, « communs, avec exceptions ») —
+   *  mêmes horaires, mêmes libellés —, repointe SES besoins sur ces
+   *  créneaux-là vers leurs nouvelles copies (ceux des autres missions
+   *  restent sur les communs d'origine, jamais touchés), et rend la
+   *  correspondance ancien id → nouveau id. Ne matérialise rien si la
+   *  mission a déjà au moins un créneau à elle ce jour-là (rien à
+   *  convertir : ses communs ne comptent alors déjà plus pour elle).
+   *
+   *  Retour d'Antoine du 2026-09-23 : glisser ou redimensionner depuis la
+   *  ligne d'une mission un créneau qu'elle partage encore avec d'autres
+   *  le rend sien en premier, sans jamais bouger les autres missions qui
+   *  le partagent toujours. */
+  private async materialiserCreneauxPropres(
+    missionId: Id, sousCreneauDeReferenceId: Id,
+  ): Promise<{ok: true; correspondance: Map<Id, Id>} | {ok: false; raison: string}> {
+    const reference = this.data.sousCreneaux.find((s) => s.id === sousCreneauDeReferenceId);
+    if (!reference) { return {ok: false, raison: 'Sous-créneau introuvable.'}; }
+    const cle = cleJourFestival(reference.Debut);
+    const macrosDuJour = this.data.macroCreneaux.filter((ma) => cleJourFestival(ma.Debut) === cle);
+    const sousCreneauxDuJour = this.data.sousCreneaux.filter((s) => macrosDuJour.some((ma) => ma.id === s.Macro_creneau));
+    const propresExistants = sousCreneauxDuJour.filter((s) => s.Mission === missionId);
+    if (propresExistants.length > 0) {
+      return {ok: true, correspondance: new Map(propresExistants.map((s) => [s.id, s.id]))};
+    }
+
+    const communs = sousCreneauxDuJour.filter((s) => s.Mission === null);
+    const nouveaux = communs.map((c) => (
+      {macroCreneauId: c.Macro_creneau, missionId, libelle: c.Libelle, debut: c.Debut, fin: c.Fin}
+    ));
+    let idsReels: Id[];
+    if (this.ecriture) {
+      try {
+        idsReels = await this.ecriture.remplacerSousCreneaux([], nouveaux);
+      } catch {
+        return {ok: false, raison: "Échec de l'écriture dans le document Grist : la conversion a été annulée."};
+      }
+    } else {
+      const baseId = prochainId(this.data.sousCreneaux);
+      idsReels = communs.map((_, i) => baseId + i);
+    }
+
+    const correspondance = new Map<Id, Id>();
+    communs.forEach((c, i) => {
+      const id = idsReels[i]!;
+      correspondance.set(c.id, id);
+      this.data.sousCreneaux.push({
+        id, Macro_creneau: c.Macro_creneau, Mission: missionId, Libelle: c.Libelle, Debut: c.Debut, Fin: c.Fin,
+      });
+    });
+
+    const besoinsARepointer = this.data.besoins.filter((b) => b.Mission === missionId && correspondance.has(b.Sous_creneau));
+    if (besoinsARepointer.length > 0) {
+      const patches = besoinsARepointer.map((b) => ({id: b.id, sousCreneauId: correspondance.get(b.Sous_creneau)!}));
+      if (this.ecriture) {
+        try {
+          await this.ecriture.repointerBesoins(patches);
+        } catch {
+          // Les nouveaux créneaux existent déjà réellement dans le document
+          // (la création a réussi) : on ne les retire pas, pour la même
+          // raison que `SuppressionApresCreationEchouee` ailleurs dans ce
+          // fichier — un doublon visible et récupérable (les besoins
+          // restent pointés sur les communs), jamais une perte que rien ne
+          // signale.
+          this.notifier();
+          return {
+            ok: false,
+            raison: 'Les nouveaux créneaux ont bien été créés dans le document, mais ses besoins n\'ont pas pu être repointés dessus : ajustez-les manuellement dans Grist.',
+          };
+        }
+      }
+      for (const patch of patches) {
+        this.data.besoins.find((b) => b.id === patch.id)!.Sous_creneau = patch.sousCreneauId;
+      }
+    }
+
+    this.notifier();
+    return {ok: true, correspondance};
+  }
+
+  /** Déplace le créneau d'une mission de `deltaSecondes`, avec tous ceux de
+   *  la même mission qui le suivent dans le temps — « une suite de
    *  créneaux » qu'on pousse depuis un bord, geste par défaut du glisser
    *  dans la grille Missions (demande d'Antoine du 2026-09-22). Toujours en
    *  place, même id : `redimensionnerCreneauMission` et cette méthode
    *  partagent la même raison de ne jamais supprimer-recréer que
-   *  `EcritureGrist.modifierSousCreneaux`. Refuse un sous-créneau commun
-   *  (`Mission: null`) : le déplacer affecterait toutes les missions qui le
-   *  partagent, un geste que rien n'a demandé. */
+   *  `EcritureGrist.modifierSousCreneaux`. Un créneau encore commun est
+   *  d'abord rendu sien par `materialiserCreneauxPropres` (retour
+   *  d'Antoine du 2026-09-23) — la « suite » qui suit s'appuie ensuite sur
+   *  `missionId`, qui couvre aussi bien ses créneaux déjà siens que ceux
+   *  tout juste matérialisés. */
   async deplacerCreneauxMission(
-    sousCreneauId: Id, deltaSecondes: number,
+    sousCreneauId: Id, missionId: Id, deltaSecondes: number,
   ): Promise<{ok: true} | {ok: false; raison: string}> {
+    if (deltaSecondes === 0) { return {ok: true}; }
     const sc = this.data.sousCreneaux.find((s) => s.id === sousCreneauId);
     if (!sc) { return {ok: false, raison: 'Sous-créneau introuvable.'}; }
-    if (sc.Mission == null) { return {ok: false, raison: 'Un sous-créneau commun ne se déplace pas depuis une ligne de mission.'}; }
-    if (deltaSecondes === 0) { return {ok: true}; }
-    const suite = this.data.sousCreneaux.filter((s) => s.Mission === sc.Mission && s.Debut >= sc.Debut);
+    if (sc.Mission == null) {
+      const materialise = await this.materialiserCreneauxPropres(missionId, sousCreneauId);
+      if (!materialise.ok) { return materialise; }
+    }
+    const suite = this.data.sousCreneaux.filter((s) => s.Mission === missionId && s.Debut >= sc.Debut);
     const patches = suite.map((s) => {
       const debut = s.Debut + deltaSecondes;
       const fin = s.Fin + deltaSecondes;
@@ -502,34 +593,39 @@ export class Magasin {
     return {ok: true};
   }
 
-  /** Redimensionne un créneau propre à une mission (glisser en maintenant
-   *  ALT, demande d'Antoine du 2026-09-22) : `depuisDebut` indique le bord
+  /** Redimensionne le créneau d'une mission (glisser en maintenant ALT,
+   *  demande d'Antoine du 2026-09-22) : `depuisDebut` indique le bord
    *  tiré, la borne opposée ne bouge jamais. En place, même id (voir
-   *  `deplacerCreneauxMission`). Refuse de descendre sous un quart d'heure,
-   *  et un sous-créneau commun pour la même raison que le déplacement. */
+   *  `deplacerCreneauxMission`, y compris pour la conversion d'un créneau
+   *  encore commun). Refuse de descendre sous un quart d'heure. */
   async redimensionnerCreneauMission(
-    sousCreneauId: Id, depuisDebut: boolean, deltaSecondes: number,
+    sousCreneauId: Id, missionId: Id, depuisDebut: boolean, deltaSecondes: number,
   ): Promise<{ok: true} | {ok: false; raison: string}> {
+    if (deltaSecondes === 0) { return {ok: true}; }
     const sc = this.data.sousCreneaux.find((s) => s.id === sousCreneauId);
     if (!sc) { return {ok: false, raison: 'Sous-créneau introuvable.'}; }
-    if (sc.Mission == null) { return {ok: false, raison: 'Un sous-créneau commun ne se redimensionne pas depuis une ligne de mission.'}; }
-    if (deltaSecondes === 0) { return {ok: true}; }
-    const debut = depuisDebut ? sc.Debut + deltaSecondes : sc.Debut;
-    const fin = depuisDebut ? sc.Fin : sc.Fin + deltaSecondes;
+    let cible = sc;
+    if (sc.Mission == null) {
+      const materialise = await this.materialiserCreneauxPropres(missionId, sousCreneauId);
+      if (!materialise.ok) { return materialise; }
+      cible = this.data.sousCreneaux.find((s) => s.id === materialise.correspondance.get(sousCreneauId))!;
+    }
+    const debut = depuisDebut ? cible.Debut + deltaSecondes : cible.Debut;
+    const fin = depuisDebut ? cible.Fin : cible.Fin + deltaSecondes;
     if (fin - debut < PAS_SECONDES) {
       return {ok: false, raison: "Un créneau ne peut pas durer moins d'un quart d'heure."};
     }
     const libelle = libelleHeurePlage(debut, fin);
     if (this.ecriture) {
       try {
-        await this.ecriture.modifierSousCreneaux([{id: sousCreneauId, debut, fin, libelle}]);
+        await this.ecriture.modifierSousCreneaux([{id: cible.id, debut, fin, libelle}]);
       } catch {
         return {ok: false, raison: "Échec de l'écriture dans le document Grist connecté. Réessayez."};
       }
     }
-    sc.Debut = debut;
-    sc.Fin = fin;
-    sc.Libelle = libelle;
+    cible.Debut = debut;
+    cible.Fin = fin;
+    cible.Libelle = libelle;
     this.notifier();
     return {ok: true};
   }

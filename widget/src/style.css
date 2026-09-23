@@ -1021,10 +1021,12 @@ table.grille .mission-cell .lieu {
 .timeline__bloc:hover { filter: brightness(0.97); }
 .timeline__bloc:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
 
-/* Propre à une mission (option B) : glissable — curseur en grappin, comme
-   n'importe quel objet qu'on déplace à la souris. Un sous-créneau commun
-   n'a pas cette classe : il reste un simple clic, jamais glissable, pour
-   ne pas déplacer silencieusement ce que d'autres missions partagent. */
+/* Glissable — curseur en grappin, comme n'importe quel objet qu'on déplace
+   à la souris (posée par `deplacable`, voir `ui/frise.ts`). Sur la grille
+   Missions, un sous-créneau encore commun la porte aussi depuis le
+   2026-09-23 : le glisser le rend propre à la mission au passage
+   (`Magasin.deplacerCreneauxMission`), sans jamais toucher les autres
+   missions qui le partagent encore. */
 .timeline__bloc--propre { cursor: grab; }
 .timeline__bloc--propre:active { cursor: grabbing; }
 

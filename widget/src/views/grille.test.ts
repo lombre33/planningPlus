@@ -97,6 +97,7 @@ describe('montrerGrille sur un document vide', () => {
       modifierArtiste: async () => {},
       remplacerSousCreneaux: async () => [],
       modifierSousCreneaux: async () => {},
+      repointerBesoins: async () => {},
       creerBesoin: async () => 1,
       creerGroupe: async () => 1,
       positionnerGroupe: async () => {},
@@ -189,7 +190,7 @@ describe('montrerGrille — frise commune au quart d’heure et créneau propre 
     expect(container.querySelectorAll('.timeline__coin')).toHaveLength(1);
   });
 
-  it('sans créneau propre, la mission voit les sous-créneaux communs, un bloc par sous-créneau (largeur = sa durée en quarts)', async () => {
+  it('sans créneau propre, la mission voit les sous-créneaux communs, un bloc par sous-créneau (largeur = sa durée en quarts), glissable (retour du 2026-09-23 : glisser un commun le rend propre)', async () => {
     const {m, macroId} = modeleAvecMission();
     await m.redecouperSousCreneaux(macroId, 60);
     const container = document.createElement('div');
@@ -199,7 +200,7 @@ describe('montrerGrille — frise commune au quart d’heure et créneau propre 
     const blocs = Array.from(container.querySelectorAll<HTMLButtonElement>('.timeline__bloc'));
     expect(blocs).toHaveLength(2);
     expect(blocs.every((b) => b.classList.contains('besoin-cell--vide'))).toBe(true);
-    expect(blocs.every((b) => !b.classList.contains('timeline__bloc--propre'))).toBe(true); // commun : jamais glissable
+    expect(blocs.every((b) => b.classList.contains('timeline__bloc--propre'))).toBe(true);
     expect(blocs.map((b) => b.style.gridColumn)).toEqual(['2 / 6', '6 / 10']);
   });
 
@@ -252,7 +253,7 @@ describe('montrerGrille — frise commune au quart d’heure et créneau propre 
     container.remove();
   });
 
-  it('glisser un créneau propre (sans ALT) le déplace par pas de 15 minutes, avec ceux qui le suivent — jamais un sous-créneau commun', async () => {
+  it('glisser un créneau déjà propre (sans ALT) le déplace par pas de 15 minutes, avec ceux qui le suivent', async () => {
     const {m, macroId, missionId} = modeleAvecMission();
     const c1 = await m.creerSousCreneauMission(macroId, missionId, {
       libelle: '10h-11h',
@@ -289,6 +290,24 @@ describe('montrerGrille — frise commune au quart d’heure et créneau propre 
     const sc = m.sousCreneaux.find((s) => s.id === c1)!;
     expect(sc.Debut).toBe(debutAvant); // le début ne bouge pas : bord droit saisi
     expect(sc.Fin).toBe(finAvant + 900);
+  });
+
+  it('glisser un bloc encore commun le rend propre à la mission au passage, puis le déplace (retour d\'Antoine du 2026-09-23)', async () => {
+    const {m, macroId} = modeleAvecMission();
+    await m.redecouperSousCreneaux(macroId, 60); // deux communs 1h, tapissent le jour, aucun bord vide
+    const container = document.createElement('div');
+    montrerGrille(container, m);
+    const c1 = m.sousCreneaux[0]!.id;
+    const bloc = container.querySelector<HTMLButtonElement>(`[data-bloc-id="${c1}"]`)!;
+    const debutAvant = m.sousCreneaux.find((s) => s.id === c1)!.Debut;
+
+    glisser(bloc, 100, 2 * LARGEUR_QUART_PX); // +2 quarts = +30 min, sans ALT
+    await new Promise((resolve) => setTimeout(resolve, 0)); // la conversion passe par un await, contrairement au propre
+
+    expect(m.sousCreneaux.find((s) => s.id === c1)!.Mission).toBeNull(); // le commun d'origine, inchangé
+    const copie = m.sousCreneaux.find((s) => s.Mission != null)!;
+    expect(copie.Debut).toBe(debutAvant + 1800);
+    expect(container.querySelector(`[data-bloc-id="${copie.id}"]`)?.classList.contains('timeline__bloc--propre')).toBe(true);
   });
 
   it("un relâchement sans déplacement (delta nul) est un simple clic : ouvre le détail/la création, ne modifie aucun horaire", async () => {

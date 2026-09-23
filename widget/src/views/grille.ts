@@ -138,11 +138,14 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
       const lieu = ix.lieu.get(mission.Lieu);
       const equipe = ix.equipe.get(mission.Equipe)!;
       const applicables = sousCreneauxApplicables(mission, tousSousCreneaux);
-      const estPropre = applicables[0]?.Mission === mission.id;
       const blocs: BlocMission[] = applicables.map((sc) => {
         const besoin = m.besoins.find((b) => b.Mission === mission.id && b.Sous_creneau === sc.id) ?? null;
         return {
-          id: sc.id, debut: sc.Debut, fin: sc.Fin, deplacable: estPropre,
+          // Glissable même commun (retour d'Antoine du 2026-09-23) :
+          // `Magasin.deplacerCreneauxMission`/`redimensionnerCreneauMission`
+          // le rend propre à cette mission avant de le déplacer, sans jamais
+          // toucher les autres missions qui le partagent encore.
+          id: sc.id, debut: sc.Debut, fin: sc.Fin, deplacable: true,
           sc, mission, besoin, couverture: besoin ? couvertureBesoin(m, ix, besoin.id) : null,
         };
       });
@@ -155,11 +158,13 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
           // Un découpage automatique tapisse le jour de communs bord à bord
           // (repéré à l'écran le 2026-09-23, en écho au retour d'Antoine
           // « je ne vois pas la fonctionnalité de glisser/redimensionner » :
-          // sans le moindre quart d'heure vide, la piste — seul déclencheur
-          // du créneau propre, seul type glissable, `deplacable: estPropre`
-          // ci-dessus — n'a jamais nulle part où recevoir ce clic. Ce bouton
-          // reste donc le seul chemin garanti vers un créneau propre, tiling
-          // complet ou non.
+          // sans le moindre quart d'heure vide, la piste n'a nulle part où
+          // recevoir un clic pour un créneau EN PLUS de la trame commune.
+          // Glisser un bloc existant (`deplacable: true` ci-dessus) le rend
+          // désormais propre au passage si besoin, mais ça ne crée jamais de
+          // quart d'heure supplémentaire : ce bouton reste le seul chemin
+          // vers un créneau qui déborde la trame commune, tiling complet ou
+          // non.
           h('button', {
             class: 'btn btn--ghost btn--sm timeline__label__bouton-propre', type: 'button',
             title: 'Donner à cette mission un créneau à elle, décalé ou en pause par rapport à la trame commune',
@@ -203,8 +208,10 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
         const mission = ix.mission.get(ligne.id)!;
         ouvrirCreationCreneauMission(mission, jour, debutSuggere);
       },
-      onDeplacer: (bloc, deltaSecondes) => m.deplacerCreneauxMission(bloc.id, deltaSecondes),
-      onRedimensionner: (bloc, depuisDebut, deltaSecondes) => m.redimensionnerCreneauMission(bloc.id, depuisDebut, deltaSecondes),
+      onDeplacer: (bloc, deltaSecondes) => m.deplacerCreneauxMission(bloc.id, bloc.mission.id, deltaSecondes),
+      onRedimensionner: (bloc, depuisDebut, deltaSecondes) => (
+        m.redimensionnerCreneauMission(bloc.id, bloc.mission.id, depuisDebut, deltaSecondes)
+      ),
       surErreur: (raison) => { dernierMessage = {texte: raison, ton: 'danger'}; rafraichir(); },
     });
   }

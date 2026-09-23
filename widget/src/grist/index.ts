@@ -50,6 +50,7 @@ export {
   actionsModifierSousCreneaux,
   actionsPositionnerGroupe,
   actionsRenommerMacroCreneau,
+  actionsRepointerBesoins,
   actionsRetirerPositionGroupe,
   actionsRetirerPositionsGroupe,
   actionsSupprimerBesoin,
