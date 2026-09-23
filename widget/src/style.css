@@ -1279,6 +1279,28 @@ table.grille .mission-cell .lieu {
   gap: 10px;
 }
 
+/* Un bloc étroit (créneau court, largeur proportionnelle à sa durée dans la
+   frise) élargit sa cible de dépôt au survol/focus plutôt que de rester
+   coincé sous la largeur minimale utile aux puces et au bouton « + binôme »
+   — retour d'Antoine du 2026-09-23, vue Indicatifs bloquée sans lui. Scopé
+   à `.indicatifs-layout` : Missions et Artistes, qui partagent le même
+   `.timeline__bloc`, ne sont jamais concernés. 108px = l'ancienne largeur
+   minimale de `.besoin-cell` (avant la frise). Vérifié (Playwright) : un
+   bloc ne grandit que vers la droite (bord gauche ancré sur sa colonne de
+   grille), donc ne rejoint jamais l'étiquette de ligne collante à gauche
+   quel que soit le z-index ; `position: sticky; top: 0` sur l'en-tête
+   (`.timeline__coin`/`.axe-quart`) est inerte ici (`.timeline-wrap` ne
+   développe jamais son propre défilement vertical, son contenu tient
+   toujours dans sa hauteur), donc pas de conflit non plus avec l'en-tête.
+   Reste : dépasser un voisin non survolé (z-index auto) dans la même ligne,
+   ce que ce z-index confirmé suffit à couvrir. */
+.indicatifs-layout .timeline__bloc:hover,
+.indicatifs-layout .timeline__bloc:focus-within {
+  min-width: 108px;
+  overflow: visible;
+  z-index: 5;
+}
+
 .mode-bandeau {
   display: flex;
   align-items: center;

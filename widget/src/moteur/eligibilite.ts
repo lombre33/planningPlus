@@ -158,8 +158,9 @@ function clamp01(valeur: number): number {
  * objectif, se joue au niveau du choix du groupe à traiter, pas ici).
  *
  * Le terme d'affinité ci-dessous n'est PAS un des six objectifs du §7.2 —
- * voir la note sur `affiniteEnsemble`/`affiniteEviter` dans `types.ts`,
- * en attente de confirmation par Antoine.
+ * voir la note sur `affiniteEnsemble`/`affiniteEviter` dans `types.ts`
+ * (confirmé par Antoine le 2026-09-23 : c'est sa priorité « binôme
+ * souhaité »).
  */
 export function calculerScore(
   ctx: Contexte,

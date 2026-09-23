@@ -6,6 +6,7 @@ import {
   actionsCreerMacroCreneau,
   actionsCreerMission,
   actionsCreerSousCreneaux,
+  actionsDefinirAbsence,
   actionsDefinirCompetencesBenevole,
   actionsDefinirPlaces,
   actionsDeplacerMacroCreneau,
@@ -16,6 +17,7 @@ import {
   actionsModifierArtiste,
   actionsModifierGroupe,
   actionsModifierMission,
+  actionsModifierPlaces,
   actionsModifierSousCreneau,
   actionsModifierSousCreneaux,
   actionsPositionnerGroupe,
@@ -320,6 +322,35 @@ describe('actionsVerrouillerPlace', () => {
   });
 });
 
+describe('actionsModifierPlaces', () => {
+  it('groupe plusieurs patches en un seul BulkUpdateRecord (application des propositions d\'un algorithme)', () => {
+    expect(actionsModifierPlaces([
+      {id: 81, benevoleId: 3, origine: 'Algorithme', verrouillee: false, score: 0.8},
+      {id: 82, benevoleId: null, origine: 'Manuel', verrouillee: true, score: null},
+    ])).toEqual([[
+      'BulkUpdateRecord', 'Places', [81, 82],
+      {
+        Benevole: [3, 0],
+        Origine: ['Algorithme', 'Manuel'],
+        Verrouillee: [false, true],
+        Score: [0.8, null],
+      },
+    ]]);
+  });
+
+  it('garde un patch isolé en UpdateRecord', () => {
+    expect(actionsModifierPlaces([
+      {id: 81, benevoleId: 3, origine: 'Manuel', verrouillee: true, score: 1},
+    ])).toEqual([
+      ['UpdateRecord', 'Places', 81, {Benevole: 3, Origine: 'Manuel', Verrouillee: true, Score: 1}],
+    ]);
+  });
+
+  it('ne construit aucune action pour une liste vide', () => {
+    expect(actionsModifierPlaces([])).toEqual([]);
+  });
+});
+
 describe('actionsEcrireDisponibilites', () => {
   it('construit un BulkAddRecord avec Artiste encodé en Ref', () => {
     const actions = actionsEcrireDisponibilites([
@@ -346,6 +377,28 @@ describe('actionsDefinirCompetencesBenevole', () => {
   it('encode la ChoiceList avec le code L', () => {
     expect(actionsDefinirCompetencesBenevole(1, ['Majeur', 'SST'])).toEqual([
       ['UpdateRecord', 'Benevoles', 1, {Competences: ['L', 'Majeur', 'SST']}],
+    ]);
+  });
+});
+
+describe('actionsDefinirAbsence', () => {
+  it('marque le bénévole absent et libère plusieurs places en un BulkUpdateRecord', () => {
+    expect(actionsDefinirAbsence(1, true, [81, 82])).toEqual([
+      ['UpdateRecord', 'Benevoles', 1, {Statut: 'Absent'}],
+      ['BulkUpdateRecord', 'Places', [81, 82], {Benevole: [0, 0], Origine: ['Manuel', 'Manuel'], Score: [0, 0]}],
+    ]);
+  });
+
+  it('libère une seule place en UpdateRecord', () => {
+    expect(actionsDefinirAbsence(1, true, [81])).toEqual([
+      ['UpdateRecord', 'Benevoles', 1, {Statut: 'Absent'}],
+      ['UpdateRecord', 'Places', 81, {Benevole: 0, Origine: 'Manuel', Score: 0}],
+    ]);
+  });
+
+  it('un retour (absent=false) ne construit qu\'une action, même avec une liste non vide', () => {
+    expect(actionsDefinirAbsence(1, false, [])).toEqual([
+      ['UpdateRecord', 'Benevoles', 1, {Statut: 'Actif'}],
     ]);
   });
 });

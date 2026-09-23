@@ -507,6 +507,42 @@ export function actionsVerrouillerPlace(placeId: Id, verrouillee: boolean): User
   return [['UpdateRecord', 'Places', placeId, {Verrouillee: verrouillee}]];
 }
 
+export interface PatchPlace {
+  id: Id;
+  benevoleId: Id | null;
+  origine: OriginePlace;
+  verrouillee: boolean;
+  score: number | null;
+}
+
+/**
+ * Modifie plusieurs places existantes en place (même id, même rang, même
+ * groupe — seul l'occupant change), en un seul aller-retour : l'algorithme
+ * applique potentiellement des dizaines de propositions d'un coup (§7.5.1,
+ * `Magasin.appliquerPropositionsAlgorithme`). Chaque patch fournit toujours
+ * le même jeu de champs (pas de `Partial` ici, contrairement à
+ * `actionsModifierSousCreneaux` : rien à grouper par forme), d'où un seul
+ * `BulkUpdateRecord` dès que plus d'une place est touchée.
+ */
+export function actionsModifierPlaces(patches: readonly PatchPlace[]): UserAction[] {
+  if (patches.length === 0) { return []; }
+  if (patches.length === 1) {
+    const patch = patches[0]!;
+    return [['UpdateRecord', 'Places', patch.id, {
+      Benevole: encoderRef(patch.benevoleId), Origine: patch.origine, Verrouillee: patch.verrouillee, Score: patch.score,
+    }]];
+  }
+  return [[
+    'BulkUpdateRecord', 'Places', patches.map((p) => p.id),
+    {
+      Benevole: patches.map((p) => encoderRef(p.benevoleId)),
+      Origine: patches.map((p) => p.origine),
+      Verrouillee: patches.map((p) => p.verrouillee),
+      Score: patches.map((p) => p.score),
+    },
+  ]];
+}
+
 // --- Disponibilités ---------------------------------------------------------
 
 export interface NouvelleDisponibilite {
@@ -530,11 +566,42 @@ export function actionsEcrireDisponibilites(disponibilites: readonly NouvelleDis
   ]];
 }
 
-// --- Compétences (ChoiceList) : exemple d'utilisation d'`encoderListe` -----
+// --- Bénévoles (statut, compétences) ---------------------------------------
 
-/** Met à jour les compétences d'un bénévole (colonne `ChoiceList`). */
+/** Met à jour les compétences d'un bénévole (colonne `ChoiceList`) : exemple d'utilisation d'`encoderListe`. */
 export function actionsDefinirCompetencesBenevole(benevoleId: Id, competences: readonly string[]): UserAction[] {
   return [['UpdateRecord', 'Benevoles', benevoleId, {Competences: encoderListe(competences)}]];
+}
+
+/**
+ * Marque un bénévole absent ou de retour, et libère dans le même
+ * aller-retour les places qu'une absence rend vacantes (§7.4,
+ * `Magasin.definirAbsence`) : bénévole retiré, origine remise à « Manuel »,
+ * score remis à zéro — jamais le verrouillage, qu'une absence ne touche
+ * pas. `placeIdsLiberees` est la liste déjà filtrée aux places non
+ * verrouillées par l'appelant (cette fonction ne relit aucune place, elle
+ * écrit la liste qu'on lui donne) ; toujours vide quand `absent` est faux,
+ * un retour ne libère jamais rien.
+ */
+export function actionsDefinirAbsence(
+  benevoleId: Id, absent: boolean, placeIdsLiberees: readonly Id[],
+): UserAction[] {
+  const actions: UserAction[] = [
+    ['UpdateRecord', 'Benevoles', benevoleId, {Statut: absent ? 'Absent' : 'Actif'}],
+  ];
+  if (placeIdsLiberees.length === 1) {
+    actions.push(['UpdateRecord', 'Places', placeIdsLiberees[0]!, {Benevole: encoderRef(null), Origine: 'Manuel', Score: 0}]);
+  } else if (placeIdsLiberees.length > 1) {
+    actions.push([
+      'BulkUpdateRecord', 'Places', [...placeIdsLiberees],
+      {
+        Benevole: placeIdsLiberees.map(() => encoderRef(null)),
+        Origine: placeIdsLiberees.map(() => 'Manuel'),
+        Score: placeIdsLiberees.map(() => 0),
+      },
+    ]);
+  }
+  return actions;
 }
 
 // --- Paramètres (§5.4, §7.2) -------------------------------------------------

@@ -26,12 +26,10 @@
  *    types : `derive.ts` a ajouté les cas `chevauchement-creneaux` et
  *    `double-engagement`, ce fichier les convertit ci-dessous comme les six
  *    autres.
- * 3. `Magasin` expose désormais `get affinites()`, mais `versDonneesPlanning`
- *    retourne volontairement toujours `affinites: []` : le bonus d'affinité
- *    du moteur reste en attente d'une décision d'Antoine (2026-09-21) — ce
- *    score ne correspond à aucun des six objectifs actuels du §7.2, voir la
- *    note dans `./types.ts`. À câbler seulement une fois cette décision
- *    prise, pas avant.
+ * 3. (Résolu le 2026-09-23) Antoine a confirmé sa priorité 3 (« le fait
+ *    qu'il soit avec l'autre bénévole souhaité ») : `versDonneesPlanning`
+ *    convertit maintenant réellement `Magasin.affinites` au lieu de
+ *    renvoyer `affinites: []` — voir la note mise à jour dans `./types.ts`.
  * 4. (Résolu le 2026-09-21) `Magasin.assignerPlace` verrouille désormais
  *    systématiquement la place sur une origine `'Manuel'` (même vidée),
  *    exactement comme `corrigerPlace` du moteur : plus de risque qu'un
@@ -43,6 +41,7 @@ import type {Anomalie as AnomalieUI, Candidat, Index} from '../logic/derive';
 import {couvertureBesoin} from '../logic/derive';
 import type {Magasin} from '../store';
 import type {
+  Affinite as AffiniteUI,
   Benevole as BenevoleUI,
   Besoin as BesoinUI,
   Groupe as GroupeUI,
@@ -55,7 +54,7 @@ import type {
 
 import {classerCandidats as moteurClasserCandidats} from './affectation';
 import {detecterAnomalies as moteurDetecterAnomalies} from './anomalies';
-import type {Benevole, Besoin, DonneesPlanning, Groupe, Mission, NiveauPreferenceMission, Place, PositionGroupe, SousCreneau} from './types';
+import type {Affinite, Benevole, Besoin, DonneesPlanning, Groupe, Mission, NiveauPreferenceMission, Place, PositionGroupe, SousCreneau} from './types';
 
 // --- Conversion Magasin -> DonneesPlanning ---------------------------------
 //
@@ -98,10 +97,11 @@ function versPlace(p: PlaceUI): Place {
   return {id: p.id, groupeId: p.Groupe, rang: p.Rang, benevoleId: p.Benevole, origine: p.Origine, verrouillee: p.Verrouillee, score: p.Score};
 }
 
-/**
- * Conversion pure et sans état du `Magasin` vers `DonneesPlanning`. Toujours
- * `affinites: []` — voir l'écart n°3 en tête de fichier.
- */
+function versAffinite(a: AffiniteUI): Affinite {
+  return {benevoleAId: a.Benevole_A, benevoleBId: a.Benevole_B, type: a.Type};
+}
+
+/** Conversion pure et sans état du `Magasin` vers `DonneesPlanning`. */
 export function versDonneesPlanning(m: Magasin): DonneesPlanning {
   return {
     benevoles: m.benevoles.map(versBenevole),
@@ -115,7 +115,7 @@ export function versDonneesPlanning(m: Magasin): DonneesPlanning {
       benevoleId: d.Benevole, quartHeure: d.Quart_heure, statut: d.Statut, artisteId: d.Artiste,
     })),
     souhaitsMissions: m.souhaitsMissions.map((s) => ({benevoleId: s.Benevole, missionId: s.Mission, preference: s.Preference})),
-    affinites: [],
+    affinites: m.affinites.map(versAffinite),
   };
 }
 
