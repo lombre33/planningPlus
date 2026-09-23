@@ -1,9 +1,10 @@
 # PlanningPlus — Cahier des charges
 
-**Version :** v1.10 (§8 précisé, 2026-09-23 17h18 : le macro-créneau est
-l'ossature de l'application et sert de filtre global à toutes les vues, pas
-seulement à Missions ; l'ancien axe propre de la vue Artistes, basé sur ses
-passages, est annulé — voir aussi v1.6 à v1.9)
+**Version :** v1.11 (§8 : correctif Artistes posé (commit `3efdfec`) et
+mécanisme du filtre global par macro-créneau documenté — branché sur
+Missions, Disponibilités et Artistes au 2026-09-23, les autres vues
+restant à raccorder une par une ; v1.10 avait posé la décision, voir aussi
+v1.6 à v1.9)
 **Statut :** structure et règles validées (§6.3, §7.5) ; développement agile
 par incréments courts depuis le 2026-09-22 (§11.1) ; document tenu à jour au
 fil du code plutôt qu'en fin de sprint, sur consigne du coordinateur
@@ -707,6 +708,20 @@ calerait son propre découpage en jours sur autre chose que les
 macro-créneaux (c'était le cas de la vue Artistes, voir point 8) est un
 écart à corriger, jamais une variante voulue.
 
+Techniquement, ce filtre global vit dans la coquille de l'application
+(`app.ts`) : un drapeau `DefinitionOnglet.filtreJour` marque les vues qui
+s'y accrochent, `demarrerApp` monte alors au-dessus d'elles un bandeau
+commun (`construireBandeauJours`, dans `ui/bandeauJours.ts`), et la
+sélection elle-même vit dans le magasin (`Magasin.macroCreneauSelectionne`,
+modifiée par `Magasin.selectionnerMacroCreneau`). Il se branche vue par vue,
+pas d'un coup : au 2026-09-23, Missions, Disponibilités et Artistes portent
+`filtreJour: true` ; Indicatifs, Affectation et Terrain calent déjà leurs
+jours sur les mêmes macro-créneaux mais gardent encore leur propre
+sélecteur de jour, non partagé avec les autres vues — chantier en cours,
+vue par vue, pas un défaut à signaler à nouveau. Un fil qui branche une
+nouvelle vue sur ce filtre n'a que le drapeau à poser : le mécanisme est
+déjà générique.
+
 1. **Agenda** — création, édition et suppression des macro-créneaux et
    sous-créneaux, en horizontal (la disposition verticale et le comparatif
    envisagés en cadrage ont été abandonnés). Permet aussi le découpage
@@ -756,9 +771,10 @@ macro-créneaux (c'était le cas de la vue Artistes, voir point 8) est un
    ce jour, pas des macro-créneaux »). Ce premier choix laissait la vue
    entièrement vide tant qu'aucun artiste n'y avait été créé, sans jamais
    montrer les jours du festival déjà posés dans l'Agenda — cause directe
-   du mécontentement d'Antoine le 2026-09-23. *(Chantier en cours au
-   2026-09-23 17h19, fil Vue artistes — état transitoire, pas encore
-   basculé au moment de cette note.)*
+   du mécontentement d'Antoine le 2026-09-23. **Corrigé et posé** (commit
+   `3efdfec`, fil Vue artistes, 2026-09-23) : la vue s'accroche désormais au
+   filtre global par macro-créneau (`filtreJour: true`), création du passage
+   toujours en deux temps (voir ci-dessus).
 9. **Vue jour J** — ce qui tourne maintenant, absences et remplacements.
 10. **Vue disponibilités** — saisie et correction rapides.
 

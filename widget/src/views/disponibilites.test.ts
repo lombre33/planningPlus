@@ -245,6 +245,23 @@ describe('panneau de réglages d’import (nouveau, 2026-09-23)', () => {
     expect(libellesOptions).toContain('Dispo vendredi (Dispo_vendredi)');
   });
 
+  it("aucune colonne éligible (table Bénévoles lue mais sans colonne texte/choix ajoutée par Antoine) : le dit, plutôt qu'un menu vide sans explication", async () => {
+    const m = new Magasin(modeleDeTest());
+    m.brancherEcriture({
+      ...ecritureMuette,
+      colonnesTable: async () => [{colId: 'Quota_heures_max', label: 'Quota heures max', type: 'Numeric'}],
+    });
+    montrerDisponibilites(container, m);
+
+    (Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent === "Réglages d'import") as HTMLButtonElement).click();
+    await attendreMicrotaches();
+
+    expect(container.textContent).toContain('Aucune colonne de ta table Bénévoles ne peut être associée ici');
+    const menu = container.querySelector('select[aria-label="Colonne des souhaits d\'artistes"]');
+    expect(menu).not.toBeNull(); // le menu reste affiché (avec seulement « — aucune — »), pas de repli forcé
+  });
+
   it('repli en champ texte si la lecture des colonnes échoue, avec un message explicite', async () => {
     const m = new Magasin(modeleDeTest());
     m.brancherEcriture({...ecritureMuette, colonnesTable: async () => { throw new Error('document indisponible'); }});
