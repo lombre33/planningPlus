@@ -191,6 +191,7 @@ describe('document connecté : échec d’écriture puis nouvel essai', () => {
       tablesDocument: async () => [],
       definirParametre: async () => {},
       remplacerDisponibilites: async () => {},
+      peuplerBenevoles: async () => ({benevoles: [], crees: 0, actualises: 0}),
     };
     m.brancherEcriture(ecriture);
     montrerArtistes(container, m);

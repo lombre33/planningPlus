@@ -112,6 +112,7 @@ describe('montrerGrille sur un document vide', () => {
       tablesDocument: async () => [],
       definirParametre: async () => {},
       remplacerDisponibilites: async () => {},
+      peuplerBenevoles: async () => ({benevoles: [], crees: 0, actualises: 0}),
     };
     m.brancherEcriture(ecriture);
     montrerGrille(container, m);

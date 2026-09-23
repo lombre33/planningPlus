@@ -71,6 +71,11 @@ export const TABLES = [
       {id: 'Quota_heures_max', type: 'Numeric', libelle: "Quota d'heures maximum"},
       {id: 'Statut', type: 'Choice', libelle: 'Statut', choix: ['Actif', 'Absent']},
       {id: 'Notes', type: 'Text', libelle: 'Notes'},
+      {
+        id: 'Id_source', type: 'Int', libelle: 'Identifiant source (import)',
+        description: "Posé par le widget : identifiant de la ligne d'origine dans la table de bénévoles "
+          + "qu'Antoine a désignée pour l'import, pour reconnaître un bénévole déjà importé. Ne pas modifier à la main.",
+      },
     ],
   },
 

@@ -75,6 +75,7 @@ const ecritureMuette: EcritureGrist = {
   tablesDocument: async () => [],
   definirParametre: async () => {},
   remplacerDisponibilites: async () => {},
+  peuplerBenevoles: async () => ({benevoles: [], crees: 0, actualises: 0}),
 };
 
 let container: HTMLElement;
@@ -471,6 +472,166 @@ describe('panneau de réglages d’import (nouveau, 2026-09-23)', () => {
 
     expect(appele).toBe(false);
     expect(container.textContent).toContain('Associe au moins une colonne ci-dessus avant d\'importer.');
+  });
+});
+
+describe('peuplement des bénévoles depuis la table source (nouveau, 2026-09-23, §6.4)', () => {
+  it("n'apparaît pas tant qu'aucune table n'est choisie", () => {
+    const m = new Magasin(modeleDeTest());
+    montrerDisponibilites(container, m);
+    (Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent === "Réglages d'import") as HTMLButtonElement).click();
+    expect(container.querySelector('select[aria-label="Colonne du nom prénom"]')).toBeNull();
+    expect(Array.from(container.querySelectorAll('button')).some((b) => b.textContent === 'Peupler mes bénévoles')).toBe(false);
+  });
+
+  it("une fois la table choisie, propose les colonnes Nom/Téléphone SANS exclure une colonne nommée « Nom », contrairement aux autres menus", async () => {
+    const colonnes: ColonneTable[] = [
+      {colId: 'Nom', label: 'Nom', type: 'Text'},
+      {colId: 'Telephone', label: 'Téléphone', type: 'Text'},
+    ];
+    const m = new Magasin(modeleDeTest(), [{cle: CLE_TABLE_BENEVOLES, valeur: 'INFOS_BENEVOLES'}]);
+    m.brancherEcriture({...ecritureMuette, colonnesTable: async () => colonnes});
+    montrerDisponibilites(container, m);
+
+    (Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent === "Réglages d'import") as HTMLButtonElement).click();
+    await attendreMicrotaches();
+
+    const menuNom = container.querySelector('select[aria-label="Colonne du nom prénom"]');
+    expect(menuNom).not.toBeNull();
+    const optionsNom = Array.from(menuNom!.querySelectorAll('option')).map((o) => o.textContent);
+    expect(optionsNom).toContain('Nom (Nom)');
+
+    const menuTelephone = container.querySelector('select[aria-label="Colonne du téléphone"]');
+    expect(menuTelephone).not.toBeNull();
+    const optionsTelephone = Array.from(menuTelephone!.querySelectorAll('option')).map((o) => o.textContent);
+    expect(optionsTelephone).toContain('Téléphone (Telephone)');
+  });
+
+  it("le bouton refuse de partir si la colonne du nom n'est pas choisie", async () => {
+    const m = new Magasin(modeleDeTest(), [{cle: CLE_TABLE_BENEVOLES, valeur: 'INFOS_BENEVOLES'}]);
+    let appele = false;
+    m.brancherEcriture({...ecritureMuette, peuplerBenevoles: async () => { appele = true; return {benevoles: [], crees: 0, actualises: 0}; }});
+    montrerDisponibilites(container, m);
+
+    (Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent === "Réglages d'import") as HTMLButtonElement).click();
+    await attendreMicrotaches();
+    (Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent === 'Peupler mes bénévoles') as HTMLButtonElement).click();
+    await attendreMicrotaches();
+
+    expect(appele).toBe(false);
+    expect(container.textContent).toContain('Choisis la table et la colonne du nom ci-dessus avant de peupler tes bénévoles.');
+  });
+
+  it("le bouton refuse de partir si aucune équipe n'existe (chaque bénévole importé doit en avoir une)", async () => {
+    const modele = modeleDeTest();
+    modele.equipes = [];
+    modele.benevoles = [];
+    const m = new Magasin(modele, [
+      {cle: CLE_TABLE_BENEVOLES, valeur: 'INFOS_BENEVOLES'},
+      {cle: 'benevoles.colonne_nom', valeur: 'Nom'},
+    ]);
+    let appele = false;
+    m.brancherEcriture({...ecritureMuette, peuplerBenevoles: async () => { appele = true; return {benevoles: [], crees: 0, actualises: 0}; }});
+    montrerDisponibilites(container, m);
+
+    (Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent === "Réglages d'import") as HTMLButtonElement).click();
+    await attendreMicrotaches();
+    (Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent === 'Peupler mes bénévoles') as HTMLButtonElement).click();
+    await attendreMicrotaches();
+
+    expect(appele).toBe(false);
+    expect(container.textContent).toContain("Crée d'abord une équipe");
+  });
+
+  it('appelle m.peuplerBenevoles avec la table, la colonne du nom et celle du téléphone (optionnelle) puis affiche le résultat', async () => {
+    const appels: {table: string; colNom: string; colContact: string | null}[] = [];
+    const m = new Magasin(modeleDeTest(), [
+      {cle: CLE_TABLE_BENEVOLES, valeur: 'INFOS_BENEVOLES'},
+      {cle: 'benevoles.colonne_nom', valeur: 'Nom'},
+      {cle: 'benevoles.colonne_contact', valeur: 'Telephone'},
+    ]);
+    m.brancherEcriture({
+      ...ecritureMuette,
+      peuplerBenevoles: async (table, colNom, colContact) => {
+        appels.push({table, colNom, colContact});
+        return {benevoles: m.benevoles, crees: 3, actualises: 1};
+      },
+    });
+    montrerDisponibilites(container, m);
+
+    (Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent === "Réglages d'import") as HTMLButtonElement).click();
+    await attendreMicrotaches();
+    (Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent === 'Peupler mes bénévoles') as HTMLButtonElement).click();
+    await attendreMicrotaches();
+
+    expect(appels).toEqual([{table: 'INFOS_BENEVOLES', colNom: 'Nom', colContact: 'Telephone'}]);
+    expect(container.textContent).toContain('3 bénévoles créés, 1 actualisé.');
+  });
+
+  it('téléphone non choisi : appelle m.peuplerBenevoles avec colContact = null', async () => {
+    const appels: (string | null)[] = [];
+    const m = new Magasin(modeleDeTest(), [
+      {cle: CLE_TABLE_BENEVOLES, valeur: 'INFOS_BENEVOLES'},
+      {cle: 'benevoles.colonne_nom', valeur: 'Nom'},
+    ]);
+    m.brancherEcriture({
+      ...ecritureMuette,
+      peuplerBenevoles: async (_table, _colNom, colContact) => { appels.push(colContact); return {benevoles: [], crees: 0, actualises: 0}; },
+    });
+    montrerDisponibilites(container, m);
+
+    (Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent === "Réglages d'import") as HTMLButtonElement).click();
+    await attendreMicrotaches();
+    (Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent === 'Peupler mes bénévoles') as HTMLButtonElement).click();
+    await attendreMicrotaches();
+
+    expect(appels).toEqual([null]);
+  });
+
+  it("rien créé ni actualisé : le dit clairement plutôt qu'un message ambigu", async () => {
+    const m = new Magasin(modeleDeTest(), [
+      {cle: CLE_TABLE_BENEVOLES, valeur: 'INFOS_BENEVOLES'},
+      {cle: 'benevoles.colonne_nom', valeur: 'Nom'},
+    ]);
+    m.brancherEcriture({...ecritureMuette, peuplerBenevoles: async () => ({benevoles: [], crees: 0, actualises: 0})});
+    montrerDisponibilites(container, m);
+
+    (Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent === "Réglages d'import") as HTMLButtonElement).click();
+    await attendreMicrotaches();
+    (Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent === 'Peupler mes bénévoles') as HTMLButtonElement).click();
+    await attendreMicrotaches();
+
+    expect(container.textContent).toContain('Rien à peupler : aucune ligne avec un nom dans la colonne choisie.');
+  });
+
+  it("un échec du peuplement se voit à l'écran, plutôt que de disparaître en silence", async () => {
+    const m = new Magasin(modeleDeTest(), [
+      {cle: CLE_TABLE_BENEVOLES, valeur: 'INFOS_BENEVOLES'},
+      {cle: 'benevoles.colonne_nom', valeur: 'Nom'},
+    ]);
+    m.brancherEcriture({...ecritureMuette, peuplerBenevoles: async () => { throw new Error('document indisponible'); }});
+    montrerDisponibilites(container, m);
+
+    (Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent === "Réglages d'import") as HTMLButtonElement).click();
+    await attendreMicrotaches();
+    (Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent === 'Peupler mes bénévoles') as HTMLButtonElement).click();
+    await attendreMicrotaches();
+
+    expect(container.textContent).toContain('Échec du peuplement');
   });
 });
 

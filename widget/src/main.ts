@@ -20,9 +20,13 @@
 import './style.css';
 import {demarrerApp} from './app';
 import type {Id} from './domain/types';
+import type {Benevole} from './domain/types';
 import type {DocApiEcriture, LigneParametre, NouvelleDisponibilite, TableBrute} from './grist';
 import {
-  actionsCreerArtiste, actionsCreerBesoin, actionsCreerEquipe, actionsCreerGroupe, actionsCreerMacroCreneau,
+  actionsActualiserBenevolesSource,
+  actionsAjouterColonneManquante,
+  actionsCreerArtiste, actionsCreerBenevolesSource, actionsCreerBesoin, actionsCreerEquipe, actionsCreerGroupe,
+  actionsCreerMacroCreneau,
   actionsCreerMission, actionsCreerSousCreneaux, actionsCreerTablesManquantes, actionsDefinirAbsence,
   actionsDefinirParametre, actionsDefinirPlaces, actionsDeplacerMacroCreneau, actionsDeplacerPositionGroupe,
   actionsEcrireDisponibilites, actionsModifierArtiste, actionsModifierPlaces, actionsModifierSousCreneaux,
@@ -30,8 +34,9 @@ import {
   actionsRetirerPositionGroupe, actionsRetirerPositionsGroupe, actionsSupprimerBesoins, actionsSupprimerDisponibilites,
   actionsSupprimerMacroCreneau, actionsSupprimerSousCreneaux,
   appliquerActions,
+  benevoleDepuisLigne,
   colonnesDeTable,
-  decoderNombre,
+  decoderNombre, decoderRef, decoderTexte,
   LIBELLE_PAR_TABLE, lireDocument, tablesDuDocument, zipperTable,
 } from './grist';
 import {type EcritureGrist, Magasin, SuppressionApresCreationEchouee} from './store';
@@ -248,6 +253,84 @@ function construireEcritureGrist(
         [...actionsSupprimerDisponibilites(idsARetirer), ...actionsEcrireDisponibilites(nouvellesGrist)],
         resolution,
       );
+    },
+    async peuplerBenevoles(tableSourceId, colNomId, colContactId, equipeParDefautId) {
+      const idBenevoles = resolution.Benevoles ?? 'Benevoles';
+
+      const [lignesTables, lignesColonnes] = await Promise.all([
+        docApi.fetchTable('_grist_Tables').then(zipperTable),
+        docApi.fetchTable('_grist_Tables_column').then(zipperTable),
+      ]);
+
+      // Garde-fou avant toute écriture (signalé par le coordinateur le
+      // 2026-09-23) : `resolution.Benevoles` vient d'une résolution par
+      // libellé normalisé (`resoudreIdsTables`, `grist/tables.ts`), qui ne
+      // départagerait pas deux tables titrées « Bénévoles » dont une serait
+      // la sienne. Sans toucher ce mécanisme (hors de portée de ce fichier),
+      // on vérifie ici, juste avant la plus grosse écriture du chantier, que
+      // la table visée porte bien tout notre schéma Bénévoles — aucune table
+      // à Antoine n'a de raison de porter ces colonnes précises sous ces noms
+      // précis. Un document tout juste amorcé par `demarrer()` les a
+      // toujours (`TABLES_REQUISES` garantit la table avant tout appel ici) ;
+      // seule une mauvaise résolution ferait échouer ce test.
+      const colonnesCible = new Set(colonnesDeTable(lignesTables, lignesColonnes, idBenevoles).map((c) => c.colId));
+      const colonnesSchemaAttendues = ['Quota_heures_min', 'Quota_heures_max', 'Statut', 'Competences'];
+      if (!colonnesSchemaAttendues.every((c) => colonnesCible.has(c))) {
+        throw new Error(
+          `La table "${idBenevoles}" ne porte pas notre schéma Bénévoles — peuplement refusé pour ne pas risquer d'écrire dans une table qui n'est pas la nôtre.`,
+        );
+      }
+
+      // 1. La colonne Id_source peut manquer sur une table Bénévoles créée
+      // avant ce mécanisme (2026-09-23) — jamais recréée si déjà là, et
+      // jamais posée sur une autre table que la nôtre (voir le doc-comment
+      // d'`actionsAjouterColonneManquante`).
+      const actionsColonne = actionsAjouterColonneManquante('Benevoles', 'Id_source', lignesTables, lignesColonnes, idBenevoles);
+      if (actionsColonne.length > 0) { await docApi.applyUserActions(actionsColonne); }
+
+      // 2. Notre table Bénévoles telle qu'elle est maintenant, pour
+      // reconnaître par Id_source les bénévoles déjà peuplés lors d'un
+      // appel précédent (jamais recréés, jamais leur équipe/quota/statut
+      // retouchés).
+      const lignesBenevolesActuelles = zipperTable(await docApi.fetchTable(idBenevoles));
+      const idNotreParIdSource = new Map<number, Id>();
+      for (const l of lignesBenevolesActuelles) {
+        const idSource = decoderRef(l.Id_source);
+        if (idSource != null) { idNotreParIdSource.set(idSource, l.id as Id); }
+      }
+
+      // 3. La table source, jamais modifiée (lecture seule, comme
+      // `valeursColonneBrute`) : une ligne sans nom ne crée rien, on ne
+      // devine pas de nom vide.
+      const lignesSource = zipperTable(await docApi.fetchTable(tableSourceId));
+      const aCreer: {idSource: Id; nom: string; contact: string}[] = [];
+      const aActualiser: {id: Id; nom: string; contact: string}[] = [];
+      for (const l of lignesSource) {
+        const nom = decoderTexte(l[colNomId]).trim();
+        if (!nom) { continue; }
+        const contact = colContactId ? decoderTexte(l[colContactId]) : '';
+        const idSource = l.id as Id;
+        const idExistant = idNotreParIdSource.get(idSource);
+        if (idExistant != null) {
+          aActualiser.push({id: idExistant, nom, contact});
+        } else {
+          aCreer.push({idSource, nom, contact});
+        }
+      }
+
+      if (aCreer.length > 0) {
+        await appliquerActions(docApi, actionsCreerBenevolesSource(aCreer, equipeParDefautId), resolution);
+      }
+      if (aActualiser.length > 0) {
+        await appliquerActions(docApi, actionsActualiserBenevolesSource(aActualiser), resolution);
+      }
+
+      // 4. L'état complet et à jour, pour que le Magasin remplace son cache
+      // local plutôt que de le reconstruire lui-même (voir
+      // `Magasin.peuplerBenevoles`).
+      const lignesRelues = zipperTable(await docApi.fetchTable(idBenevoles));
+      const benevoles: Benevole[] = lignesRelues.map(benevoleDepuisLigne);
+      return {benevoles, crees: aCreer.length, actualises: aActualiser.length};
     },
   };
 }

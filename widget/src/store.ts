@@ -198,6 +198,21 @@ export interface EcritureGrist {
    *  vérifié avant d'écrire cette méthode). Voir
    *  `Magasin.remplacerDisponibilites`. */
   remplacerDisponibilites(benevoleId: Id, debut: Epoch, fin: Epoch, nouvelles: readonly Disponibilite[]): Promise<void>;
+  /** Peuple NOTRE table Bénévoles depuis `tableSourceId` (jamais modifiée —
+   *  lecture seule, comme `valeursColonneBrute`) : une ligne créée par ligne
+   *  source encore inconnue (`Id_source`), Nom/Contact actualisés sur celles
+   *  déjà liées à un peuplement précédent — jamais les autres champs
+   *  (équipe, quotas, statut…), et jamais une suppression d'un bénévole
+   *  absent de la table source (§6.4, demande d'Antoine du 2026-09-23).
+   *  `colContactId` facultatif : `Contact` reste vide si non choisi.
+   *  `equipeParDefautId` est l'équipe assignée aux bénévoles nouvellement
+   *  créés (choisie par l'appelant, voir `Magasin.peuplerBenevoles`) —
+   *  jamais retouchée sur une actualisation. Retourne l'état complet et à
+   *  jour de notre table, pour que le `Magasin` remplace son cache local
+   *  plutôt que de le reconstruire à la main (voir `Magasin.peuplerBenevoles`). */
+  peuplerBenevoles(
+    tableSourceId: string, colNomId: string, colContactId: string | null, equipeParDefautId: Id,
+  ): Promise<{benevoles: Benevole[]; crees: number; actualises: number}>;
 }
 
 /** Levée par `EcritureGrist.remplacerSousCreneaux` quand la création des
@@ -349,6 +364,27 @@ export class Magasin {
     );
     this.data.disponibilites.push(...nouvelles);
     this.notifier();
+  }
+
+  /** Peuple notre table Bénévoles depuis `tableSourceId` — voir
+   *  `EcritureGrist.peuplerBenevoles` ci-dessus. `{crees: 0, actualises: 0}`
+   *  sans document connecté (démo, tests) : rien à peupler depuis une table
+   *  qui n'existe que dans un document réel. L'équipe assignée aux
+   *  nouveaux bénévoles est toujours la première équipe existante — à
+   *  l'appelant (la vue) de vérifier qu'il en existe au moins une avant
+   *  d'appeler cette méthode. En cas de succès, remplace entièrement le
+   *  cache local des bénévoles par l'état renvoyé (jamais reconstruit à la
+   *  main), pour ne jamais s'écarter du document. */
+  async peuplerBenevoles(
+    tableSourceId: string, colNomId: string, colContactId: string | null,
+  ): Promise<{crees: number; actualises: number}> {
+    if (!this.ecriture) { return {crees: 0, actualises: 0}; }
+    const equipeParDefautId = this.data.equipes[0]?.id;
+    if (equipeParDefautId == null) { return {crees: 0, actualises: 0}; }
+    const resultat = await this.ecriture.peuplerBenevoles(tableSourceId, colNomId, colContactId, equipeParDefautId);
+    this.data.benevoles = resultat.benevoles;
+    this.notifier();
+    return {crees: resultat.crees, actualises: resultat.actualises};
   }
 
   // --- Écriture : équipes ------------------------------------------------

@@ -1,6 +1,8 @@
 import {describe, expect, it} from 'vitest';
 import {
+  actionsActualiserBenevolesSource,
   actionsCreerArtiste,
+  actionsCreerBenevolesSource,
   actionsCreerBesoin,
   actionsCreerGroupe,
   actionsCreerMacroCreneau,
@@ -392,6 +394,46 @@ describe('actionsDefinirCompetencesBenevole', () => {
     expect(actionsDefinirCompetencesBenevole(1, ['Majeur', 'SST'])).toEqual([
       ['UpdateRecord', 'Benevoles', 1, {Competences: ['L', 'Majeur', 'SST']}],
     ]);
+  });
+});
+
+describe('actionsCreerBenevolesSource', () => {
+  it('construit un BulkAddRecord avec Id_source, une équipe par défaut commune, et des quotas/statut par défaut', () => {
+    expect(actionsCreerBenevolesSource(
+      [{idSource: 501, nom: 'Alice', contact: '0600000000'}, {idSource: 502, nom: 'Bob', contact: ''}],
+      7,
+    )).toEqual([[
+      'BulkAddRecord', 'Benevoles', [null, null],
+      {
+        Nom: ['Alice', 'Bob'],
+        Contact: ['0600000000', ''],
+        Equipe: [7, 7],
+        Quota_heures_min: [0, 0],
+        Quota_heures_max: [40, 40],
+        Statut: ['Actif', 'Actif'],
+        Id_source: [501, 502],
+      },
+    ]]);
+  });
+
+  it('tableau vide : aucune action', () => {
+    expect(actionsCreerBenevolesSource([], 7)).toEqual([]);
+  });
+});
+
+describe('actionsActualiserBenevolesSource', () => {
+  it('construit un BulkUpdateRecord limité à Nom/Contact, jamais équipe/quota/statut', () => {
+    expect(actionsActualiserBenevolesSource([
+      {id: 1, nom: 'Alice Martin', contact: '0600000000'},
+      {id: 2, nom: 'Bob', contact: ''},
+    ])).toEqual([[
+      'BulkUpdateRecord', 'Benevoles', [1, 2],
+      {Nom: ['Alice Martin', 'Bob'], Contact: ['0600000000', '']},
+    ]]);
+  });
+
+  it('tableau vide : aucune action', () => {
+    expect(actionsActualiserBenevolesSource([])).toEqual([]);
   });
 });
 

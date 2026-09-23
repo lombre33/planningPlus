@@ -12,10 +12,12 @@ export {zipperTable} from './brut';
 
 export {construireDonneesPlanning, construireLignesParametres, lireDocument} from './lecture';
 
-export {construireModele} from './modele';
+export {benevoleDepuisLigne, construireModele} from './modele';
 
 export type {
+  BenevoleSourceActualise,
   DocApiEcriture,
+  NouveauBenevoleSource,
   NouveauBesoin,
   NouveauGroupe,
   NouveauMacroCreneau,
@@ -30,7 +32,9 @@ export type {
   UserAction,
 } from './ecriture';
 export {
+  actionsActualiserBenevolesSource,
   actionsCreerArtiste,
+  actionsCreerBenevolesSource,
   actionsCreerBesoin,
   actionsCreerEquipe,
   actionsCreerGroupe,
@@ -73,7 +77,7 @@ export {idsReelsDeTest, LIBELLE_PAR_TABLE, resoudreIdsTables} from './tables';
 export type {ColonneTable, TableDocument} from './colonnes';
 export {colonnesDeTable, tablesDuDocument} from './colonnes';
 
-export {actionsCreerTablesManquantes, actionsReglerAffichage} from './creation';
+export {actionsAjouterColonneManquante, actionsCreerTablesManquantes, actionsReglerAffichage} from './creation';
 
 export type {LigneParametre} from './parametres';
 export {

@@ -18,6 +18,7 @@
  */
 
 import type {LigneBrute} from './brut';
+import {colonnesDeTable} from './colonnes';
 import type {UserAction} from './ecriture';
 import {REFERENCES_DIFFEREES, TABLES} from './schema';
 
@@ -86,6 +87,30 @@ export function actionsCreerTablesManquantes(tablesManquantes: readonly string[]
     .filter((r) => manquantes.has(r.table))
     .map((r) => ['AddColumn', IDENTIFIANT_DEMANDE[r.table] ?? r.table, r.colonne.id, actionColonne(r.colonne)]);
   return {tables, referencesDifferees};
+}
+
+/**
+ * Ajoute à une table Bénévoles déjà existante une colonne du schéma
+ * (`./schema`, `TABLES`) qui lui manque encore — jamais la recréer, jamais
+ * toucher une colonne déjà présente. Contrairement au reste de ce fichier
+ * (limité aux tables absentes, voir l'en-tête), cette fonction modifie une
+ * table déjà là : cas apparu le 2026-09-23 avec `Id_source` (peuplement
+ * des bénévoles depuis la table d'Antoine, §6.4), posée après coup sur un
+ * schéma dont `Benevoles` existait déjà chez lui. Reste dans la portée
+ * « une table à nous, jamais une table étrangère » de tout ce module :
+ * `tableIdReel` est toujours notre propre table Bénévoles, jamais celle
+ * qu'Antoine désigne comme source.
+ */
+export function actionsAjouterColonneManquante(
+  idTableSchema: string, idColonne: string, lignesTables: readonly LigneBrute[], lignesColonnes: readonly LigneBrute[],
+  tableIdReel: string,
+): UserAction[] {
+  const dejaPresente = colonnesDeTable(lignesTables, lignesColonnes, tableIdReel).some((c) => c.colId === idColonne);
+  if (dejaPresente) { return []; }
+  const table = TABLES.find((t) => t.id === idTableSchema);
+  const colonne = table?.colonnes.find((c) => c.id === idColonne);
+  if (!colonne) { return []; }
+  return [['AddColumn', tableIdReel, idColonne, actionColonne(colonne)]];
 }
 
 /**

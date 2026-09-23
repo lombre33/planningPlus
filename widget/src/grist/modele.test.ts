@@ -146,7 +146,26 @@ describe('construireModele', () => {
       Quota_heures_max: 12,
       Statut: 'Actif',
       Notes: '',
+      Id_source: null,
     }]);
+  });
+
+  it("décode Id_source d'un bénévole peuplé depuis une table externe (§6.4), et null quand la colonne n'existe pas encore sur le document (créée avant ce mécanisme)", () => {
+    const peuple = construireModele({
+      Benevoles: {
+        id: [2], Nom: ['Bob'], Contact: [''], Equipe: [10], Competences: [[]],
+        Quota_heures_min: [0], Quota_heures_max: [40], Statut: ['Actif'], Notes: [''], Id_source: [57],
+      },
+    });
+    expect(peuple.benevoles[0]?.Id_source).toBe(57);
+
+    const sansColonne = construireModele({
+      Benevoles: {
+        id: [3], Nom: ['Chloé'], Contact: [''], Equipe: [10], Competences: [[]],
+        Quota_heures_min: [0], Quota_heures_max: [40], Statut: ['Actif'], Notes: [''],
+      },
+    });
+    expect(sansColonne.benevoles[0]?.Id_source).toBeNull();
   });
 
   it('décode une mission, y compris Description et Lieu', () => {

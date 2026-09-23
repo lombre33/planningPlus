@@ -34,8 +34,10 @@ import {
   LIBELLES_REPONSE_PAR_DEFAUT,
 } from '../logic/import-disponibilites';
 import {
-  CLE_COLONNE_SOUHAITS_ARTISTES, CLE_LIBELLE_PAS_DISPONIBLE_DU_TOUT, CLE_LIBELLE_TOUT_LE_CRENEAU,
+  CLE_COLONNE_CONTACT_BENEVOLES, CLE_COLONNE_NOM_BENEVOLES, CLE_COLONNE_SOUHAITS_ARTISTES,
+  CLE_LIBELLE_PAS_DISPONIBLE_DU_TOUT, CLE_LIBELLE_TOUT_LE_CRENEAU,
   CLE_TABLE_BENEVOLES, cleColonneReponseMacroCreneau, type ColonneTable, colonnesEligibles,
+  colonnesEligiblesTableExterne,
 } from '../logic/parametres-benevoles';
 import type {Magasin} from '../store';
 import {libelleHeure} from '../temps';
@@ -61,6 +63,7 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
   let modeArtiste = false;
   let panneauOuvert = false;
   let importEnCours = false;
+  let peuplementEnCours = false;
   let dernierMessage: {texte: string; ton: 'ok' | 'danger'} | null = null;
   /** Colonnes de la table de bénévoles choisie (`CLE_TABLE_BENEVOLES`),
    *  rechargées si la table choisie change (`tableChargee` garde la trace
@@ -159,8 +162,16 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
   /** Menu déroulant sur les colonnes réelles de la table choisie ; tant
    *  qu'aucune table n'est choisie, propose les colonnes de tout le
    *  document (`colonnesTousDocuments`) plutôt qu'une liste vide ; repli en
-   *  champ texte seulement si la lecture échoue, jamais un écran bloqué. */
-  function champColonne(cle: string, aria: string): Node {
+   *  champ texte seulement si la lecture échoue, jamais un écran bloqué.
+   *  `filtre` : quelles colonnes de la table choisie proposer — par défaut
+   *  `colonnesEligibles` (exclut les noms déjà connus chez nous), mais le
+   *  nom/téléphone d'un bénévole se choisit justement sur une colonne qui
+   *  peut s'appeler « Nom » chez Antoine : `construirePanneauReglages` passe
+   *  alors `colonnesEligiblesTableExterne`, qui ne l'exclut pas — cette
+   *  variante n'est jamais utilisée dans le repli "toutes les tables", qui
+   *  n'a de sens qu'avant d'avoir choisi une table, donc jamais pour le
+   *  nom/téléphone. */
+  function champColonne(cle: string, aria: string, filtre: (c: readonly ColonneTable[]) => ColonneTable[] = colonnesEligibles): Node {
     const valeurActuelle = m.parametre(cle);
     const tableChoisie = m.parametre(CLE_TABLE_BENEVOLES);
 
@@ -168,7 +179,7 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
       chargerColonnesSiBesoin(tableChoisie);
       if (Array.isArray(colonnesBenevoles) && tableChargee === tableChoisie) {
         const options = [h('option', {value: '', selected: !valeurActuelle}, '— aucune —')];
-        for (const c of colonnesEligibles(colonnesBenevoles)) {
+        for (const c of filtre(colonnesBenevoles)) {
           options.push(h('option', {value: c.colId, selected: c.colId === valeurActuelle}, `${c.label} (${c.colId})`));
         }
         return h('select', {
@@ -261,6 +272,49 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
     }
   }
 
+  /** Peuple notre table Bénévoles depuis la table qu'Antoine a désignée
+   *  (§6.4, demande du 2026-09-23 : « nous avons deux tables qui stockent
+   *  les bénévoles », jamais la sienne à écrire). Jamais de suppression :
+   *  un bénévole absent de sa table aujourd'hui reste chez nous. Un second
+   *  clic n'en recrée aucun (upsert par `Id_source`), seuls Nom/Téléphone
+   *  sont actualisés sur ceux déjà liés. */
+  async function peuplerBenevolesDepuisSource(): Promise<void> {
+    const tableBenevoles = m.parametre(CLE_TABLE_BENEVOLES);
+    const colNom = m.parametre(CLE_COLONNE_NOM_BENEVOLES);
+    const colContact = m.parametre(CLE_COLONNE_CONTACT_BENEVOLES) ?? null;
+    if (!tableBenevoles || !colNom) {
+      dernierMessage = {texte: 'Choisis la table et la colonne du nom ci-dessus avant de peupler tes bénévoles.', ton: 'danger'};
+      rafraichir();
+      return;
+    }
+    if (m.equipes.length === 0) {
+      dernierMessage = {
+        texte: "Crée d'abord une équipe (vue Équipe) : chaque bénévole importé lui sera provisoirement rattaché, à corriger ensuite si besoin.",
+        ton: 'danger',
+      };
+      rafraichir();
+      return;
+    }
+
+    peuplementEnCours = true;
+    dernierMessage = null;
+    rafraichir();
+    try {
+      const {crees, actualises} = await m.peuplerBenevoles(tableBenevoles, colNom, colContact);
+      dernierMessage = {
+        texte: crees === 0 && actualises === 0
+          ? 'Rien à peupler : aucune ligne avec un nom dans la colonne choisie.'
+          : `${crees} bénévole${crees > 1 ? 's' : ''} créé${crees > 1 ? 's' : ''}, ${actualises} actualisé${actualises > 1 ? 's' : ''}.`,
+        ton: 'ok',
+      };
+    } catch {
+      dernierMessage = {texte: 'Échec du peuplement. Vérifie les colonnes associées puis réessaie.', ton: 'danger'};
+    } finally {
+      peuplementEnCours = false;
+      rafraichir();
+    }
+  }
+
   /** Import (§6.4, points A et B) : pour chaque bénévole, lit sa réponse de
    *  chaque macro-créneau associé et ses souhaits d'artiste, puis remplace
    *  ses disponibilités macro-créneau par macro-créneau (jamais en un seul
@@ -306,10 +360,17 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
 
       let nbManuels = 0;
       for (const benevole of m.benevoles) {
-        const nomsSouhaites = decoderListe(valeursSouhaits.get(benevole.id));
+        // La réponse brute se lit dans SA table à lui, indexée par l'id de la
+        // ligne d'origine (`Id_source`, posé par le peuplement ci-dessus) —
+        // jamais par `benevole.id`, qui est l'id de NOTRE ligne et n'a aucun
+        // rapport avec les identifiants de sa table (§6.4, 2026-09-23). Un
+        // bénévole sans `Id_source` (saisi nativement, ou créé avant ce
+        // mécanisme) ne trouve simplement aucune réponse, comme avant.
+        const idSource = benevole.Id_source;
+        const nomsSouhaites = decoderListe(idSource != null ? valeursSouhaits.get(idSource) : undefined);
         const surcharges = disponibilitesDepuisSouhaitsArtistes(benevole.id, nomsSouhaites, m.artistes);
         for (const {macro} of macrosMappes) {
-          const brut = valeursParMacro.get(macro.id)!.get(benevole.id);
+          const brut = idSource != null ? valeursParMacro.get(macro.id)!.get(idSource) : undefined;
           const reponse = typeof brut === 'string' ? brut : null;
           const resultat = disponibilitesDepuisReponseMacroCreneau(benevole.id, macro, reponse, libelles);
           if (resultat.statut === 'Manuelle') { nbManuels++; continue; }
@@ -353,6 +414,20 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
         ? h('p', {class: 'empty'},
             "Aucune colonne de ta table Bénévoles ne peut être associée ici : ajoute-lui d'abord, dans Grist, une "
             + 'colonne de texte ou de choix (par exemple les souhaits d\'artistes, ou une réponse de disponibilité).',
+          )
+        : null,
+      tableChoisie
+        ? h('div', {style: {marginBottom: '14px', paddingBottom: '14px', borderBottom: '1px solid var(--border, #ddd)'}},
+            h('p', {class: 'view__intro'},
+              'Peuple ta table Bénévoles du widget depuis cette table-là : crée les bénévoles qui manquent, sans jamais '
+              + 'en supprimer ni y toucher deux fois.',
+            ),
+            champ('Colonne du nom prénom', champColonne(CLE_COLONNE_NOM_BENEVOLES, 'Colonne du nom prénom', colonnesEligiblesTableExterne)),
+            champ('Colonne du téléphone (optionnelle)', champColonne(CLE_COLONNE_CONTACT_BENEVOLES, 'Colonne du téléphone', colonnesEligiblesTableExterne)),
+            h('button', {
+              class: 'btn btn--sm', type: 'button', disabled: peuplementEnCours,
+              onclick: () => { void peuplerBenevolesDepuisSource(); },
+            }, peuplementEnCours ? 'Peuplement en cours…' : 'Peupler mes bénévoles'),
           )
         : null,
       champ("Colonne des souhaits d'artistes (choix multiple)", champColonne(CLE_COLONNE_SOUHAITS_ARTISTES, "Colonne des souhaits d'artistes")),

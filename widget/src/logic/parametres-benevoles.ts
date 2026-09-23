@@ -45,6 +45,13 @@ export const CLE_TABLE_BENEVOLES = 'benevoles.table_benevoles';
  *  table Bénévoles). */
 export const CLE_COLONNE_SOUHAITS_ARTISTES = 'benevoles.colonne_souhaits_artistes';
 
+/** Clés `Parametres` pour peupler notre table Bénévoles depuis la table
+ *  externe d'Antoine (§6.4, demande du 2026-09-23) : la colonne du nom
+ *  complet (obligatoire pour peupler) et celle du téléphone (facultative,
+ *  `Contact` reste vide si non choisie). */
+export const CLE_COLONNE_NOM_BENEVOLES = 'benevoles.colonne_nom';
+export const CLE_COLONNE_CONTACT_BENEVOLES = 'benevoles.colonne_contact';
+
 /** Clé `Parametres` pour la colonne de réponse d'un macro-créneau donné
  *  (une colonne par macro-créneau, confirmé par Antoine le 2026-09-23). */
 export function cleColonneReponseMacroCreneau(macroCreneauId: Id): string {
@@ -63,6 +70,7 @@ export const CLE_LIBELLE_PAS_DISPONIBLE_DU_TOUT = 'benevoles.libelle_pas_disponi
  *  l'exécution. */
 export const COLONNES_BENEVOLES_CONNUES: ReadonlySet<string> = new Set([
   'id', 'Nom', 'Contact', 'Equipe', 'Competences', 'Quota_heures_min', 'Quota_heures_max', 'Statut', 'Notes',
+  'Id_source',
 ]);
 
 /** Types Grist dont le contenu peut raisonnablement être une réponse texte
@@ -74,4 +82,14 @@ const TYPES_COLONNE_ELIGIBLES: ReadonlySet<string> = new Set(['Text', 'Choice', 
  *  d'un type plausible, et pas déjà une colonne connue du widget. */
 export function colonnesEligibles(colonnes: readonly ColonneTable[]): ColonneTable[] {
   return colonnes.filter((c) => TYPES_COLONNE_ELIGIBLES.has(c.type) && !COLONNES_BENEVOLES_CONNUES.has(c.colId));
+}
+
+/** Même filtre de type que `colonnesEligibles`, mais sans exclure les
+ *  colonnes qui portent un nom déjà connu chez nous (`Nom`, `Contact`…) :
+ *  cette exclusion n'a de sens que pour proposer les colonnes qu'Antoine a
+ *  ajoutées à NOTRE propre table Bénévoles, jamais pour choisir le nom/
+ *  téléphone dans SA table à lui, où une colonne nommée « Nom » est
+ *  précisément celle qu'on cherche (peuplement, §6.4). */
+export function colonnesEligiblesTableExterne(colonnes: readonly ColonneTable[]): ColonneTable[] {
+  return colonnes.filter((c) => TYPES_COLONNE_ELIGIBLES.has(c.type));
 }

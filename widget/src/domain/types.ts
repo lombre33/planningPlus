@@ -41,6 +41,16 @@ export interface Benevole {
   Quota_heures_max: number;
   Statut: StatutBenevole;
   Notes: string;
+  /** Identifiant de la ligne d'origine dans la table de bénévoles externe
+   *  qu'Antoine a désignée (§6.4, peuplement du 2026-09-23) — absent ou
+   *  `null` pour un bénévole saisi nativement dans Grist, créé avant ce
+   *  mécanisme, ou dans une fixture de test qui ne s'y intéresse pas. Sert
+   *  uniquement à reconnaître un bénévole déjà importé lors d'un nouveau
+   *  peuplement (jamais recréé) et à retrouver sa réponse de disponibilité
+   *  dans la même table externe (`views/disponibilites.ts`). Optionnel
+   *  plutôt que requis pour ne pas forcer chaque fixture de test existante
+   *  à s'en soucier. */
+  Id_source?: Id | null;
 }
 
 export type Priorite = 'Critique' | 'Normale' | 'Confort';
