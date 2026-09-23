@@ -194,12 +194,29 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
       if (groupeDeplace == null || besoinOrigineDeplace === besoinId) { return; }
       e.preventDefault();
       cellule.classList.add('indicatif-cell--dropzone');
+      // Repère visuel pendant le survol (retour Antoine 2026-09-23) : sans
+      // lui, glisser normal et Alt+glisser sont indiscernables avant même de
+      // relâcher. L'état d'Alt est relu à chaque survol, donc suit la touche
+      // en temps réel.
+      cellule.classList.toggle('indicatif-cell--dropzone-copie', e.altKey);
     });
-    cellule.addEventListener('dragleave', () => cellule.classList.remove('indicatif-cell--dropzone'));
+    cellule.addEventListener('dragleave', () => {
+      cellule.classList.remove('indicatif-cell--dropzone', 'indicatif-cell--dropzone-copie');
+    });
     cellule.addEventListener('drop', (e: DragEvent) => {
       e.preventDefault();
-      cellule.classList.remove('indicatif-cell--dropzone');
+      cellule.classList.remove('indicatif-cell--dropzone', 'indicatif-cell--dropzone-copie');
       if (groupeDeplace == null || besoinOrigineDeplace == null || besoinOrigineDeplace === besoinId) { return; }
+      // Alt tenu au moment de relâcher (pas au moment de saisir) tranche
+      // entre les deux gestes — même convention que la frise Missions/
+      // Artistes (`ui/frise.ts`, `ev.altKey` relu au dépôt). Alt+glisser
+      // ajoute une position sans retirer l'origine, exactement comme le
+      // bouton « + Ajouter une position » (même écriture, `ajouterPosition`).
+      if (e.altKey) {
+        const groupeACopier = groupeDeplace;
+        void ecrire(async () => { await m.ajouterPosition(groupeACopier, besoinId); });
+        return;
+      }
       const position = m.positionsGroupe.find((p) => p.Groupe === groupeDeplace && p.Besoin === besoinOrigineDeplace);
       if (position) { void ecrire(() => m.deplacerPosition(position.id, besoinId)); }
     });

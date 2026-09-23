@@ -1246,6 +1246,13 @@ table.grille .mission-cell .lieu {
   background: var(--brand-tint);
 }
 
+/* Alt+glisser (ajoute une position au lieu de déplacer) : distingue le
+   survol du glisser normal avant même de relâcher. */
+.indicatif-cell--dropzone-copie {
+  outline: 2px dashed var(--accent-2);
+  background: var(--accent-2-tint);
+}
+
 .indicatif-cell--surlignee {
   background: var(--brand-tint);
 }
