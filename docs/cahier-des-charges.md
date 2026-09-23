@@ -1,9 +1,8 @@
 # PlanningPlus — Cahier des charges
 
-**Version :** v1.6 (rattrapage du 2026-09-23 : le widget crée maintenant ses
-propres tables — renversement du 2026-09-22 —, plus de binôme automatique à
-la création d'un besoin, nomenclature des indicatifs, frise Missions et
-suppression de macro-créneau)
+**Version :** v1.7 (suite du rattrapage du 2026-09-23 : suppression forcée
+d'un macro-créneau, lieu facultatif sur mission et artiste, Alt+glisser
+ajoute une position d'indicatif — voir aussi v1.6)
 **Statut :** structure et règles validées (§6.3, §7.5) ; développement agile
 par incréments courts depuis le 2026-09-22 (§11.1) ; document tenu à jour au
 fil du code plutôt qu'en fin de sprint, sur consigne du coordinateur
@@ -218,7 +217,13 @@ des contraintes A et B mais n'avait pas été rassemblée en un seul endroit.
 | `Equipes` | `Nom`, `Referent` (→ `Benevoles`), `Couleur` |
 | `Benevoles` | `Nom`, `Contact`, `Equipe` (→ `Equipes`), `Quota_heures_min`, `Quota_heures_max`, `Statut` (actif / absent), `Notes` |
 | `Lieux` | `Nom`, `Description` |
-| `Artistes` | `Nom`, `Lieu` (→ `Lieux`), `Debut`, `Fin` |
+| `Artistes` | `Nom`, `Lieu` (→ `Lieux`, optionnel), `Debut`, `Fin` |
+
+**Lieu facultatif (précisé le 2026-09-23).** `Missions.Lieu` et
+`Artistes.Lieu` sont tous deux optionnels : Antoine ne se sert pas encore des
+lieux, et rien ne doit bloquer une création faute d'en choisir un. Les deux
+formulaires de création proposent une option « — aucun — », et son absence
+s'affiche comme un champ vide plutôt qu'une erreur.
 
 ### 6.2 Structure temporelle
 
@@ -273,19 +278,28 @@ sur une mission (aucun besoin encore dessus) peut passer par une création
 pure. Cette règle s'applique à tout geste d'édition d'un sous-créneau
 existant, pas seulement au glisser de la grille.
 
-**Suppression d'un macro-créneau (ajouté le 2026-09-22).** Un macro-créneau
-se supprime depuis l'Agenda (§8.1). Le geste est refusé, avec le motif
-affiché, si l'un de ses sous-créneaux porte déjà un `Besoin` — pour ne jamais
-faire disparaître silencieusement une mission déjà positionnée. **Écart
-constaté en relisant le code le 2026-09-23** : ce garde-fou ne couvre
-aujourd'hui que les besoins, pas un sous-créneau propre à une mission qui
-n'en a pas encore (`Sous_creneau.Mission` non vide, aucun `Besoin` positionné
-dessus) — un tel sous-créneau disparaît avec son macro-créneau sans refus.
-Le garde-fou du découpage automatique voisin (`redecouperSousCreneaux`,
-juste au-dessus) couvre bien les deux cas depuis le 2026-09-22 (commit
-`31cca15`) ; celui de la suppression ne l'a pas encore reçu. Signalé au fil
-Agenda/Intégration plutôt que corrigé ici, ce document décrivant le code tel
-qu'il est.
+**Suppression d'un macro-créneau (ajouté le 2026-09-22, garde-fou complété le
+2026-09-23).** Un macro-créneau se supprime depuis l'Agenda (§8.1). Le geste
+est refusé par défaut, motif affiché, si l'un de ses sous-créneaux porte déjà
+un `Besoin`, ou est propre à une mission même sans `Besoin` encore dessus
+(`Sous_creneau.Mission` non vide) — pour ne jamais faire disparaître
+silencieusement une mission déjà positionnée. *(Un écart entre les deux
+formes de ce garde-fou, relevé le 2026-09-23 en relisant le code — la
+suppression ne couvrait que les besoins, contrairement au découpage
+automatique voisin depuis la veille — a été corrigé le jour même.)*
+
+**Suppression forcée (ajoutée le 2026-09-23, retour d'Antoine).** Quand ce
+refus par défaut bloque, un geste « supprimer quand même » passe outre,
+après confirmation qui annonce le décompte exact (sous-créneaux, besoins,
+binômes positionnés). Cascade alors, en un seul aller-retour, dans cet
+ordre : les positions de groupe (`Positions_groupe`) sur les besoins des
+sous-créneaux du macro-créneau, ces `Besoins`, tous ses `Sous_creneaux`
+(communs et propres), puis le macro-créneau lui-même — Grist ne cascadant
+pas les suppressions, chaque ligne qui ne vit que par ce qui part est
+supprimée explicitement. **Les `Missions` et les `Groupes` (indicatifs,
+avec leurs `Places`) ne sont jamais supprimés** : un indicatif positionné ici
+redevient seulement libre (sa ligne `Groupe` et son roster de `Places` sont
+indépendants de `Positions_groupe`, §6.3), prêt à se repositionner ailleurs.
 
 Les sous-créneaux d'un même macro-créneau ne sont **pas** tenus de former une
 partition stricte. *(Décision Antoine, 2026-09-21 : « tolérée, signalée ».)*
@@ -341,7 +355,7 @@ jamais scindé entre deux jours d'affichage.
 
 | Table | Colonnes principales |
 | --- | --- |
-| `Missions` | `Nom`, `Lieu` (→), `Equipe` (→), `Priorite`, `Competences_requises`, `Description` |
+| `Missions` | `Nom`, `Lieu` (→, optionnel), `Equipe` (→), `Priorite`, `Competences_requises`, `Description` |
 | `Besoins` | `Mission` (→), `Sous_creneau` (→), `Effectif_min`, `Effectif_max`, `Taille_groupe` |
 | `Groupes` | `Code` (indicatif, ex. « B1 » — voir nomenclature ci-dessous), `Taille`, `Equipe` (→) |
 | `Positions_groupe` | `Groupe` (→), `Besoin` (→) |
@@ -638,6 +652,11 @@ indépendamment de l'interface retenue.
 4. **Correction manuelle, indicatif par indicatif.** Un indicatif peut être
    repositionné d'un besoin à un autre — une seule ligne de `Positions_groupe`
    change, rien d'autre (§6.3) — sans toucher aux personnes qui l'occupent.
+   Il peut aussi être **ajouté** sur un second besoin sans quitter le
+   premier — une nouvelle ligne de `Positions_groupe`, l'ancienne restant en
+   place — pour l'usage central du §6.3 (un indicatif positionné sur
+   plusieurs besoins à la fois). *(Distinction geste par geste ajoutée le
+   2026-09-23 : glisser déplace, Alt maintenu pendant le dépôt ajoute.)*
 5. **Recalcul partiel** après une correction manuelle ou une absence
    déclarée : relancer l'algorithme sur le seul périmètre affecté reprend les
    places encore vides sans toucher aux places verrouillées (§7.3, §5.3).
