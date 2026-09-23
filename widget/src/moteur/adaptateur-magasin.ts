@@ -207,6 +207,36 @@ export function classerCandidats(
   return resultats.slice(0, 8);
 }
 
+/**
+ * Point 4 (nuit du 2026-09-23, demande d'Antoine) : sur une place vide
+ * rattachée à une mission prioritaire, jusqu'à cinq bénévoles qui pourraient
+ * la remplir si une seule contrainte dure était levée, chacun étiqueté avec
+ * la contrainte en question — même forme `Candidat` que `classerCandidats`
+ * ci-dessus pour réutiliser `carteCandidatCompacte` (§7.5.3), mais construite
+ * à partir des inéligibles du moteur (`CandidatClasse.raison`, jusqu'ici
+ * filtrés par `classerCandidats`). Purement informatif : le clic réutilise le
+ * même geste d'affectation manuelle que le reste de la vue (rien ne s'écrit
+ * tout seul), à Antoine de choisir quelle contrainte lever.
+ */
+export function candidatsBloquesPourPlaceVide(m: Magasin, ix: Index, groupeId: Id): Candidat[] {
+  const donnees = versDonneesPlanning(m);
+  const classement = moteurClasserCandidats(donnees, groupeId);
+
+  const resultats: Candidat[] = [];
+  for (const c of classement) {
+    if (c.eligible || !c.raison) { continue; }
+    const benevole = ix.benevole.get(c.benevoleId);
+    if (!benevole) { continue; }
+    const equipe = ix.equipe.get(benevole.Equipe);
+    resultats.push({
+      benevoleId: c.benevoleId, nom: benevole.Nom, equipeNom: equipe?.Nom ?? '?', score: 0,
+      tags: [{texte: LIBELLE_RAISON[c.raison], sens: 'moins'}],
+    });
+    if (resultats.length >= 5) { break; }
+  }
+  return resultats;
+}
+
 // --- raisonsPlaceVide --------------------------------------------------------
 
 const LIBELLE_RAISON: Record<RaisonInEligibilite, string> = {

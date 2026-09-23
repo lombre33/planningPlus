@@ -2,7 +2,9 @@ import {describe, expect, it} from 'vitest';
 import type {Id, Modele} from '../domain/types';
 import {indexer} from '../logic/derive';
 import {Magasin} from '../store';
-import {calculerAnomalies, classerCandidats, proposerPermutation, raisonsPlaceVide, versDonneesPlanning} from './adaptateur-magasin';
+import {
+  calculerAnomalies, candidatsBloquesPourPlaceVide, classerCandidats, proposerPermutation, raisonsPlaceVide, versDonneesPlanning,
+} from './adaptateur-magasin';
 
 /**
  * Un groupe (Bar) sur un besoin, deux candidats potentiels — l'un excellent
@@ -231,6 +233,37 @@ describe('raisonsPlaceVide (adaptateur)', () => {
     modele.benevoles = [];
     const m = new Magasin(modele);
     expect(raisonsPlaceVide(m, 1)).toEqual(['aucun bénévole importé']);
+  });
+});
+
+describe('candidatsBloquesPourPlaceVide (adaptateur)', () => {
+  it("liste le seul candidat inéligible avec la contrainte à casser, même forme Candidat que classerCandidats (point 4, 2026-09-23)", () => {
+    const m = new Magasin(construireModeleRaisonVide({competencesRequises: ['SST']}));
+    const ix = indexer(m);
+    const bloques = candidatsBloquesPourPlaceVide(m, ix, 1);
+    expect(bloques).toHaveLength(1);
+    expect(bloques[0]).toMatchObject({benevoleId: 1, nom: 'Alix', equipeNom: 'Bars'});
+    expect(bloques[0]!.tags).toEqual([{texte: "personne n'a la compétence requise", sens: 'moins'}]);
+  });
+
+  it('rend une liste vide quand un candidat éligible existe (rien à débloquer)', () => {
+    const m = new Magasin(construireModeleRaisonVide());
+    const ix = indexer(m);
+    expect(candidatsBloquesPourPlaceVide(m, ix, 1)).toEqual([]);
+  });
+
+  it('plafonne à 5 candidats bloqués', () => {
+    const modele = construireModeleRaisonVide({competencesRequises: ['SST']});
+    modele.benevoles = Array.from({length: 8}, (_, i) => ({
+      id: i + 1, Nom: `Benevole${i + 1}`, Contact: '', Equipe: 1, Competences: [],
+      Quota_heures_min: 0, Quota_heures_max: 40, Statut: 'Actif' as const, Notes: '',
+    }));
+    modele.disponibilites = modele.benevoles.flatMap((b) => [0, 900, 1800, 2700].map((q) => (
+      {Benevole: b.id, Quart_heure: q, Statut: 'Disponible' as const, Artiste: null}
+    )));
+    const m = new Magasin(modele);
+    const ix = indexer(m);
+    expect(candidatsBloquesPourPlaceVide(m, ix, 1)).toHaveLength(5);
   });
 });
 
