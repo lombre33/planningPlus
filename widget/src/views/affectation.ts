@@ -314,7 +314,12 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
   }
 
   function rosterCard(ix: Index, benevole: Benevole): Node {
-    const equipe = ix.equipe.get(benevole.Equipe)!;
+    // `ix.equipe.get(...)` peut renvoyer `undefined` si l'équipe du bénévole
+    // ne correspond plus à aucune équipe existante (référence orpheline,
+    // vue confirmée cassée sur le banc le 2026-09-23 : ça faisait planter
+    // tout le rendu d'Affectation, roster compris, plutôt que de simplement
+    // afficher ce bénévole sans couleur d'équipe).
+    const equipe = ix.equipe.get(benevole.Equipe);
     const actif = benevole.Statut === 'Actif';
     const heures = heuresAffectees(m, ix, benevole.id);
     return h('div', {
@@ -327,7 +332,7 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
         if (dt) { dt.effectAllowed = 'move'; }
       } : undefined,
     },
-      h('span', {class: 'dot', style: {background: equipe.Couleur}}),
+      h('span', {class: 'dot', style: {background: equipe?.Couleur ?? 'var(--text-faint)'}}),
       h('span', {class: 'roster-card__nom'}, benevole.Nom),
       h('span', {class: 'roster-card__meta mono'}, `${formatHeures(heures)}/${benevole.Quota_heures_max} h`),
     );

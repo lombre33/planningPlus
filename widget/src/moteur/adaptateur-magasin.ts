@@ -149,13 +149,18 @@ export function classerCandidats(
     if (options.exclure != null && c.benevoleId === options.exclure) { continue; }
 
     const benevole = ix.benevole.get(c.benevoleId)!;
-    const equipe = ix.equipe.get(benevole.Equipe)!;
+    // `equipe` peut être `undefined` si le bénévole porte une référence
+    // d'équipe orpheline (vue confirmée cassée sur le banc le 2026-09-23,
+    // même défaut que `rosterCard` dans `views/affectation.ts`) — ce
+    // classement est appelé pour chaque place affichée, donc un seul
+    // candidat orphelin plantait tout l'écran, pas seulement sa carte.
+    const equipe = ix.equipe.get(benevole.Equipe);
     const tags: Candidat['tags'] = [];
 
     if (c.explication.equipeCorrespond === true) {
-      tags.push({texte: `équipe ${equipe.Nom}`, sens: 'plus'});
+      tags.push({texte: `équipe ${equipe?.Nom ?? '?'}`, sens: 'plus'});
     } else if (c.explication.equipeCorrespond === false) {
-      tags.push({texte: `hors équipe (${equipe.Nom})`, sens: 'moins'});
+      tags.push({texte: `hors équipe (${equipe?.Nom ?? '?'})`, sens: 'moins'});
     }
 
     const meilleurSouhait = c.explication.souhaitsMission.reduce<NiveauPreferenceMission | null>((meilleur, s) => {
@@ -189,7 +194,7 @@ export function classerCandidats(
       tags.push({texte: 'sous son quota minimum', sens: 'plus'});
     }
 
-    resultats.push({benevoleId: c.benevoleId, nom: benevole.Nom, equipeNom: equipe.Nom, score: c.score, tags});
+    resultats.push({benevoleId: c.benevoleId, nom: benevole.Nom, equipeNom: equipe?.Nom ?? '?', score: c.score, tags});
   }
 
   // Déjà trié éligibles-d'abord par score décroissant par le moteur.

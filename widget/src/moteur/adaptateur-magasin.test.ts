@@ -86,6 +86,17 @@ describe('classerCandidats (adaptateur)', () => {
     const candidats = classerCandidats(m, ix, 1, {exclure: 1});
     expect(candidats.map((c) => c.benevoleId)).toEqual([2]);
   });
+
+  it("ne plante pas quand un candidat porte une référence d'équipe orpheline (Affectation cassée en entier sur le banc, 2026-09-23) : tag « ? » plutôt qu'une exception", () => {
+    const modele = construireModele();
+    modele.benevoles[1]!.Equipe = 99; // Bao — aucune équipe 99 dans ce modèle
+    const m = new Magasin(modele);
+    const ix = indexer(m);
+    expect(() => classerCandidats(m, ix, 1)).not.toThrow();
+    const bao = classerCandidats(m, ix, 1).find((c) => c.benevoleId === 2);
+    expect(bao?.equipeNom).toBe('?');
+    expect(bao?.tags.map((t) => t.texte)).toContain('hors équipe (?)');
+  });
 });
 
 /**
