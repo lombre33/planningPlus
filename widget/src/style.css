@@ -976,6 +976,14 @@ table.grille .mission-cell .lieu {
 
 .timeline__bloc {
   all: unset;
+  /* Sans position, un bloc statique perd la main sur la piste qui occupe la
+     même cellule de grille dès qu'aucun des deux n'a de contexte
+     d'empilement propre : seul `.besoin-cell--vide` (position: relative,
+     posée pour la vue Indicatifs) gagnait par accident, donc tout bloc
+     coloré (besoin--ok/--partiel/--sous, sans position) restait
+     inatteignable au clic comme au glisser — bug repéré par le fil
+     Connexion Grist le 2026-09-22 sur document réel. */
+  position: relative;
   box-sizing: border-box;
   cursor: pointer;
   width: 100%;
