@@ -1,9 +1,9 @@
 # PlanningPlus — Cahier des charges
 
-**Version :** v1.9 (§7.2 précisé, 2026-09-23 : la disponibilité est une
-contrainte dure et non un objectif arbitrable, l'ordre des objectifs n'est
-pas paramétrable, et l'objectif 7 « binôme souhaité » est confirmé et câblé
-— voir aussi v1.6, v1.7, v1.8)
+**Version :** v1.10 (§8 précisé, 2026-09-23 17h18 : le macro-créneau est
+l'ossature de l'application et sert de filtre global à toutes les vues, pas
+seulement à Missions ; l'ancien axe propre de la vue Artistes, basé sur ses
+passages, est annulé — voir aussi v1.6 à v1.9)
 **Statut :** structure et règles validées (§6.3, §7.5) ; développement agile
 par incréments courts depuis le 2026-09-22 (§11.1) ; document tenu à jour au
 fil du code plutôt qu'en fin de sprint, sur consigne du coordinateur
@@ -698,6 +698,15 @@ fait gagner du temps le jour J.
 Liste de travail, à arbitrer (voir le brainstorm dans le fil et la
 [liste de questions](questions-cadrage.md#9-vues-et-ux)).
 
+**Le macro-créneau est l'ossature de l'application, pas une entité parmi
+d'autres** (Décision Antoine, 2026-09-23 17h18) : ses bornes découpent le
+festival en jours, et ce découpage sert d'axe et de **filtre global à
+toutes les vues** — bénévoles et artistes compris, pas seulement la grille
+Missions (point 2 ci-dessous) où il a été construit en premier. Une vue qui
+calerait son propre découpage en jours sur autre chose que les
+macro-créneaux (c'était le cas de la vue Artistes, voir point 8) est un
+écart à corriger, jamais une variante voulue.
+
 1. **Agenda** — création, édition et suppression des macro-créneaux et
    sous-créneaux, en horizontal (la disposition verticale et le comparatif
    envisagés en cadrage ont été abandonnés). Permet aussi le découpage
@@ -732,15 +741,24 @@ Liste de travail, à arbitrer (voir le brainstorm dans le fil et la
 
    Présentée en frise, sur le même principe que la grille Missions (§8.2) :
    chaque artiste est une ligne, ses passages des blocs posés sur un axe
-   commun au quart d'heure, un onglet par jour de festival. Glisser un bloc
-   le déplace, ALT maintenu le redimensionne depuis le bord saisi — ce geste
-   se cale au quart d'heure (l'axe de la frise), même si le formulaire reste
-   en durée libre. Cliquer la piste d'une ligne crée un nouveau passage pour
-   ce même artiste, nom verrouillé. Un passage n'est rattaché à aucun
-   macro-créneau : l'axe de chaque jour se calcule à partir des passages de ce
-   jour, pas des macro-créneaux, pour que la vue reste utilisable même sans
-   aucune mission créée. *(Demande Antoine, 2026-09-22, en suite de la
-   refonte de la grille Missions.)*
+   commun au quart d'heure. Glisser un bloc le déplace, ALT maintenu le
+   redimensionne depuis le bord saisi — ce geste se cale au quart d'heure
+   (l'axe de la frise), même si le formulaire reste en durée libre. Cliquer
+   la piste d'une ligne crée un nouveau passage pour ce même artiste, nom
+   verrouillé. Un passage n'est rattaché à aucun macro-créneau **en base**
+   (`Artistes` n'a pas de colonne macro-créneau) : c'est seulement l'axe
+   *affiché* qui s'aligne dessus, pas le modèle de données.
+
+   **L'axe et le découpage en jours suivent les macro-créneaux, comme
+   toutes les autres vues** (Décision Antoine, 2026-09-23 17h18 — voir la
+   note en tête du §8 — qui **annule** la décision ci-dessous du
+   2026-09-22 : « l'axe de chaque jour se calcule à partir des passages de
+   ce jour, pas des macro-créneaux »). Ce premier choix laissait la vue
+   entièrement vide tant qu'aucun artiste n'y avait été créé, sans jamais
+   montrer les jours du festival déjà posés dans l'Agenda — cause directe
+   du mécontentement d'Antoine le 2026-09-23. *(Chantier en cours au
+   2026-09-23 17h19, fil Vue artistes — état transitoire, pas encore
+   basculé au moment de cette note.)*
 9. **Vue jour J** — ce qui tourne maintenant, absences et remplacements.
 10. **Vue disponibilités** — saisie et correction rapides.
 
