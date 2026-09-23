@@ -111,19 +111,67 @@ function formulaire(
   ));
 }
 
+/** Crée un artiste dans le référentiel — le "qui" (nom, lieu), pas encore le
+ *  "où/quand" : ça, c'est `ouvrirModalCreationPassagePourArtiste`, posé
+ *  ensuite d'un clic sur sa ligne (même séparation identité/horaire que
+ *  `ouvrirCreationMission`, `views/grille.ts`). Demande d'Antoine du
+ *  2026-09-23, en réponse directe à la modale précédente qui demandait déjà
+ *  un horaire ici : « je n'ai pas besoin de sélectionner un jour/heure dans
+ *  cette modale-là, ça n'a aucun sens » → ajouter une ligne.
+ *
+ *  La table `Artistes` reste un passage par ligne (§6, aucun changement de
+ *  modèle) : cette ligne sans passage encore posé s'écrit avec une borne
+ *  nulle, `Debut === Fin` (voir `estPlaceholder`, `views/artistes.ts`), que
+ *  `ouvrirModalCreationPassagePourArtiste` remplace en place au premier
+ *  horaire donné plutôt que d'ajouter une seconde ligne. */
 export function ouvrirModalCreationArtiste(m: Magasin): void {
-  formulaire(m, 'Nouvel artiste', 'Créer', null, null, (patch) => m.enregistrerArtiste(patch));
+  const champNom = h('input', {class: 'input', type: 'text', placeholder: 'Nom de l’artiste'}) as HTMLInputElement;
+  const champLieu = h('select', {class: 'select'},
+    h('option', {value: ''}, '— aucun —'),
+    ...m.lieux.map((l) => h('option', {value: String(l.id)}, l.Nom)),
+  ) as HTMLSelectElement;
+  const erreur = creerErreur();
+
+  ouvrirModal('Nouvel artiste', (fermer) => h('div', {style: {display: 'flex', flexDirection: 'column', gap: '14px'}},
+    h('div', {class: 'field'}, h('label', null, 'Nom'), champNom),
+    h('div', {class: 'field'}, h('label', null, 'Lieu'), champLieu),
+    erreur.noeud,
+    h('div', {class: 'modal__actions'},
+      h('button', {class: 'btn btn--ghost', type: 'button', onclick: fermer}, 'Annuler'),
+      h('button', {
+        class: 'btn btn--primary', type: 'button',
+        onclick: async () => {
+          const nom = champNom.value.trim();
+          if (!nom) { erreur.afficher('Merci de renseigner un nom.'); return; }
+          erreur.effacer();
+          try {
+            await m.enregistrerArtiste({
+              Nom: nom, Lieu: champLieu.value ? Number(champLieu.value) : 0, Debut: 0, Fin: 0,
+            });
+            fermer();
+          } catch {
+            erreur.afficher("Échec de l'écriture dans le document Grist connecté. Réessayez.");
+          }
+        },
+      }, 'Créer'),
+    ),
+  ));
 }
 
 /** Un nouveau passage pour un artiste qui a déjà au moins une ligne dans la
  *  frise (clic sur sa piste, §8.8) : nom verrouillé sur celui de la ligne,
- *  horaires suggérés à partir du point cliqué. */
+ *  horaires suggérés à partir du point cliqué. `idPlaceholder`, quand
+ *  fourni, est l'id de la ligne « sans passage » créée par
+ *  `ouvrirModalCreationArtiste` (`Debut === Fin`) : ce premier horaire la
+ *  remplace en place (édition) plutôt que de créer une ligne de plus à
+ *  côté d'une ligne vide désormais inutile. */
 export function ouvrirModalCreationPassagePourArtiste(
   m: Magasin, nom: string, valeursInitiales: Omit<ValeursInitialesArtiste, 'nom' | 'nomVerrouille'>,
+  idPlaceholder?: Id,
 ): void {
   formulaire(
     m, `Nouveau passage — ${nom}`, 'Créer', null, {...valeursInitiales, nom, nomVerrouille: true},
-    (patch) => m.enregistrerArtiste(patch),
+    (patch) => m.enregistrerArtiste(idPlaceholder != null ? {...patch, id: idPlaceholder} : patch),
   );
 }
 

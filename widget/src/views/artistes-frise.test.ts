@@ -19,7 +19,11 @@ function modeleAvecPassage(): Modele {
   return {
     equipes: [], lieux: [{id: 1, Nom: 'Grande scène', Description: ''}], benevoles: [], missions: [],
     artistes: [{id: 1, Nom: 'Nuit Blanche', Lieu: 1, Debut: debut, Fin: fin}],
-    macroCreneaux: [], sousCreneaux: [], besoins: [], groupes: [],
+    // Le jour affiché vient désormais du macro-créneau, pas du passage
+    // lui-même (filtre global, demande d'Antoine du 2026-09-23) : sans lui,
+    // cette vue n'a plus d'axe du tout — même règle que Missions.
+    macroCreneaux: [{id: 1, Nom: 'Soirée', Debut: debut - 3600, Fin: fin + 3600}],
+    sousCreneaux: [], besoins: [], groupes: [],
     positionsGroupe: [], places: [], disponibilites: [], souhaitsMissions: [], affinites: [],
   };
 }

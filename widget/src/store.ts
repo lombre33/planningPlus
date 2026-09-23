@@ -243,6 +243,23 @@ export class Magasin {
     return () => this.listeners.delete(fn);
   }
 
+  /** Macro-créneau sélectionné dans le filtre global — demande d'Antoine du
+   *  2026-09-23 : « un filtre macro qui va servir pour tout, les
+   *  bénévoles, les artistes, les missions etc ». Porte l'id du
+   *  macro-créneau, pas un jour abstrait (revu par le coordinateur le
+   *  23/09 : dans l'usage d'Antoine un macro-créneau vaut un jour, mais
+   *  l'entité du modèle reste le macro-créneau — le champ doit rester
+   *  correct même si cette correspondance 1:1 change un jour). Vit ici,
+   *  pas dans une vue, pour survivre à un changement d'onglet (`app.ts` le
+   *  monte au-dessus de la vue active). Pure préférence d'affichage,
+   *  jamais écrite dans le document Grist : repart à zéro au rechargement. */
+  macroCreneauSelectionne: Id | null = null;
+
+  selectionnerMacroCreneau(id: Id | null): void {
+    this.macroCreneauSelectionne = id;
+    this.notifier();
+  }
+
   /** Relie ce magasin au document Grist réel (mode connecté, voir
    *  `main.ts`) : voir `EcritureGrist` ci-dessus pour le contrat. */
   brancherEcriture(ecriture: EcritureGrist): void {

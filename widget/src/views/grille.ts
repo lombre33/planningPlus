@@ -30,15 +30,20 @@ const COULEUR_EQUIPE_PAR_DEFAUT = '#94a3b8';
 const DUREE_CRENEAU_PAR_DEFAUT_SECONDES = 90 * 60;
 
 export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
-  let jourIndex = 0;
   let equipeFiltre: Id | 'toutes' = 'toutes';
   let dernierMessage: {texte: string; ton: 'ok' | 'danger'} | null = null;
 
   function rafraichir(): void {
     const ix = indexer(m);
+    // Le jour affiché vient du filtre global par macro-créneau
+    // (`Magasin.macroCreneauSelectionne`, monté par `app.ts` au-dessus de
+    // cette vue) — plus une sélection propre à cet écran depuis le
+    // 2026-09-23 (demande d'Antoine : « un filtre macro qui va servir pour
+    // tout »). Retombe sur le premier jour si rien n'est encore sélectionné
+    // ou si la sélection ne correspond plus à aucun macro-créneau existant
+    // (cas transitoire : `app.ts` corrige la sélection au prochain rendu).
     const jours = regrouperParJour(m.macroCreneaux);
-    jourIndex = Math.min(jourIndex, Math.max(jours.length - 1, 0));
-    const jour = jours[jourIndex];
+    const jour = jours.find((j) => j.macros.some((ma) => ma.id === m.macroCreneauSelectionne)) ?? jours[0];
     const sousCreneaux = jour
       ? m.sousCreneaux.filter((sc) => jour.macros.some((ma) => ma.id === sc.Macro_creneau))
       : [];
@@ -56,10 +61,6 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
           "Le référentiel des missions — pas encore où ni quand : ça se joue case par case, ci-dessous."),
       ),
       h('div', {class: 'agenda__toolbar'},
-        ...jours.map((j, i) => h('button', {
-          class: `btn btn--sm${i === jourIndex ? ' btn--primary' : ''}`, type: 'button',
-          onclick: () => { jourIndex = i; rafraichir(); },
-        }, j.libelle.split(' ').slice(0, 1).join(' '))),
         h('select', {
           class: 'select',
           onchange: (e: Event) => {
