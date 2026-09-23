@@ -1817,6 +1817,31 @@ table.grille .mission-cell .lieu {
   margin-top: 2px;
 }
 
+.place-slot__candidats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.place-slot__candidats .candidat {
+  padding: 6px 8px;
+  gap: 3px;
+}
+
+.place-slot__candidats .candidat__nom {
+  font-size: 11.5px;
+}
+
+.place-slot__candidats .candidat__raisons {
+  gap: 3px;
+}
+
+.place-slot__candidats .btn {
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
 .place-slot__actions {
   display: flex;
   gap: 2px;

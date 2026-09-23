@@ -6,9 +6,10 @@
  */
 
 import type {Id} from '../domain/types';
-import {type Candidat, indexer} from '../logic/derive';
+import {indexer} from '../logic/derive';
 import {type EtapePermutation, classerCandidats, proposerPermutation} from '../moteur/adaptateur-magasin';
 import type {Magasin} from '../store';
+import {carteCandidatCompacte} from '../ui/candidat-carte';
 import {h, vider} from '../ui/dom';
 
 export function montrerJourJ(container: HTMLElement, m: Magasin): () => void {
@@ -127,17 +128,6 @@ export function montrerJourJ(container: HTMLElement, m: Magasin): () => void {
     }
 
     return carte;
-  }
-
-  function carteCandidatCompacte(c: Candidat, retenir: () => void): Node {
-    return h('div', {class: 'candidat', style: {marginBottom: '6px'}},
-      h('div', {class: 'candidat__head'},
-        h('span', {class: 'candidat__nom'}, c.nom),
-        h('span', {class: 'candidat__score mono'}, c.score.toFixed(2)),
-      ),
-      h('div', {class: 'candidat__raisons'}, ...c.tags.map((t) => h('span', {class: `tag tag--${t.sens}`}, t.texte))),
-      h('button', {class: 'btn btn--primary btn--sm', type: 'button', onclick: retenir}, 'Retenir'),
-    );
   }
 
   function permutationCard(chaine: EtapePermutation[], valider: () => void): Node {

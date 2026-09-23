@@ -24,6 +24,7 @@ import {lancerAlgorithme, type ResumeLancement} from '../logic/moteur-pont';
 import {classerCandidats, raisonsPlaceVide} from '../moteur/adaptateur-magasin';
 import type {CodeAnomalie, GraviteAnomalie} from '../moteur';
 import type {Magasin} from '../store';
+import {carteCandidatCompacte} from '../ui/candidat-carte';
 import {formatHeures, h, icone, ICONES, vider} from '../ui/dom';
 
 type Ton = 'ok' | 'warn' | 'danger';
@@ -193,10 +194,25 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
     return raisonsPlaceVide(m, place.Groupe);
   }
 
+  /**
+   * Qui choisir pour une place vide (question du coordinateur, 2026-09-23) :
+   * le roster seul ne dit ni qui convient, ni qui est déjà pris ailleurs sur
+   * ce créneau — le moteur le sait déjà, puisqu'il s'en sert pour classer.
+   * Purement informatif, comme `pourquoiCeBenevole` : le glisser-déposer
+   * libre reste inchangé, on n'empêche aucun choix que l'algorithme réprouve.
+   */
+  function candidatsPourPlaceVide(ix: Index, place: Place): Candidat[] {
+    if (place.Verrouillee) { return []; }
+    const groupe = ix.groupe.get(place.Groupe);
+    if (!groupe) { return []; }
+    return classerCandidats(m, ix, groupe.id).slice(0, 5);
+  }
+
   function placeSlot(ix: Index, place: Place): HTMLElement {
     const benevole = place.Benevole != null ? ix.benevole.get(place.Benevole) : null;
     const pourquoi = benevole ? pourquoiCeBenevole(ix, place, benevole.id) : null;
     const raisonsVide = benevole ? [] : pourquoiVide(place);
+    const candidatsVide = benevole ? [] : candidatsPourPlaceVide(ix, place);
     const classes = ['place-slot'];
     classes.push(benevole ? 'place-slot--occupee' : 'place-slot--vide');
     if (place.Verrouillee) { classes.push('place-slot--verrouillee'); }
@@ -238,6 +254,13 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
           h('span', {class: 'place-slot__vide-texte'}, 'Glissez un bénévole ici'),
           raisonsVide.length > 0
             ? h('span', {class: 'place-slot__raison-vide'}, raisonsVide.map((r) => r[0]!.toUpperCase() + r.slice(1)).join(' · '))
+            : null,
+          candidatsVide.length > 0
+            ? h('div', {class: 'place-slot__candidats'}, ...candidatsVide.map((c) => carteCandidatCompacte(
+              c,
+              () => deposerBenevoleSurPlace(c.benevoleId, place.id),
+              {avecScore: false},
+            )))
             : null,
         ),
       place.Verrouillee
