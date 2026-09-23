@@ -2,7 +2,7 @@ import {describe, expect, it} from 'vitest';
 import type {Id, Modele} from '../domain/types';
 import {indexer} from '../logic/derive';
 import {Magasin} from '../store';
-import {calculerAnomalies, classerCandidats, proposerPermutation, versDonneesPlanning} from './adaptateur-magasin';
+import {calculerAnomalies, classerCandidats, proposerPermutation, raisonsPlaceVide, versDonneesPlanning} from './adaptateur-magasin';
 
 /**
  * Un groupe (Bar) sur un besoin, deux candidats potentiels — l'un excellent
@@ -150,6 +150,69 @@ describe('classerCandidats (adaptateur) — tag de binôme souhaité', () => {
     // Avec placeIdCible : Zoé redevient candidate, pour qu'on puisse expliquer pourquoi elle est là.
     const avecCible = classerCandidats(m, ix, 1, {placeIdCible: 1});
     expect(avecCible.map((c) => c.benevoleId)).toContain(1);
+  });
+});
+
+/**
+ * Un groupe (Bar, 1 place) sur un besoin, un unique bénévole dans le
+ * roster : `dispo`/`competences` contrôlent s'il est candidat, pour isoler
+ * chaque raison d'inéligibilité une à la fois (§7.5.3, question du
+ * coordinateur 2026-09-23 sur l'explicabilité des échecs).
+ */
+function construireModeleRaisonVide(options: {
+  dispo?: boolean; competencesRequises?: string[]; competencesBenevole?: string[]; statut?: 'Actif' | 'Absent';
+} = {}): Modele {
+  return {
+    equipes: [{id: 1, Nom: 'Bars', Couleur: '#c00', Referent: null, Notes: ''}],
+    lieux: [],
+    benevoles: [{
+      id: 1, Nom: 'Alix', Contact: '', Equipe: 1, Competences: options.competencesBenevole ?? [],
+      Quota_heures_min: 0, Quota_heures_max: 40, Statut: options.statut ?? 'Actif', Notes: '',
+    }],
+    missions: [{
+      id: 1, Nom: 'Bar', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale',
+      Competences_requises: options.competencesRequises ?? [],
+    }],
+    artistes: [],
+    macroCreneaux: [{id: 1, Nom: 'Samedi', Debut: 0, Fin: 3600}],
+    sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: 'SC1', Debut: 0, Fin: 3600}],
+    besoins: [{id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 1, Taille_groupe: 1}],
+    groupes: [{id: 1, Code: 'BAR1', Taille: 1, Equipe: 1, Notes: ''}],
+    positionsGroupe: [{id: 1, Groupe: 1, Besoin: 1}],
+    places: [{id: 1, Groupe: 1, Rang: 1, Benevole: null, Origine: 'Algorithme', Verrouillee: false, Score: 0}],
+    disponibilites: options.dispo === false ? [] : [0, 900, 1800, 2700].map((q) => (
+      {Benevole: 1, Quart_heure: q, Statut: 'Disponible' as const, Artiste: null}
+    )),
+    souhaitsMissions: [],
+    affinites: [],
+  };
+}
+
+describe('raisonsPlaceVide (adaptateur)', () => {
+  it('signale « personne de disponible » quand le seul bénévole du groupe est indisponible sur ce créneau', () => {
+    const m = new Magasin(construireModeleRaisonVide({dispo: false}));
+    expect(raisonsPlaceVide(m, 1)).toEqual(['personne de disponible sur ce créneau']);
+  });
+
+  it("signale « personne n'a la compétence requise » quand le seul bénévole disponible ne l'a pas", () => {
+    const m = new Magasin(construireModeleRaisonVide({competencesRequises: ['SST']}));
+    expect(raisonsPlaceVide(m, 1)).toEqual(["personne n'a la compétence requise"]);
+  });
+
+  it("signale « déjà occupés ailleurs » quand le seul candidat possible tient déjà une autre place sur ce créneau", () => {
+    const modele = construireModeleRaisonVide();
+    // Un second groupe, même créneau, où Alix est déjà placée : la seule
+    // candidate possible pour BAR1 est donc déjà occupée ailleurs.
+    modele.groupes.push({id: 2, Code: 'ACC1', Taille: 1, Equipe: 1, Notes: ''});
+    modele.positionsGroupe.push({id: 2, Groupe: 2, Besoin: 1});
+    modele.places.push({id: 2, Groupe: 2, Rang: 1, Benevole: 1, Origine: 'Algorithme', Verrouillee: true, Score: 0});
+    const m = new Magasin(modele);
+    expect(raisonsPlaceVide(m, 1)).toEqual(['les bénévoles disponibles sont déjà occupés ailleurs sur ce créneau']);
+  });
+
+  it('rend une liste vide quand un candidat propre existe (ne devrait pas arriver sur une place restée vide)', () => {
+    const m = new Magasin(construireModeleRaisonVide());
+    expect(raisonsPlaceVide(m, 1)).toEqual([]);
   });
 });
 

@@ -54,7 +54,10 @@ import type {
 
 import {classerCandidats as moteurClasserCandidats} from './affectation';
 import {detecterAnomalies as moteurDetecterAnomalies} from './anomalies';
-import type {Affinite, Benevole, Besoin, DonneesPlanning, Groupe, Mission, NiveauPreferenceMission, Place, PositionGroupe, SousCreneau} from './types';
+import type {
+  Affinite, Benevole, Besoin, DonneesPlanning, Groupe, Mission, NiveauPreferenceMission, Place, PositionGroupe,
+  RaisonInEligibilite, SousCreneau,
+} from './types';
 
 // --- Conversion Magasin -> DonneesPlanning ---------------------------------
 //
@@ -191,6 +194,47 @@ export function classerCandidats(
 
   // Déjà trié éligibles-d'abord par score décroissant par le moteur.
   return resultats.slice(0, 8);
+}
+
+// --- raisonsPlaceVide --------------------------------------------------------
+
+const LIBELLE_RAISON: Record<RaisonInEligibilite, string> = {
+  indisponible: 'personne de disponible sur ce créneau',
+  competence_manquante: "personne n'a la compétence requise",
+  deja_occupe: 'les bénévoles disponibles sont déjà occupés ailleurs sur ce créneau',
+  refus_mission: 'les bénévoles disponibles ont refusé cette mission',
+  statut_absent: 'les seuls bénévoles qui conviendraient sont marqués absents',
+};
+
+/**
+ * Pourquoi une place reste vide, en langage métier (question du
+ * coordinateur, 2026-09-23 : le pendant de l'explicabilité d'une
+ * affectation, côté échec cette fois — écart n°1 noté en tête de fichier,
+ * jamais exploité jusqu'ici). Le moteur sait déjà pourquoi chaque bénévole
+ * est inéligible (`raison`, §7.5.3) ; cette fonction agrège ces raisons sur
+ * tout le groupe en une ou deux phrases courtes, au lieu de forcer
+ * l'utilisateur à deviner depuis un simple compteur de sous-effectifs.
+ */
+export function raisonsPlaceVide(m: Magasin, groupeId: Id): string[] {
+  const donnees = versDonneesPlanning(m);
+  const classement = moteurClasserCandidats(donnees, groupeId);
+  const eligibles = classement.filter((c) => c.eligible);
+
+  if (eligibles.length > 0) {
+    // Des candidats existent mais tous en conflit avec un souhait « voir un
+    // artiste » (§7.2 objectif 7) : non utilisés ici car pas nécessaires
+    // pour l'effectif minimum de ce besoin (voir `estNecessairePourMinimum`).
+    if (eligibles.every((c) => c.explication?.conflitArtiste)) {
+      return ['un binôme existe mais uniquement en conflit avec un souhait « voir un artiste », pas nécessaire ici'];
+    }
+    return []; // un candidat propre existe : ne devrait pas arriver sur une place restée vide
+  }
+
+  const raisons = new Set<RaisonInEligibilite>();
+  for (const c of classement) {
+    if (!c.eligible && c.raison) { raisons.add(c.raison); }
+  }
+  return [...raisons].map((r) => LIBELLE_RAISON[r]);
 }
 
 // --- proposerPermutation (Jour J) -------------------------------------------

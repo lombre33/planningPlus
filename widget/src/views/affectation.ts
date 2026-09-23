@@ -21,7 +21,7 @@ import {TYPE_BENEVOLE_DRAG as TYPE_BENEVOLE, TYPE_PLACE_DRAG as TYPE_PLACE} from
 import {type Candidat, type Index, couvertureBesoin, heuresAffectees, indexer, regrouperParJour} from '../logic/derive';
 import {type DiffAnomalies, apercuAffectation, apercuEchange, verifierDepot} from '../logic/glisser-deposer';
 import {lancerAlgorithme, type ResumeLancement} from '../logic/moteur-pont';
-import {classerCandidats} from '../moteur/adaptateur-magasin';
+import {classerCandidats, raisonsPlaceVide} from '../moteur/adaptateur-magasin';
 import type {CodeAnomalie, GraviteAnomalie} from '../moteur';
 import type {Magasin} from '../store';
 import {formatHeures, h, icone, ICONES, vider} from '../ui/dom';
@@ -71,10 +71,19 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
   function resumeAlgorithmeVue(resume: ResumeLancement): Node {
     if (resume.placesTraitees === 0) {
       const aucunePlace = m.places.length === 0;
+      // `placesTraitees` compte les propositions (un changement réel), pas
+      // le périmètre : une place non verrouillée mais qui reste vide faute
+      // de candidat (pénurie) ne produit aucune proposition non plus, donc
+      // ne doit pas être confondue avec « tout est verrouillé » — message
+      // qui pousserait à déverrouiller des places déjà libres, sans jamais
+      // pointer vers l'explication (juste en dessous, sur chaque place).
+      const toutVerrouille = !aucunePlace && m.places.every((p) => p.Verrouillee);
       return h('div', {class: 'card', style: {marginBottom: '12px'}},
         h('p', {class: 'view__intro', style: {margin: '0'}}, aucunePlace
           ? "Rien à affecter : aucune place n'est encore positionnée sur un besoin. Positionnez des indicatifs (binômes) depuis la vue Indicatifs, puis relancez l'algorithme."
-          : "Rien à affecter : toutes les places existantes sont verrouillées (affectées à la main). Déverrouillez-en pour que l'algorithme puisse les reprendre."),
+          : toutVerrouille
+            ? "Rien à affecter : toutes les places existantes sont verrouillées (affectées à la main). Déverrouillez-en pour que l'algorithme puisse les reprendre."
+            : "Aucune place n'a pu être pourvue ou modifiée : les places non verrouillées restent sans candidat possible. Voir la raison affichée sur chacune, juste en dessous."),
       );
     }
     const groupes = new Map<CodeAnomalie, {gravite: GraviteAnomalie; nombre: number}>();
@@ -172,9 +181,22 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
     return classerCandidats(m, ix, groupe.id, {placeIdCible: place.id}).find((c) => c.benevoleId === benevoleId) ?? null;
   }
 
+  /**
+   * Pourquoi cette place reste vide, en langage métier — le pendant côté
+   * échec de `pourquoiCeBenevole` (question du coordinateur, 2026-09-23).
+   * Seulement pour une place non verrouillée : une place vidée à la main
+   * (verrouillée) est un choix d'Antoine, pas un échec de l'algorithme à
+   * expliquer.
+   */
+  function pourquoiVide(place: Place): string[] {
+    if (place.Verrouillee) { return []; }
+    return raisonsPlaceVide(m, place.Groupe);
+  }
+
   function placeSlot(ix: Index, place: Place): HTMLElement {
     const benevole = place.Benevole != null ? ix.benevole.get(place.Benevole) : null;
     const pourquoi = benevole ? pourquoiCeBenevole(ix, place, benevole.id) : null;
+    const raisonsVide = benevole ? [] : pourquoiVide(place);
     const classes = ['place-slot'];
     classes.push(benevole ? 'place-slot--occupee' : 'place-slot--vide');
     if (place.Verrouillee) { classes.push('place-slot--verrouillee'); }
@@ -212,7 +234,12 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
             ? h('div', {class: 'place-slot__pourquoi'}, ...pourquoi.tags.map((t) => h('span', {class: `tag tag--${t.sens}`}, t.texte)))
             : null,
         )
-        : h('span', {class: 'place-slot__vide-texte'}, 'Glissez un bénévole ici'),
+        : h('div', {class: 'place-slot__contenu'},
+          h('span', {class: 'place-slot__vide-texte'}, 'Glissez un bénévole ici'),
+          raisonsVide.length > 0
+            ? h('span', {class: 'place-slot__raison-vide'}, raisonsVide.map((r) => r[0]!.toUpperCase() + r.slice(1)).join(' · '))
+            : null,
+        ),
       place.Verrouillee
         ? h('span', {class: 'pill pill--neutral'}, icone(ICONES.cadenas), 'Verrouillée')
         : null,

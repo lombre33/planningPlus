@@ -1805,10 +1805,16 @@ table.grille .mission-cell .lieu {
 }
 
 .place-slot__vide-texte {
-  flex: 1;
   font-size: 11px;
   color: var(--text-faint);
   font-style: italic;
+}
+
+.place-slot__raison-vide {
+  display: block;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  margin-top: 2px;
 }
 
 .place-slot__actions {
