@@ -314,11 +314,14 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
         + `${incomplete ? ' groupe-chip--sous-effectif' : ''}`,
       type: 'button',
       draggable: 'true',
-      title: `${groupe.Code} · ${equipe.Nom}`,
+      // Composition en toutes lettres au survol/panneau, pas dans la puce
+      // elle-même (retour Antoine 2026-09-23 : un bloc de frise au quart
+      // d'heure n'a pas la place d'un nom en clair) — cliquer la puce ouvre
+      // toujours le panneau complet, inchangé.
+      title: `${groupe.Code} · ${equipe.Nom} · ${noms}`,
     },
       h('span', {class: 'dot', style: {background: equipe.Couleur}}),
       h('span', {class: 'groupe-chip__code mono'}, groupe.Code),
-      h('span', {class: 'groupe-chip__noms'}, noms),
       ordre != null ? h('span', {class: 'groupe-chip__ordre'}, String(ordre)) : null,
     );
 

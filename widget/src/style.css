@@ -1336,6 +1336,7 @@ table.grille .mission-cell .lieu {
   font-size: 10.5px;
   color: var(--text-faint);
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 5px;
   min-height: 12px;
