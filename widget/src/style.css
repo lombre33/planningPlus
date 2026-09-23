@@ -1062,6 +1062,15 @@ table.grille .mission-cell .lieu {
   );
 }
 
+/* Vue Indicatifs uniquement : un créneau qui ne s'applique pas à cette
+   mission (créneau propre d'une autre mission, ou commun qu'elle n'utilise
+   plus, §6.2) — sciemment distinct de --vide (hachures) pour ne jamais
+   ressembler à une case qu'on pourrait remplir. */
+.besoin-cell--na {
+  background: var(--surface-muted);
+  opacity: 0.55;
+}
+
 .besoin {
   all: unset;
   cursor: pointer;

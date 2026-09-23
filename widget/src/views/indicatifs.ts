@@ -61,14 +61,13 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
     const jours = regrouperParJour(m.macroCreneaux);
     jourIndex = Math.min(jourIndex, Math.max(jours.length - 1, 0));
     const jour = jours[jourIndex];
-    const sousCreneaux = jour
-      ? m.sousCreneaux
-        .filter((sc) => jour.macros.some((ma) => ma.id === sc.Macro_creneau))
-        .sort((a, b) => a.Debut - b.Debut)
+    const tousSousCreneaux = jour
+      ? m.sousCreneaux.filter((sc) => jour.macros.some((ma) => ma.id === sc.Macro_creneau))
       : [];
     const missions = m.missions
       .filter((mi) => equipeFiltre === 'toutes' || mi.Equipe === equipeFiltre)
       .sort((a, b) => a.Equipe - b.Equipe || a.Nom.localeCompare(b.Nom, 'fr'));
+    const colonnes = colonnesUnion(missions, tousSousCreneaux);
 
     vider(container);
     container.append(
@@ -78,13 +77,13 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
         modeCible ? bandeauCible() : null,
         jours.length === 0
           ? h('p', {class: 'empty'}, "Aucun macro-créneau défini pour l'instant. Commencez par l'étape 1 (Agenda), puis définissez des sous-créneaux, avant de positionner des indicatifs ici.")
-          : sousCreneaux.length === 0
+          : tousSousCreneaux.length === 0
             ? h('p', {class: 'empty'}, 'Aucun sous-créneau ce jour. Définissez-en depuis l’agenda avant de positionner des indicatifs.')
             : missions.length === 0
               ? h('p', {class: 'empty'}, equipeFiltre === 'toutes'
                 ? 'Aucune mission définie. Créez vos missions avant de positionner des indicatifs.'
                 : 'Aucune mission pour cette équipe. Changez de filtre ou créez-en une.')
-              : construireGrille(ix, missions, sousCreneaux),
+              : construireGrille(ix, missions, colonnes, tousSousCreneaux),
       ),
     );
 
@@ -93,6 +92,33 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
     } else {
       fermerPanneau();
     }
+  }
+
+  /** Sous-créneaux qu'une mission voit sur le jour affiché (§6.2, « communs,
+   *  avec exceptions ») : dès qu'elle a au moins un sous-créneau à elle, ceux-
+   *  ci remplacent entièrement les communs pour elle — jamais un mélange.
+   *  Duplique volontairement `views/grille.ts` (même règle, même 4 lignes) —
+   *  demande envoyée au coordinateur pour l'extraire en code partagé plutôt
+   *  que de la réécrire ici indépendamment ; à retirer une fois posée. */
+  function sousCreneauxApplicables(mission: Mission, tousSousCreneaux: SousCreneau[]): SousCreneau[] {
+    const propres = tousSousCreneaux.filter((sc) => sc.Mission === mission.id);
+    const base = propres.length > 0 ? propres : tousSousCreneaux.filter((sc) => sc.Mission === null);
+    return base.slice().sort((a, b) => a.Debut - b.Debut);
+  }
+
+  /** Colonnes de la grille : l'union des sous-créneaux applicables à chaque
+   *  mission affichée, pas la liste brute du jour — sans quoi une mission
+   *  ayant des créneaux propres (glisser/redimensionner dans la vue
+   *  Missions, §6.2) verrait ses binômes dans une colonne orpheline pendant
+   *  que sa ligne affiche une case vide trompeuse au créneau commun qu'elle
+   *  n'utilise plus (retour Antoine 2026-09-23). Dédupliquée par id : la
+   *  plupart des missions partagent les mêmes communs. */
+  function colonnesUnion(missions: Mission[], tousSousCreneaux: SousCreneau[]): SousCreneau[] {
+    const vues = new Map<Id, SousCreneau>();
+    for (const mission of missions) {
+      for (const sc of sousCreneauxApplicables(mission, tousSousCreneaux)) { vues.set(sc.id, sc); }
+    }
+    return Array.from(vues.values()).sort((a, b) => a.Debut - b.Debut || a.id - b.id);
   }
 
   // --- Barre d'outils : jour + équipe (mêmes contrôles que la vue Missions) --
@@ -131,15 +157,18 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
 
   // --- Grille : identique dans sa structure à la vue Missions ---------------
 
-  function construireGrille(ix: Index, missions: Mission[], sousCreneaux: SousCreneau[]): Node {
+  function construireGrille(
+    ix: Index, missions: Mission[], colonnes: SousCreneau[], tousSousCreneaux: SousCreneau[],
+  ): Node {
     const thead = h('thead', null, h('tr', null,
       h('th', {class: 'mission-cell'}, 'Mission'),
-      ...sousCreneaux.map((sc) => h('th', null, sc.Libelle)),
+      ...colonnes.map((sc) => h('th', null, sc.Libelle)),
     ));
     const tbody = h('tbody');
     for (const mission of missions) {
       const lieu = ix.lieu.get(mission.Lieu);
       const equipe = ix.equipe.get(mission.Equipe)!;
+      const applicables = new Set(sousCreneauxApplicables(mission, tousSousCreneaux).map((sc) => sc.id));
       const tr = h('tr', null,
         h('td', {class: 'mission-cell'},
           h('span', {class: 'dot', style: {background: equipe.Couleur, marginRight: '6px'}}),
@@ -147,7 +176,14 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
           h('span', {class: 'lieu'}, lieu?.Nom ?? ''),
         ),
       );
-      for (const sc of sousCreneaux) {
+      for (const sc of colonnes) {
+        if (!applicables.has(sc.id)) {
+          tr.append(h('td', {
+            class: 'besoin-cell besoin-cell--na',
+            title: "Ce créneau ne s'applique pas à cette mission (créneau propre d'une autre mission, ou créneau commun qu'elle n'utilise plus)",
+          }));
+          continue;
+        }
         const besoin = m.besoins.find((b) => b.Mission === mission.id && b.Sous_creneau === sc.id);
         if (!besoin) {
           tr.append(h('td', {class: 'besoin-cell besoin-cell--vide'}));
