@@ -8,7 +8,8 @@
 import type {Besoin, Epoch, Groupe, Id, MacroCreneau, Mission, Place, SousCreneau} from '../domain/types';
 import {TYPE_PLACE_DRAG} from '../logic/dnd-types';
 import {
-  type Candidat, type Couverture, type Index, type Jour, couvertureBesoin, indexer, regrouperParJour,
+  type Candidat, type Couverture, type Index, type Jour,
+  couvertureBesoin, indexer, regrouperParJour, sousCreneauxApplicables,
 } from '../logic/derive';
 import {apercuEchange, verifierDepot} from '../logic/glisser-deposer';
 import {classerCandidats} from '../moteur/adaptateur-magasin';
@@ -92,16 +93,6 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
     const debut = Math.min(...jour.macros.map((ma) => ma.Debut));
     const fin = Math.max(...jour.macros.map((ma) => ma.Fin));
     return {debut, fin};
-  }
-
-  /** Sous-créneaux qu'une mission voit sur le jour affiché (§6.2 du cahier
-   *  des charges, « communs, avec exceptions ») : dès qu'elle a au moins un
-   *  sous-créneau à elle, ceux-ci remplacent entièrement les sous-créneaux
-   *  communs pour elle — jamais un mélange des deux. */
-  function sousCreneauxApplicables(mission: Mission, tousSousCreneaux: SousCreneau[]): SousCreneau[] {
-    const propres = tousSousCreneaux.filter((sc) => sc.Mission === mission.id);
-    const base = propres.length > 0 ? propres : tousSousCreneaux.filter((sc) => sc.Mission === null);
-    return base.slice().sort((a, b) => a.Debut - b.Debut);
   }
 
   /** Le macro-créneau du jour dans lequel tombe un horodatage, pour y

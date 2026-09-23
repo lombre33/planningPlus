@@ -5,7 +5,7 @@
  */
 
 import type {
-  Artiste, Benevole, Besoin, Groupe, Id, MacroCreneau, Place, SousCreneau, StatutDisponibilite,
+  Artiste, Benevole, Besoin, Groupe, Id, MacroCreneau, Mission, Place, SousCreneau, StatutDisponibilite,
 } from '../domain/types';
 import {
   cleJourFestival, epochDebutJourFestival, HEURE_COUPURE_JOUR_FESTIVAL, libelleJourLong, PAS_SECONDES,
@@ -63,6 +63,20 @@ export function quartsDuSousCreneau(sc: SousCreneau): number[] {
   const quarts: number[] = [];
   for (let t = sc.Debut; t < sc.Fin; t += PAS_SECONDES) { quarts.push(t); }
   return quarts;
+}
+
+/** Sous-créneaux qu'une mission voit sur un jour donné (§6.2 du cahier des
+ *  charges, « communs, avec exceptions ») : dès qu'elle a au moins un
+ *  sous-créneau à elle, ceux-ci remplacent entièrement les sous-créneaux
+ *  communs pour elle — jamais un mélange des deux. Partagée entre la grille
+ *  Missions et la vue Indicatifs (extraite le 2026-09-23 à la demande du
+ *  coordinateur : la règle avait déjà divergé une fois entre les deux
+ *  copies le même jour) — `tousSousCreneaux` reste à filtrer par
+ *  l'appelant sur le jour affiché, cette fonction ne connaît aucun jour. */
+export function sousCreneauxApplicables(mission: Mission, tousSousCreneaux: SousCreneau[]): SousCreneau[] {
+  const propres = tousSousCreneaux.filter((sc) => sc.Mission === mission.id);
+  const base = propres.length > 0 ? propres : tousSousCreneaux.filter((sc) => sc.Mission === null);
+  return base.slice().sort((a, b) => a.Debut - b.Debut);
 }
 
 /** Les positions d'un groupe, triées par heure de début du sous-créneau. */

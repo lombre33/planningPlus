@@ -1,7 +1,8 @@
 import {describe, expect, it} from 'vitest';
-import type {Modele} from '../domain/types';
+import type {Mission, Modele, SousCreneau} from '../domain/types';
 import {
-  feuilleBenevole, indexer, indicatifsDeLEquipe, ligneArtistes, lignesGroupeesParArtiste, regrouperParJourFestival,
+  feuilleBenevole, indexer, indicatifsDeLEquipe, ligneArtistes, lignesGroupeesParArtiste,
+  regrouperParJourFestival, sousCreneauxApplicables,
 } from './derive';
 import {epochDepuisHeureLocale} from '../temps';
 import {Magasin} from '../store';
@@ -237,5 +238,29 @@ describe('regrouperParJourFestival', () => {
     const jour2 = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 18, heures: 10});
     const groupes = regrouperParJourFestival([jour2, jour1], (e) => e);
     expect(groupes.map((g) => g.items[0])).toEqual([jour1, jour2]);
+  });
+});
+
+describe('sousCreneauxApplicables (§6.2, « communs, avec exceptions ») — partagée par grille.ts et indicatifs.ts, extraite le 2026-09-23 pour ne pas diverger', () => {
+  const mission: Mission = {
+    id: 1, Nom: 'Buvette', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: [],
+  };
+  const autreMission: Mission = {...mission, id: 2, Nom: 'Sécurité'};
+
+  it("sans aucun sous-créneau propre, rend les communs triés par heure de début", () => {
+    const commun2 = {id: 2, Macro_creneau: 1, Mission: null, Libelle: '11h-12h', Debut: 3600, Fin: 7200} as SousCreneau;
+    const commun1 = {id: 1, Macro_creneau: 1, Mission: null, Libelle: '10h-11h', Debut: 0, Fin: 3600} as SousCreneau;
+    expect(sousCreneauxApplicables(mission, [commun2, commun1])).toEqual([commun1, commun2]);
+  });
+
+  it("dès qu'un sous-créneau lui est propre, les communs disparaissent entièrement — jamais un mélange", () => {
+    const commun = {id: 1, Macro_creneau: 1, Mission: null, Libelle: '10h-11h', Debut: 0, Fin: 3600} as SousCreneau;
+    const propre = {id: 2, Macro_creneau: 1, Mission: mission.id, Libelle: '10h-10h45', Debut: 0, Fin: 2700} as SousCreneau;
+    expect(sousCreneauxApplicables(mission, [commun, propre])).toEqual([propre]);
+  });
+
+  it("ne rend jamais le sous-créneau propre d'une autre mission", () => {
+    const propreAutre = {id: 1, Macro_creneau: 1, Mission: autreMission.id, Libelle: '10h-11h', Debut: 0, Fin: 3600} as SousCreneau;
+    expect(sousCreneauxApplicables(mission, [propreAutre])).toEqual([]);
   });
 });
