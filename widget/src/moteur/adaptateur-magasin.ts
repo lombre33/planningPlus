@@ -217,6 +217,14 @@ const LIBELLE_RAISON: Record<RaisonInEligibilite, string> = {
  */
 export function raisonsPlaceVide(m: Magasin, groupeId: Id): string[] {
   const donnees = versDonneesPlanning(m);
+  // Cas particulier : sans aucun bénévole importé, le moteur n'a personne à
+  // classer, donc aucune `raison` d'inéligibilité n'est jamais produite — la
+  // boucle ci-dessous resterait silencieuse (§7.5.3, écart trouvé sur le
+  // banc le 2026-09-23 en rejouant l'état d'Antoine : zéro bénévole importé,
+  // la page semblait ne rien faire faute d'explication).
+  if (donnees.benevoles.length === 0) {
+    return ['aucun bénévole importé'];
+  }
   const classement = moteurClasserCandidats(donnees, groupeId);
   const eligibles = classement.filter((c) => c.eligible);
 

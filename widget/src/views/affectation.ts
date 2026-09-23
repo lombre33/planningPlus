@@ -402,7 +402,11 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
             ),
           ),
           h('div', {class: 'affectation__roster-liste'},
-            ...roster.map((b) => rosterCard(ix, b)),
+            roster.length === 0
+              ? h('p', {class: 'empty'}, m.benevoles.length === 0
+                ? "Aucun bénévole importé pour l'instant : rien à affecter tant que le fil Disponibilités n'a pas importé les bénévoles."
+                : 'Aucun bénévole ne correspond à ce filtre.')
+              : roster.map((b) => rosterCard(ix, b)),
           ),
         ),
         h('div', {class: 'affectation__board'},

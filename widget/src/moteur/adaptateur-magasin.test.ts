@@ -214,6 +214,13 @@ describe('raisonsPlaceVide (adaptateur)', () => {
     const m = new Magasin(construireModeleRaisonVide());
     expect(raisonsPlaceVide(m, 1)).toEqual([]);
   });
+
+  it("signale « aucun bénévole importé » quand la table des bénévoles est entièrement vide (état d'Antoine avant import, 2026-09-23)", () => {
+    const modele = construireModeleRaisonVide();
+    modele.benevoles = [];
+    const m = new Magasin(modele);
+    expect(raisonsPlaceVide(m, 1)).toEqual(['aucun bénévole importé']);
+  });
 });
 
 describe('calculerAnomalies (adaptateur)', () => {
