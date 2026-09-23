@@ -145,19 +145,6 @@ export function heuresAffectees(m: Magasin, ix: Index, benevoleId: Id): number {
   return quarts.size * (PAS_SECONDES / 3600);
 }
 
-/** Occupation actuelle d'un bénévole : l'ensemble des quarts d'heure où il
- *  tient déjà une place ailleurs (tous groupes confondus). */
-function occupationBenevoles(m: Magasin, ix: Index): Map<Id, Set<number>> {
-  const occ = new Map<Id, Set<number>>();
-  for (const place of m.places) {
-    if (place.Benevole == null) { continue; }
-    const set = occ.get(place.Benevole) ?? new Set<number>();
-    for (const q of quartsCouvertsParGroupe(m, ix, place.Groupe)) { set.add(q); }
-    occ.set(place.Benevole, set);
-  }
-  return occ;
-}
-
 function statutQuart(m: Magasin, benevoleId: Id, quart: number): StatutDisponibilite | 'Non renseigné' {
   const d = m.disponibilites.find((d) => d.Benevole === benevoleId && d.Quart_heure === quart);
   return d ? d.Statut : 'Non renseigné';
@@ -165,93 +152,17 @@ function statutQuart(m: Magasin, benevoleId: Id, quart: number): StatutDisponibi
 
 // --- Classement des candidats ---------------------------------------------
 
+/** Forme partagée avec le vrai moteur de classement : voir
+ *  `moteur/adaptateur-magasin.ts` `classerCandidats`, qui produit ces
+ *  candidats en s'appuyant sur `moteur/affectation.ts`. L'ancienne
+ *  réimplémentation locale de ce classement a été retirée le 2026-09-23
+ *  (elle divergeait du vrai moteur, notamment sur l'affinité). */
 export interface Candidat {
   benevoleId: Id;
   nom: string;
   equipeNom: string;
   score: number;
   tags: {texte: string; sens: 'plus' | 'moins'}[];
-}
-
-/**
- * Classe les bénévoles pouvant occuper une place du groupe `groupeId`.
- * Affecter quelqu'un ici vaut pour toutes les positions du groupe (§6.3) :
- * le classement tient donc compte de *tous* les quarts d'heure et de
- * *toutes* les missions que le groupe couvre, pas seulement du besoin
- * affiché.
- *
- * Contraintes dures (jamais proposées) : statut actif, compétences
- * requises détenues, jamais de refus explicite sur une mission couverte,
- * aucune indisponibilité déclarée, aucun chevauchement avec une autre place
- * déjà tenue. Le reste (souhait, équipe, artiste souhaité, quota) pondère
- * le score et s'affiche en motif.
- */
-export function classerCandidats(
-  m: Magasin, ix: Index, groupeId: Id, options: {exclure?: Id} = {},
-): Candidat[] {
-  const groupe = ix.groupe.get(groupeId)!;
-  const quarts = [...quartsCouvertsParGroupe(m, ix, groupeId)];
-  const missions = missionsCouvertesParGroupe(m, ix, groupeId).map((id) => ix.mission.get(id)!);
-  const competencesRequises = [...new Set(missions.flatMap((mi) => mi.Competences_requises))];
-  const occupation = occupationBenevoles(m, ix);
-
-  const resultats: Candidat[] = [];
-  for (const benevole of m.benevoles) {
-    if (options.exclure != null && benevole.id === options.exclure) { continue; }
-    if (benevole.Statut !== 'Actif') { continue; }
-    if (competencesRequises.some((c) => !benevole.Competences.includes(c))) { continue; }
-    const refuse = missions.some((mi) => m.souhaitsMissions.some(
-      (s) => s.Benevole === benevole.id && s.Mission === mi.id && s.Preference === 'Refuse',
-    ));
-    if (refuse) { continue; }
-    const occupe = occupation.get(benevole.id);
-    if (occupe && quarts.some((q) => occupe.has(q))) { continue; }
-    const indisponible = quarts.some((q) => statutQuart(m, benevole.id, q) === 'Indisponible');
-    if (indisponible) { continue; }
-
-    const tags: Candidat['tags'] = [];
-    let score = 0.5;
-
-    const equipe = ix.equipe.get(benevole.Equipe)!;
-    if (benevole.Equipe === groupe.Equipe) {
-      tags.push({texte: `équipe ${equipe.Nom}`, sens: 'plus'});
-      score += 0.15;
-    } else {
-      tags.push({texte: `hors équipe (${equipe.Nom})`, sens: 'moins'});
-      score -= 0.1;
-    }
-
-    const meilleurSouhait = missions.reduce<string | null>((meilleur, mi) => {
-      const s = m.souhaitsMissions.find((s) => s.Benevole === benevole.id && s.Mission === mi.id);
-      if (!s) { return meilleur; }
-      const rang = ['Refuse', 'Réticent', 'Neutre', 'Intéressé', 'Souhaite fortement'].indexOf(s.Preference);
-      const rangMeilleur = meilleur ? ['Refuse', 'Réticent', 'Neutre', 'Intéressé', 'Souhaite fortement'].indexOf(meilleur) : -1;
-      return rang > rangMeilleur ? s.Preference : meilleur;
-    }, null);
-    if (meilleurSouhait === 'Souhaite fortement') { tags.push({texte: 'souhaite fortement', sens: 'plus'}); score += 0.35; }
-    else if (meilleurSouhait === 'Intéressé') { tags.push({texte: 'intéressé', sens: 'plus'}); score += 0.15; }
-    else if (meilleurSouhait === 'Réticent') { tags.push({texte: 'réticent', sens: 'moins'}); score -= 0.15; }
-
-    const conflitArtiste = quarts.some((q) => statutQuart(m, benevole.id, q) === 'Artiste');
-    if (conflitArtiste) {
-      tags.push({texte: 'veut voir un artiste sur ce créneau', sens: 'moins'});
-      score -= 0.3;
-    }
-
-    const heuresDeja = heuresAffectees(m, ix, benevole.id);
-    const heuresGroupe = quarts.length * (PAS_SECONDES / 3600);
-    if (heuresDeja + heuresGroupe > benevole.Quota_heures_max) {
-      tags.push({texte: `dépasse son quota (${benevole.Quota_heures_max} h)`, sens: 'moins'});
-      score -= 0.2;
-    } else if (heuresDeja + heuresGroupe < benevole.Quota_heures_min) {
-      tags.push({texte: 'sous son quota minimum', sens: 'plus'});
-      score += 0.05;
-    }
-
-    resultats.push({benevoleId: benevole.id, nom: benevole.Nom, equipeNom: equipe.Nom, score, tags});
-  }
-
-  return resultats.sort((a, b) => b.score - a.score).slice(0, 8);
 }
 
 // --- Anomalies -------------------------------------------------------------
@@ -362,77 +273,11 @@ export function placesDuBenevole(m: Magasin, ix: Index, benevoleId: Id) {
     });
 }
 
-export interface EtapePermutation {
-  benevoleId: Id;
-  benevoleNom: string;
-  place: Place;
-  groupeCode: string;
-  depuisMissionNom: string | null; // null = candidat frais, ne quitte aucune autre place
-  versMissionNom: string;
-}
-
-/**
- * Cherche une permutation à un cran pour repourvoir `placeVacanteId` quand
- * aucun candidat direct propre n'existe : déplace un bénévole déjà affecté
- * ailleurs — sur un besoin qui resterait couvert sans lui — vers la place
- * vacante, puis cherche un candidat frais pour la place qu'il libère à son
- * tour (§7.3 : permutations autorisées dans le périmètre touché, avec
- * aperçu avant validation). Ne modifie rien : c'est à l'appelant de valider.
- */
-export function proposerPermutation(m: Magasin, ix: Index, placeVacanteId: Id): EtapePermutation[] | null {
-  const placeVacante = m.places.find((p) => p.id === placeVacanteId);
-  if (!placeVacante) { return null; }
-  const groupeCible = ix.groupe.get(placeVacante.Groupe)!;
-  const missionCible = missionsCouvertesParGroupe(m, ix, groupeCible.id)
-    .map((id) => ix.mission.get(id)!)[0];
-
-  const directs = classerCandidats(m, ix, groupeCible.id);
-  const meilleurDirect = directs[0];
-  const direct = meilleurDirect && !meilleurDirect.tags.some((t) => t.sens === 'moins');
-  if (direct) { return null; } // un remplaçant propre existe déjà, inutile de permuter
-
-  for (const donneur of m.places) {
-    if (donneur.Benevole == null || donneur.Verrouillee || donneur.id === placeVacanteId) { continue; }
-    const groupeDonneur = ix.groupe.get(donneur.Groupe)!;
-    if (groupeDonneur.id === groupeCible.id) { continue; }
-
-    // Le groupe donneur ne doit pas tomber sous le minimum une fois ce
-    // bénévole retiré : on vérifie chacun de ses besoins positionnés.
-    const resteAuDessusDuMinimum = positionsDuGroupe(m, ix, groupeDonneur.id).every(({besoin}) => {
-      const c = couvertureBesoin(m, ix, besoin.id);
-      return c.pourvues - 1 >= besoin.Effectif_min;
-    });
-    if (!resteAuDessusDuMinimum) { continue; }
-
-    // Le donneur doit lui-même être un candidat propre (sans motif négatif)
-    // pour la place cible, sans quoi la permutation ne résout rien.
-    const evalCible = classerCandidats(m, ix, groupeCible.id).find((c) => c.benevoleId === donneur.Benevole);
-    if (!evalCible || evalCible.tags.some((t) => t.sens === 'moins')) { continue; }
-
-    const candidatsPourDonneur = classerCandidats(m, ix, groupeDonneur.id, {exclure: donneur.Benevole});
-    if (candidatsPourDonneur.length === 0) { continue; }
-    const remplacant = candidatsPourDonneur[0]!;
-
-    const benevoleDonneur = ix.benevole.get(donneur.Benevole)!;
-    const missionDonneur = missionsCouvertesParGroupe(m, ix, groupeDonneur.id).map((id) => ix.mission.get(id)!)[0];
-
-    return [
-      {
-        benevoleId: benevoleDonneur.id, benevoleNom: benevoleDonneur.Nom, place: placeVacante,
-        groupeCode: groupeCible.Code,
-        depuisMissionNom: missionDonneur?.Nom ?? groupeDonneur.Code,
-        versMissionNom: missionCible?.Nom ?? groupeCible.Code,
-      },
-      {
-        benevoleId: remplacant.benevoleId, benevoleNom: remplacant.nom, place: donneur,
-        groupeCode: groupeDonneur.Code,
-        depuisMissionNom: null,
-        versMissionNom: missionDonneur?.Nom ?? groupeDonneur.Code,
-      },
-    ];
-  }
-  return null;
-}
+// `EtapePermutation`/`proposerPermutation` ont déménagé dans
+// `moteur/adaptateur-magasin.ts` le 2026-09-23 : la fonction s'appuyait sur
+// l'ancien `classerCandidats` de ce fichier (retiré ci-dessus), qui
+// ignorait l'affinité (priorité 3 d'Antoine). Voir `views/jourJ.ts` pour
+// l'appelant.
 
 // --- Regroupement par jour de festival ---------------------------------
 

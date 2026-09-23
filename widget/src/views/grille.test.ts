@@ -104,7 +104,16 @@ describe('montrerGrille sur un document vide', () => {
       definirPlaces: async () => {},
       deplacerPosition: async () => {},
       ajouterPosition: async () => 1,
+      modifierPlaces: async () => {},
       supprimerPosition: async () => {},
+      definirAbsence: async () => {},
+      valeursColonneBrute: async () => new Map(),
+      colonnesTable: async () => [],
+      tablesDocument: async () => [],
+      definirParametre: async () => {},
+      remplacerDisponibilites: async () => {},
+      peuplerBenevoles: async () => ({benevoles: [], crees: 0, actualises: 0}),
+      creerAffinites: async () => [],
     };
     m.brancherEcriture(ecriture);
     montrerGrille(container, m);

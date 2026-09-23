@@ -23,8 +23,8 @@
 
 import type {Artiste, Epoch, Id} from '../domain/types';
 import {
-  type GroupeJourFestival, type LigneArtiste, type LigneGroupeArtiste,
-  indexer, lignesGroupeesParArtiste, regrouperParJourFestival,
+  type Jour, type LigneArtiste, type LigneGroupeArtiste,
+  indexer, lignesGroupeesParArtiste, regrouperParJour,
 } from '../logic/derive';
 import type {ResultatEcritureFrise} from '../ui/frise';
 import type {Magasin} from '../store';
@@ -35,15 +35,6 @@ import {
   ouvrirModalCreationArtiste, ouvrirModalCreationPassagePourArtiste, ouvrirModalEditionArtiste,
 } from '../ui/modalArtiste';
 
-type JourArtistes = GroupeJourFestival<Artiste>;
-
-/** Marge de part et d'autre du premier et du dernier passage du jour : sans
- *  elle, un jour à un seul passage remplirait la frise de bord en bord,
- *  sans piste cliquable pour en ajouter un autre avant ou après (à la
- *  différence de la vue Missions, dont l'axe vient de macro-créneaux qui
- *  ont presque toujours leur propre marge). */
-const MARGE_AXE_SECONDES = PAS_SECONDES * 2;
-
 /** Durée par défaut d'un passage créé au clic sur la piste — plus courte
  *  que celle des créneaux de mission (1h30) : un set d'artiste tient
  *  généralement en moins de temps. */
@@ -53,85 +44,111 @@ interface BlocArtiste extends BlocFrise {
   readonly ligne: LigneArtiste;
 }
 
+/** Un artiste juste créé (« + Nouvel artiste », modale identité seule, sans
+ *  horaire — demande d'Antoine du 2026-09-23 : « je n'ai pas besoin de
+ *  sélectionner un jour/heure dans cette modale-là, ça n'a aucun sens » →
+ *  ajouter une ligne) : la table `Artistes` reste un passage par ligne
+ *  (§6, aucun changement de modèle), donc cette ligne « sans passage » est
+ *  représentée par une borne nulle, `Debut === Fin`, plutôt qu'une entité
+ *  séparée. Jamais couverte par un jour de festival, elle n'apparaît donc
+ *  jamais comme un bloc — exactement l'effet recherché : une ligne vide,
+ *  prête à recevoir son premier créneau via `ouvrirModalCreationPassagePourArtiste`. */
+function estPlaceholder(a: Artiste): boolean {
+  return a.Debut === a.Fin;
+}
+
 export function montrerArtistes(container: HTMLElement, m: Magasin): () => void {
-  let jourIndex = 0;
   let dernierMessage: {texte: string; ton: 'ok' | 'danger'} | null = null;
 
   function rafraichir(): void {
     const ix = indexer(m);
     const groupes = lignesGroupeesParArtiste(m, ix);
-    // Regroupé par jour de festival à partir des passages eux-mêmes plutôt
-    // que des macro-créneaux : un artiste n'a pas de lien avec la table
-    // MacroCreneaux (§6), donc cette vue reste utilisable même sans aucune
-    // mission créée (« from scratch », demande d'Antoine du 2026-09-22).
-    const jours = regrouperParJourFestival(m.artistes, (a) => a.Debut);
-    jourIndex = Math.min(jourIndex, Math.max(jours.length - 1, 0));
-    const jour = jours[jourIndex];
+    // Le jour affiché vient du filtre global par macro-créneau — même
+    // mécanisme que Missions (`views/grille.ts`), monté par `app.ts`
+    // au-dessus de cette vue (demande d'Antoine du 2026-09-23 : « un
+    // filtre macro qui va servir pour tout »). Remplace le regroupement
+    // par passage d'artiste d'origine, qui ne montrait jamais les
+    // macro-créneaux et n'avait rien sur quoi se caler sans passage.
+    const jours = regrouperParJour(m.macroCreneaux);
+    const jour = jours.find((j) => j.macros.some((ma) => ma.id === m.macroCreneauSelectionne)) ?? jours[0];
 
     vider(container);
 
     const boutonNouveau = h('button', {
       class: 'btn btn--primary btn--sm', type: 'button',
       onclick: () => ouvrirModalCreationArtiste(m),
-    }, '+ Nouveau passage');
-
-    if (groupes.length === 0) {
-      container.append(
-        h('div', {class: 'agenda__toolbar', style: {marginBottom: '14px'}}, boutonNouveau),
-        h('p', {class: 'empty'}, 'Aucun artiste dans ce jeu de données.'),
-      );
-      return;
-    }
+    }, '+ Nouvel artiste');
 
     container.append(
       h('div', {class: 'agenda__toolbar'},
         boutonNouveau,
         h('span', {class: 'view__intro', style: {margin: '0'}},
-          '« En conflit » compte les bénévoles qui veulent voir l\'artiste mais tiennent déjà une place sur ce '
-          + 'créneau (préférence forte non respectée, §7.2).'),
-      ),
-      h('div', {class: 'agenda__toolbar'},
-        ...jours.map((j, i) => h('button', {
-          class: `btn btn--sm${i === jourIndex ? ' btn--primary' : ''}`, type: 'button',
-          onclick: () => { jourIndex = i; rafraichir(); },
-        }, j.libelle.split(' ').slice(0, 1).join(' '))),
+          groupes.length === 0
+            ? 'Aucun artiste dans ce jeu de données : utilisez « + Nouvel artiste » pour en créer un.'
+            : '« En conflit » compte les bénévoles qui veulent voir l\'artiste mais tiennent déjà une place sur ce '
+              + 'créneau (préférence forte non respectée, §7.2).'),
       ),
       ...(dernierMessage
         ? [h('p', {class: `pill pill--${dernierMessage.ton}`, style: {marginBottom: '8px'}}, dernierMessage.texte)]
         : []),
       !jour
-        ? h('p', {class: 'empty'}, 'Aucun passage ce jour.')
+        ? h('p', {class: 'empty'}, 'Aucun macro-créneau dans ce jeu de données : créez-en un dans l’Agenda avant de placer un passage.')
         : construireTimeline(groupes, jour),
     );
   }
 
-  /** L'axe du jour vient des passages eux-mêmes (pas de macro-créneau à
-   *  interroger), avec une marge de chaque côté — voir `MARGE_AXE_SECONDES`. */
-  function axeJour(jour: JourArtistes): {debut: Epoch; fin: Epoch} {
+  /** Même axe que Missions (`grille.ts`) : les bornes du macro-créneau du
+   *  jour affiché, sans marge (un macro-créneau a presque toujours la
+   *  sienne déjà). */
+  function axeJour(jour: Jour): {debut: Epoch; fin: Epoch} {
     return {
-      debut: Math.min(...jour.items.map((a) => a.Debut)) - MARGE_AXE_SECONDES,
-      fin: Math.max(...jour.items.map((a) => a.Fin)) + MARGE_AXE_SECONDES,
+      debut: Math.min(...jour.macros.map((ma) => ma.Debut)),
+      fin: Math.max(...jour.macros.map((ma) => ma.Fin)),
     };
   }
 
-  function construireTimeline(groupes: LigneGroupeArtiste[], jour: JourArtistes): Node {
+  function construireTimeline(groupes: LigneGroupeArtiste[], jour: Jour): Node {
     const axe = axeJour(jour);
     const parLigneId = new Map<Id, LigneGroupeArtiste>();
 
     const lignes = groupes.map((groupe) => {
       const idLigne = groupe.passages[0]!.artiste.id;
       parLigneId.set(idLigne, groupe);
+      // Une ligne fraîchement créée (« + Nouvel artiste ») n'a qu'un
+      // placeholder (voir `estPlaceholder`) : son premier vrai créneau doit
+      // le remplacer en place, pas s'ajouter à côté, sans quoi une ligne
+      // vide inutilisable resterait derrière chaque nouvel artiste.
+      const placeholder = groupe.passages.find((p) => estPlaceholder(p.artiste));
       const blocs: BlocArtiste[] = groupe.passages
-        .filter((ligne) => cleJourFestival(ligne.artiste.Debut) === jour.cle)
+        .filter((ligne) => !estPlaceholder(ligne.artiste) && cleJourFestival(ligne.artiste.Debut) === jour.cle)
         .map((ligne) => ({
           id: ligne.artiste.id, debut: ligne.artiste.Debut, fin: ligne.artiste.Fin, deplacable: true, ligne,
         }));
       return {
         id: idLigne,
+        // Bouton dédié sur la ligne, même geste que « + créneau » sur une
+        // ligne de mission (`grille.ts`) : le clic sur la piste (ci-dessous,
+        // `onClicPiste`) reste possible, mais un bouton visible ne dépend
+        // pas de trouver une zone de piste encore libre à cliquer (retour
+        // d'Antoine du 2026-09-23 16h59 : « la vue artiste ne permet
+        // toujours pas d'ajouter un artiste sur la même UX/UI que la vue
+        // missions »).
         libelle: h('span', null,
           h('span', {class: 'nom'}, groupe.nom),
           h('span', {class: 'lieu'},
             groupe.passages.length > 1 ? `${groupe.passages.length} passages` : groupe.passages[0]!.lieuNom),
+          h('button', {
+            class: 'btn btn--ghost btn--sm timeline__label__bouton-propre', type: 'button',
+            title: 'Ajouter un nouveau passage pour cet artiste',
+            onclick: () => {
+              const artisteReference = groupe.passages[0]!.artiste;
+              ouvrirModalCreationPassagePourArtiste(m, groupe.nom, {
+                lieu: artisteReference.Lieu,
+                debut: axe.debut,
+                fin: axe.debut + DUREE_PASSAGE_PAR_DEFAUT_SECONDES,
+              }, placeholder?.artiste.id);
+            },
+          }, '+ passage'),
         ),
         blocs,
       };
@@ -140,7 +157,7 @@ export function montrerArtistes(container: HTMLElement, m: Magasin): () => void 
     return construireFrise(lignes, {
       axeDebut: axe.debut,
       axeFin: axe.fin,
-      titrePiste: 'Cliquer pour ajouter un nouveau passage à cet artiste, à l’horaire cliqué',
+      titrePiste: 'Cliquer pour créer le créneau de cet artiste, à l’horaire cliqué — redimensionnable ensuite',
       classesBloc: (bloc) => (bloc.ligne.conflits > 0 ? 'besoin--partiel' : 'besoin--ok'),
       titreBloc: (bloc) => `${bloc.ligne.lieuNom} — ${bloc.ligne.demande} intéressé${bloc.ligne.demande > 1 ? 's' : ''}`
         + (bloc.ligne.conflits > 0 ? `, ${bloc.ligne.conflits} en conflit` : ''),
@@ -155,11 +172,12 @@ export function montrerArtistes(container: HTMLElement, m: Magasin): () => void 
       onClicPiste: (ligneFrise, debutSuggere) => {
         const groupe = parLigneId.get(ligneFrise.id)!;
         const artisteReference = groupe.passages[0]!.artiste;
+        const placeholder = groupe.passages.find((p) => estPlaceholder(p.artiste));
         ouvrirModalCreationPassagePourArtiste(m, groupe.nom, {
           lieu: artisteReference.Lieu,
           debut: debutSuggere,
           fin: debutSuggere + DUREE_PASSAGE_PAR_DEFAUT_SECONDES,
-        });
+        }, placeholder?.artiste.id);
       },
       onDeplacer: (bloc, deltaSecondes) => deplacerPassage(bloc.ligne.artiste, deltaSecondes),
       onRedimensionner: (bloc, depuisDebut, deltaSecondes) => redimensionnerPassage(bloc.ligne.artiste, depuisDebut, deltaSecondes),

@@ -19,7 +19,11 @@ function modeleAvecPassage(): Modele {
   return {
     equipes: [], lieux: [{id: 1, Nom: 'Grande scène', Description: ''}], benevoles: [], missions: [],
     artistes: [{id: 1, Nom: 'Nuit Blanche', Lieu: 1, Debut: debut, Fin: fin}],
-    macroCreneaux: [], sousCreneaux: [], besoins: [], groupes: [],
+    // Le jour affiché vient désormais du macro-créneau, pas du passage
+    // lui-même (filtre global, demande d'Antoine du 2026-09-23) : sans lui,
+    // cette vue n'a plus d'axe du tout — même règle que Missions.
+    macroCreneaux: [{id: 1, Nom: 'Soirée', Debut: debut - 3600, Fin: fin + 3600}],
+    sousCreneaux: [], besoins: [], groupes: [],
     positionsGroupe: [], places: [], disponibilites: [], souhaitsMissions: [], affinites: [],
   };
 }
@@ -114,6 +118,29 @@ describe('montrerArtistes — frise commune au quart d’heure', () => {
     const piste = container.querySelector('.timeline__piste') as HTMLElement;
     poserRect(piste, 0, 40 * LARGEUR_QUART_PX);
     piste.dispatchEvent(new MouseEvent('click', {bubbles: true, clientX: 10 * LARGEUR_QUART_PX + 5}));
+
+    const champNom = document.querySelector('input[placeholder="Nom de l’artiste"]') as HTMLInputElement;
+    expect(champNom.value).toBe('Nuit Blanche');
+    expect(champNom.disabled).toBe(true);
+
+    (Array.from(document.querySelectorAll('button')).find((b) => b.textContent === 'Créer') as HTMLButtonElement).click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(m.artistes.filter((a) => a.Nom === 'Nuit Blanche')).toHaveLength(2);
+    container.remove();
+  });
+
+  it("le bouton « + passage » de la ligne (même geste que « + créneau » sur une ligne de mission, grille.ts) "
+    + 'ouvre un nouveau passage pour ce même artiste, nom verrouillé, sans dépendre d’une zone de piste libre à cliquer', async () => {
+    const m = new Magasin(modeleAvecPassage());
+    const container = document.createElement('div');
+    document.body.append(container);
+    montrerArtistes(container, m);
+
+    const boutonLigne = Array.from(container.querySelectorAll('.timeline__label button'))
+      .find((b) => b.textContent === '+ passage') as HTMLButtonElement;
+    expect(boutonLigne).toBeTruthy();
+    boutonLigne.click();
 
     const champNom = document.querySelector('input[placeholder="Nom de l’artiste"]') as HTMLInputElement;
     expect(champNom.value).toBe('Nuit Blanche');

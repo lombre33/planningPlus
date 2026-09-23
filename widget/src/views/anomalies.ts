@@ -4,7 +4,8 @@
  * indisponibilités non respectées, quotas dépassés.
  */
 
-import {type Anomalie, calculerAnomalies, indexer} from '../logic/derive';
+import {type Anomalie, indexer} from '../logic/derive';
+import {calculerAnomalies} from '../moteur/adaptateur-magasin';
 import type {Magasin} from '../store';
 import {formatHeures, h, vider} from '../ui/dom';
 

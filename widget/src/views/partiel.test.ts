@@ -132,6 +132,7 @@ describe('artiste déclaré sans qu’aucune disponibilité n’ait encore été
     const m = new Magasin({
       ...modeleVide(),
       lieux: [{id: 1, Nom: 'Grande scène', Description: ''}],
+      macroCreneaux: [{id: 1, Nom: 'Jour', Debut: 0, Fin: 3600}],
       artistes: [{id: 1, Nom: 'Nuit Blanche', Lieu: 1, Debut: 900, Fin: 1800}],
     });
     expect(() => montrerArtistes(container, m)).not.toThrow();

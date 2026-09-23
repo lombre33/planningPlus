@@ -10,6 +10,8 @@ import type {
   Affinite, Artiste, Benevole, Besoin, Disponibilite, Epoch, Equipe, Groupe, Id, Lieu, MacroCreneau,
   Mission, Modele, OriginePlace, Place, PositionGroupe, SouhaitMission, SousCreneau,
 } from './domain/types';
+import {sousCreneauxApplicables} from './logic/derive';
+import type {ColonneTable, TableDocument} from './logic/parametres-benevoles';
 import {cleJourFestival, libelleHeurePlage, PAS_SECONDES} from './temps';
 
 type Listener = () => void;
@@ -136,11 +138,89 @@ export interface EcritureGrist {
   /** Positionne un groupe déjà réel sur un second besoin (« + Ajouter une
    *  position ») et rend l'id réel de cette nouvelle position. */
   ajouterPosition(groupeId: Id, besoinId: Id): Promise<Id>;
-  /** Retire une position déjà réelle (panneau « Trajectoire du jour »,
-   *  bouton Supprimer). Ne touche jamais `Groupe`/`Places` : le binôme et
-   *  les bénévoles déjà affectés restent inchangés, seule cette étape du
-   *  jour disparaît. */
+  /** Modifie une ou plusieurs places déjà réelles EN PLACE (même id) : les
+   *  quatre champs mutables toujours fournis ensemble, jamais un patch
+   *  partiel (`grist/ecriture.ts` `PatchPlace`, pas de forme à grouper ici,
+   *  contrairement à `modifierSousCreneaux`). Sert l'affectation manuelle
+   *  (dépôt, échange, vidage, verrouillage — `Magasin.assignerPlace`,
+   *  `basculerVerrouillage`) et l'algorithme (`appliquerPropositionsAlgorithme`,
+   *  toutes ses propositions en un seul aller-retour). L'appelant calcule
+   *  toujours la valeur exacte à écrire (`verrouillee` compris — deux champs
+   *  distincts de l'affectation elle-même) avant d'appeler, jamais une
+   *  valeur par défaut : ce qui part ici est ce qui sera ensuite appliqué
+   *  localement, ligne à ligne. */
+  modifierPlaces(patches: readonly {
+    id: Id; benevoleId: Id | null; origine: OriginePlace; verrouillee: boolean; score: number | null;
+  }[]): Promise<void>;
+  /** Retire une position de groupe déjà réelle (et elle seule — Grist ne
+   *  cascade pas, mais une position n'a rien sous elle qui lui soit propre) ;
+   *  voir `Magasin.supprimerPosition`. */
   supprimerPosition(positionId: Id): Promise<void>;
+  /** Écrit le statut d'un bénévole (absent/actif) et libère, dans le même
+   *  aller-retour, les places déjà filtrées par l'appelant (occupées par lui,
+   *  non verrouillées) — jamais les places verrouillées, jamais recalculées
+   *  ici. `placeIdsLiberees` est toujours vide pour un retour (`absent:
+   *  false`), un retour ne libère jamais rien ; voir `Magasin.definirAbsence`. */
+  definirAbsence(benevoleId: Id, absent: boolean, placeIdsLiberees: readonly Id[]): Promise<void>;
+  /** Les valeurs brutes d'UNE colonne d'une table quelconque du document, id
+   *  de ligne Grist réel en clé — jamais décodées, jamais interprétées. Sert
+   *  à lire des colonnes qui n'existent que dans le document d'Antoine
+   *  (imports de souhaits, réponses de disponibilité en macro-créneau…),
+   *  jamais nos propres tables : ce sont les siennes, on les lit, on ne les
+   *  modifie ni ne les renomme jamais (voir `Magasin.valeursColonneBrute`).
+   *  `tableId`/`colId` sont les identifiants réels du document (pas de
+   *  résolution canonique ici, contrairement au reste de cette interface —
+   *  ces colonnes n'ont pas de nom canonique côté PlanningPlus). */
+  valeursColonneBrute(tableId: string, colId: string): Promise<Map<Id, unknown>>;
+  /** La liste des colonnes d'une table quelconque du document (id, libellé,
+   *  type Grist brut) — mêmes règles que `valeursColonneBrute` juste
+   *  au-dessus (lecture seule sur les tables d'Antoine, `tableId` réel, pas
+   *  de résolution canonique) : sert à proposer à l'écran les colonnes
+   *  qu'il a lui-même ajoutées, sans jamais y toucher (voir
+   *  `Magasin.colonnesTable`, `grist/colonnesDeTable`). */
+  colonnesTable(tableId: string): Promise<ColonneTable[]>;
+  /** Les tables du document (identifiant réel seulement), tables système
+   *  Grist exclues — sert à laisser Antoine désigner lui-même où vivent ses
+   *  bénévoles, plutôt que d'en deviner une (voir `Magasin.tablesDocument`,
+   *  `grist/tablesDuDocument`). */
+  tablesDocument(): Promise<TableDocument[]>;
+  /** Enregistre un réglage scalaire quelconque de `Parametres` (upsert par
+   *  clé) — voir `Magasin.definirParametre`. Clé libre, non fixée ici : ce
+   *  pont ne connaît pas les réglages eux-mêmes, seulement comment les
+   *  écrire ; les clés vivent côté appelant (`logic/parametres-benevoles.ts`
+   *  pour les disponibilités, `grist/parametres.ts` pour l'algorithme). */
+  definirParametre(cle: string, valeur: string): Promise<void>;
+  /** Remplace TOUTES les disponibilités d'un bénévole sur `[debut, fin)` —
+   *  un macro-créneau, en pratique (§8 point 10, saisie manuelle au quart
+   *  d'heure). Les lignes existantes de cette plage sont retirées puis
+   *  `nouvelles` écrit, en un seul aller-retour (contrairement à
+   *  `remplacerSousCreneaux` : aucune table ne référence une ligne de
+   *  `Disponibilites` par son identifiant, rien à repointer après coup —
+   *  vérifié avant d'écrire cette méthode). Voir
+   *  `Magasin.remplacerDisponibilites`. */
+  remplacerDisponibilites(benevoleId: Id, debut: Epoch, fin: Epoch, nouvelles: readonly Disponibilite[]): Promise<void>;
+  /** Peuple NOTRE table Bénévoles depuis `tableSourceId` (jamais modifiée —
+   *  lecture seule, comme `valeursColonneBrute`) : une ligne créée par ligne
+   *  source encore inconnue (`Id_source`), Nom/Contact actualisés sur celles
+   *  déjà liées à un peuplement précédent — jamais les autres champs
+   *  (équipe, quotas, statut…), et jamais une suppression d'un bénévole
+   *  absent de la table source (§6.4, demande d'Antoine du 2026-09-23).
+   *  `colContactId` facultatif : `Contact` reste vide si non choisi.
+   *  `equipeParDefautId` est l'équipe assignée aux bénévoles nouvellement
+   *  créés (choisie par l'appelant, voir `Magasin.peuplerBenevoles`) —
+   *  jamais retouchée sur une actualisation. Retourne l'état complet et à
+   *  jour de notre table, pour que le `Magasin` remplace son cache local
+   *  plutôt que de le reconstruire à la main (voir `Magasin.peuplerBenevoles`). */
+  peuplerBenevoles(
+    tableSourceId: string, colNomId: string, colContactId: string | null, equipeParDefautId: Id,
+  ): Promise<{benevoles: Benevole[]; crees: number; actualises: number}>;
+  /** Ajoute des affinités "Ensemble" (binôme souhaité, import §6.4 point 4,
+   *  2026-09-23) : l'appelant (`Magasin.creerAffinites`) a déjà écarté les
+   *  paires déjà connues, cette méthode crée sans vérifier — jamais de
+   *  suppression, jamais un autre type qu'"Ensemble" ici. Retourne les
+   *  lignes créées, ids réels compris, pour que le `Magasin` les ajoute à
+   *  son cache local sans les reconstruire à la main. */
+  creerAffinites(paires: readonly {benevoleAId: Id; benevoleBId: Id}[]): Promise<Affinite[]>;
 }
 
 /** Levée par `EcritureGrist.remplacerSousCreneaux` quand la création des
@@ -181,14 +261,37 @@ export class Magasin {
   private data: Modele;
   private listeners = new Set<Listener>();
   private ecriture: EcritureGrist | null = null;
+  private parametres: Map<string, string>;
 
-  constructor(seed: Modele) {
+  /** `parametresInitiales` vient de `Parametres` (`Cle`/`Valeur`), lue à part
+   *  de `Modele` par `lireDocument` (`grist/lecture.ts`) — cette table ne
+   *  nourrit pas `Modele`, voir `main.ts`. Vide en mode démo ou tant que le
+   *  document n'a encore aucune ligne. */
+  constructor(seed: Modele, parametresInitiales: readonly {cle: string; valeur: string}[] = []) {
     this.data = seed;
+    this.parametres = new Map(parametresInitiales.map((p) => [p.cle, p.valeur]));
   }
 
   subscribe(fn: Listener): () => void {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
+  }
+
+  /** Macro-créneau sélectionné dans le filtre global — demande d'Antoine du
+   *  2026-09-23 : « un filtre macro qui va servir pour tout, les
+   *  bénévoles, les artistes, les missions etc ». Porte l'id du
+   *  macro-créneau, pas un jour abstrait (revu par le coordinateur le
+   *  23/09 : dans l'usage d'Antoine un macro-créneau vaut un jour, mais
+   *  l'entité du modèle reste le macro-créneau — le champ doit rester
+   *  correct même si cette correspondance 1:1 change un jour). Vit ici,
+   *  pas dans une vue, pour survivre à un changement d'onglet (`app.ts` le
+   *  monte au-dessus de la vue active). Pure préférence d'affichage,
+   *  jamais écrite dans le document Grist : repart à zéro au rechargement. */
+  macroCreneauSelectionne: Id | null = null;
+
+  selectionnerMacroCreneau(id: Id | null): void {
+    this.macroCreneauSelectionne = id;
+    this.notifier();
   }
 
   /** Relie ce magasin au document Grist réel (mode connecté, voir
@@ -217,6 +320,92 @@ export class Magasin {
   get disponibilites(): Disponibilite[] { return this.data.disponibilites; }
   get souhaitsMissions(): SouhaitMission[] { return this.data.souhaitsMissions; }
   get affinites(): Affinite[] { return this.data.affinites; }
+
+  /** Valeur d'un réglage scalaire de la table `Parametres` (`Cle`/`Valeur`),
+   *  ou `undefined` si cette clé n'y a encore aucune ligne — à l'appelant de
+   *  décider du défaut, comme `parametresAlgorithmeDepuisLignes` le fait
+   *  pour les poids de l'algorithme (`grist/parametres.ts`). */
+  parametre(cle: string): string | undefined {
+    return this.parametres.get(cle);
+  }
+
+  /** Lit une colonne brute d'une table quelconque du document connecté —
+   *  voir `EcritureGrist.valeursColonneBrute` ci-dessus. Map vide sans
+   *  document connecté (démo, tests, clone de simulation) : rien à lire. */
+  async valeursColonneBrute(tableId: string, colId: string): Promise<Map<Id, unknown>> {
+    return this.ecriture ? this.ecriture.valeursColonneBrute(tableId, colId) : new Map();
+  }
+
+  /** Liste les colonnes d'une table brute du document connecté — voir
+   *  `EcritureGrist.colonnesTable` ci-dessus. Tableau vide sans document
+   *  connecté (démo, tests, clone de simulation) : rien à lire. */
+  async colonnesTable(tableId: string): Promise<ColonneTable[]> {
+    return this.ecriture ? this.ecriture.colonnesTable(tableId) : [];
+  }
+
+  /** Liste les tables du document connecté — voir `EcritureGrist.tablesDocument`
+   *  ci-dessus. Tableau vide sans document connecté : rien à lire. */
+  async tablesDocument(): Promise<TableDocument[]> {
+    return this.ecriture ? this.ecriture.tablesDocument() : [];
+  }
+
+  /** Enregistre un réglage scalaire de `Parametres` (upsert par clé) — voir
+   *  `EcritureGrist.definirParametre` ci-dessus. */
+  async definirParametre(cle: string, valeur: string): Promise<void> {
+    if (this.ecriture) {
+      await this.ecriture.definirParametre(cle, valeur);
+    }
+    this.parametres.set(cle, valeur);
+    this.notifier();
+  }
+
+  /** Remplace toutes les disponibilités d'un bénévole sur `[debut, fin)` —
+   *  voir `EcritureGrist.remplacerDisponibilites` ci-dessus. */
+  async remplacerDisponibilites(
+    benevoleId: Id, debut: Epoch, fin: Epoch, nouvelles: Disponibilite[],
+  ): Promise<void> {
+    if (this.ecriture) {
+      await this.ecriture.remplacerDisponibilites(benevoleId, debut, fin, nouvelles);
+    }
+    this.data.disponibilites = this.data.disponibilites.filter(
+      (d) => !(d.Benevole === benevoleId && d.Quart_heure >= debut && d.Quart_heure < fin),
+    );
+    this.data.disponibilites.push(...nouvelles);
+    this.notifier();
+  }
+
+  /** Peuple notre table Bénévoles depuis `tableSourceId` — voir
+   *  `EcritureGrist.peuplerBenevoles` ci-dessus. `{crees: 0, actualises: 0}`
+   *  sans document connecté (démo, tests) : rien à peupler depuis une table
+   *  qui n'existe que dans un document réel. L'équipe assignée aux
+   *  nouveaux bénévoles est toujours la première équipe existante — à
+   *  l'appelant (la vue) de vérifier qu'il en existe au moins une avant
+   *  d'appeler cette méthode. En cas de succès, remplace entièrement le
+   *  cache local des bénévoles par l'état renvoyé (jamais reconstruit à la
+   *  main), pour ne jamais s'écarter du document. */
+  async peuplerBenevoles(
+    tableSourceId: string, colNomId: string, colContactId: string | null,
+  ): Promise<{crees: number; actualises: number}> {
+    if (!this.ecriture) { return {crees: 0, actualises: 0}; }
+    const equipeParDefautId = this.data.equipes[0]?.id;
+    if (equipeParDefautId == null) { return {crees: 0, actualises: 0}; }
+    const resultat = await this.ecriture.peuplerBenevoles(tableSourceId, colNomId, colContactId, equipeParDefautId);
+    this.data.benevoles = resultat.benevoles;
+    this.notifier();
+    return {crees: resultat.crees, actualises: resultat.actualises};
+  }
+
+  /** Ajoute des affinités "Ensemble" (binôme souhaité, import) — voir
+   *  `EcritureGrist.creerAffinites` ci-dessus. Rien sans document connecté
+   *  (démo, tests), comme `peuplerBenevoles` : rien à créer qui persiste.
+   *  L'appelant (la vue) a déjà écarté les paires déjà connues de
+   *  `this.affinites`. */
+  async creerAffinites(paires: readonly {benevoleAId: Id; benevoleBId: Id}[]): Promise<void> {
+    if (paires.length === 0 || !this.ecriture) { return; }
+    const nouvelles = await this.ecriture.creerAffinites(paires);
+    this.data.affinites.push(...nouvelles);
+    this.notifier();
+  }
 
   // --- Écriture : équipes ------------------------------------------------
 
@@ -474,6 +663,152 @@ export class Magasin {
     return id;
   }
 
+  /** Copie sur un autre jour les créneaux qu'une ou plusieurs missions ont
+   *  déjà construits sur un jour source — demande d'Antoine du 2026-09-23 :
+   *  « une fois que j'ai créé les éléments pour un jour, les importer/copier
+   *  sur un autre », étendue le jour même à la copie des indicatifs déjà
+   *  positionnés, « le cas échéant ».
+   *
+   *  Un sous-créneau COMMUN partagé par plusieurs missions n'est répliqué
+   *  qu'UNE seule fois (`Mission` conservé tel quel, jamais forcé « propre » —
+   *  point relevé par le fil Indicatifs : c'est le même défaut de structure
+   *  qui a fait exploser sa propre vue le 2026-09-23), via une table de
+   *  correspondance ancien id → nouvel id partagée par toutes les missions
+   *  qui s'y rattachent. Purement additif : ne modifie, ne réordonne ni ne
+   *  supprime jamais rien côté jour source ou côté existant du jour cible.
+   *
+   *  Idempotent bloc par bloc : rejouer la copie retrouve, pour un
+   *  sous-créneau donné, une copie déjà là au même horaire relatif et avec
+   *  le même `Mission` plutôt que d'en recréer une, et un besoin déjà
+   *  présent pour cette mission sur cette copie n'est jamais recréé — une
+   *  copie relancée après un premier passage partiel reprend juste là où
+   *  elle s'était arrêtée, jamais en double.
+   *
+   *  Un indicatif déjà positionné sur un besoin copié est repositionné sur
+   *  sa copie via `ajouterPosition` — même `Groupe`, donc mêmes bénévoles
+   *  déjà affectés qui le suivent automatiquement : un binôme reste la même
+   *  entité sur tout le festival (modèle confirmé par le fil Indicatifs),
+   *  la copie ne crée jamais un nouveau `Groupe`. */
+  async copierCreneauxJour(
+    macroSourceId: Id, macroCibleId: Id,
+  ): Promise<
+    | {ok: true; sousCreneauxCrees: number; besoinsCrees: number; indicatifsRepositionnes: number}
+    | {ok: false; raison: string}
+  > {
+    if (macroSourceId === macroCibleId) {
+      return {ok: false, raison: 'Le jour source et le jour cible sont identiques.'};
+    }
+    const macroSource = this.data.macroCreneaux.find((ma) => ma.id === macroSourceId);
+    const macroCible = this.data.macroCreneaux.find((ma) => ma.id === macroCibleId);
+    if (!macroSource || !macroCible) { return {ok: false, raison: 'Macro-créneau introuvable.'}; }
+
+    const sousCreneauxSource = this.data.sousCreneaux.filter((s) => s.Macro_creneau === macroSourceId);
+    const aCopier: {mission: Mission; sc: SousCreneau; besoin: Besoin}[] = [];
+    for (const mission of this.data.missions) {
+      for (const sc of sousCreneauxApplicables(mission, sousCreneauxSource)) {
+        const besoin = this.data.besoins.find((b) => b.Mission === mission.id && b.Sous_creneau === sc.id);
+        if (besoin) { aCopier.push({mission, sc, besoin}); }
+      }
+    }
+    if (aCopier.length === 0) {
+      return {ok: false, raison: "Rien à copier : aucune mission n'a de besoin construit sur le jour source."};
+    }
+
+    // Sous-créneaux distincts à répliquer, dédupliqués par id (un commun
+    // partagé par plusieurs missions n'apparaît qu'une fois dans `aCopier`
+    // mais ne doit être copié qu'une fois).
+    const distincts = new Map<Id, SousCreneau>();
+    for (const {sc} of aCopier) { distincts.set(sc.id, sc); }
+
+    const correspondance = new Map<Id, Id>();
+    const aCreer: {source: SousCreneau; missionId: Id | null; libelle: string; debut: Epoch; fin: Epoch}[] = [];
+    for (const sc of distincts.values()) {
+      const debut = macroCible.Debut + (sc.Debut - macroSource.Debut);
+      const fin = macroCible.Debut + (sc.Fin - macroSource.Debut);
+      const dejaLa = this.data.sousCreneaux.find(
+        (c) => c.Macro_creneau === macroCibleId && c.Mission === sc.Mission && c.Debut === debut && c.Fin === fin,
+      );
+      if (dejaLa) { correspondance.set(sc.id, dejaLa.id); continue; }
+      aCreer.push({source: sc, missionId: sc.Mission, libelle: sc.Libelle, debut, fin});
+    }
+
+    if (aCreer.length > 0) {
+      let idsReels: Id[];
+      if (this.ecriture) {
+        try {
+          idsReels = await this.ecriture.remplacerSousCreneaux(
+            [],
+            aCreer.map((n) => ({macroCreneauId: macroCibleId, missionId: n.missionId, libelle: n.libelle, debut: n.debut, fin: n.fin})),
+          );
+        } catch (erreur) {
+          if (!(erreur instanceof SuppressionApresCreationEchouee)) {
+            return {ok: false, raison: "Échec de l'écriture dans le document Grist : la copie a été annulée."};
+          }
+          idsReels = erreur.idsReelsCrees as Id[];
+        }
+      } else {
+        const baseId = prochainId(this.data.sousCreneaux);
+        idsReels = aCreer.map((_, i) => baseId + i);
+      }
+      aCreer.forEach((n, i) => {
+        const id = idsReels[i]!;
+        correspondance.set(n.source.id, id);
+        this.data.sousCreneaux.push({id, Macro_creneau: macroCibleId, Mission: n.missionId, Libelle: n.libelle, Debut: n.debut, Fin: n.fin});
+      });
+      this.notifier();
+    }
+
+    let besoinsCrees = 0;
+    let indicatifsRepositionnes = 0;
+    for (const {mission, sc, besoin} of aCopier) {
+      const sousCreneauCibleId = correspondance.get(sc.id)!;
+      const dejaCopie = this.data.besoins.some((b) => b.Mission === mission.id && b.Sous_creneau === sousCreneauCibleId);
+      if (dejaCopie) { continue; }
+
+      let besoinCibleId: Id;
+      try {
+        besoinCibleId = this.ecriture
+          ? await this.ecriture.creerBesoin({
+            missionId: mission.id, sousCreneauId: sousCreneauCibleId,
+            effectifMin: besoin.Effectif_min, effectifMax: besoin.Effectif_max, tailleGroupe: besoin.Taille_groupe,
+          })
+          : prochainId(this.data.besoins);
+      } catch {
+        this.notifier();
+        return {
+          ok: false,
+          raison: `Échec de l'écriture dans le document Grist pour la mission « ${mission.Nom} » : la copie s'est arrêtée là. Ce qui a déjà été copié avant (${besoinsCrees} besoin(s), ${indicatifsRepositionnes} indicatif(s)) est conservé ; relancez la copie pour continuer, elle ne redouble jamais ce qui est déjà là.`,
+        };
+      }
+      this.data.besoins.push({
+        id: besoinCibleId, Mission: mission.id, Sous_creneau: sousCreneauCibleId,
+        Effectif_min: besoin.Effectif_min, Effectif_max: besoin.Effectif_max, Taille_groupe: besoin.Taille_groupe,
+      });
+      besoinsCrees += 1;
+
+      const positions = this.data.positionsGroupe.filter((p) => p.Besoin === besoin.id);
+      for (const position of positions) {
+        let positionId: Id;
+        try {
+          positionId = this.ecriture
+            ? await this.ecriture.ajouterPosition(position.Groupe, besoinCibleId)
+            : prochainId(this.data.positionsGroupe);
+        } catch {
+          this.notifier();
+          return {
+            ok: false,
+            raison: `Échec du repositionnement d'un indicatif pour la mission « ${mission.Nom} » : la copie s'est arrêtée là. Ce qui a déjà été copié avant (${besoinsCrees} besoin(s), ${indicatifsRepositionnes} indicatif(s)) est conservé ; relancez la copie pour continuer, elle ne redouble jamais ce qui est déjà là.`,
+          };
+        }
+        this.data.positionsGroupe.push({id: positionId, Groupe: position.Groupe, Besoin: besoinCibleId});
+        indicatifsRepositionnes += 1;
+      }
+    }
+
+    this.notifier();
+    return {ok: true, sousCreneauxCrees: aCreer.length, besoinsCrees, indicatifsRepositionnes};
+  }
+
   /** Convertit en créneaux à `missionId` tous les créneaux communs qu'elle
    *  voit actuellement ce jour-là (§6.2, « communs, avec exceptions ») —
    *  mêmes horaires, mêmes libellés —, repointe SES besoins sur ces
@@ -645,21 +980,44 @@ export class Magasin {
    *  reprendre la main sur une correction humaine sans déverrouillage
    *  explicite. Une proposition d'algorithme (origine `'Algorithme'`) ne
    *  verrouille jamais — voir `appliquerPropositionsAlgorithme`. */
-  assignerPlace(placeId: Id, benevoleId: Id | null, origine: OriginePlace = 'Manuel'): void {
+  async assignerPlace(
+    placeId: Id, benevoleId: Id | null, origine: OriginePlace = 'Manuel',
+  ): Promise<{ok: true} | {ok: false; raison: string}> {
     const place = this.data.places.find((p) => p.id === placeId);
-    if (!place) { return; }
+    if (!place) { return {ok: false, raison: 'Place introuvable.'}; }
+    const score = benevoleId != null ? 1 : 0;
+    const verrouillee = origine === 'Manuel' ? true : place.Verrouillee;
+    if (this.ecriture) {
+      try {
+        await this.ecriture.modifierPlaces([{id: placeId, benevoleId, origine, verrouillee, score}]);
+      } catch {
+        return {ok: false, raison: "Échec de l'écriture dans le document Grist connecté. Réessayez."};
+      }
+    }
     place.Benevole = benevoleId;
     place.Origine = origine;
-    place.Score = benevoleId != null ? 1 : 0;
-    if (origine === 'Manuel') { place.Verrouillee = true; }
+    place.Score = score;
+    place.Verrouillee = verrouillee;
     this.notifier();
+    return {ok: true};
   }
 
-  basculerVerrouillage(placeId: Id): void {
+  async basculerVerrouillage(placeId: Id): Promise<{ok: true} | {ok: false; raison: string}> {
     const place = this.data.places.find((p) => p.id === placeId);
-    if (!place) { return; }
-    place.Verrouillee = !place.Verrouillee;
+    if (!place) { return {ok: false, raison: 'Place introuvable.'}; }
+    const verrouillee = !place.Verrouillee;
+    if (this.ecriture) {
+      try {
+        await this.ecriture.modifierPlaces([{
+          id: placeId, benevoleId: place.Benevole, origine: place.Origine, verrouillee, score: place.Score,
+        }]);
+      } catch {
+        return {ok: false, raison: "Échec de l'écriture dans le document Grist connecté. Réessayez."};
+      }
+    }
+    place.Verrouillee = verrouillee;
     this.notifier();
+    return {ok: true};
   }
 
   /** Marque un bénévole absent ou de retour. Une absence libère ses places à
@@ -667,23 +1025,30 @@ export class Magasin {
    *  la vue jour J puisse proposer des remplaçants immédiatement. Une place
    *  verrouillée n'est jamais touchée par l'algorithme (§7.1) : on la laisse
    *  en anomalie plutôt que de la vider silencieusement. */
-  definirAbsence(benevoleId: Id, absent: boolean): Id[] {
+  async definirAbsence(
+    benevoleId: Id, absent: boolean,
+  ): Promise<{ok: true; placesLiberees: Id[]} | {ok: false; raison: string}> {
     const benevole = this.data.benevoles.find((b) => b.id === benevoleId);
-    if (!benevole) { return []; }
-    benevole.Statut = absent ? 'Absent' : 'Actif';
-    const liberees: Id[] = [];
-    if (absent) {
-      for (const place of this.data.places) {
-        if (place.Benevole === benevoleId && !place.Verrouillee) {
-          place.Benevole = null;
-          place.Origine = 'Manuel';
-          place.Score = 0;
-          liberees.push(place.id);
-        }
+    if (!benevole) { return {ok: false, raison: 'Bénévole introuvable.'}; }
+    const liberees = absent
+      ? this.data.places.filter((p) => p.Benevole === benevoleId && !p.Verrouillee)
+      : [];
+    const placeIds = liberees.map((p) => p.id);
+    if (this.ecriture) {
+      try {
+        await this.ecriture.definirAbsence(benevoleId, absent, placeIds);
+      } catch {
+        return {ok: false, raison: "Échec de l'écriture dans le document Grist connecté. Réessayez."};
       }
     }
+    benevole.Statut = absent ? 'Absent' : 'Actif';
+    for (const place of liberees) {
+      place.Benevole = null;
+      place.Origine = 'Manuel';
+      place.Score = 0;
+    }
     this.notifier();
-    return liberees;
+    return {ok: true, placesLiberees: placeIds};
   }
 
   /** Déplace un positionnement d'indicatif vers un autre besoin : ne touche
@@ -775,29 +1140,50 @@ export class Magasin {
    *  ses bénévoles déjà affectés, seule cette étape de sa trajectoire du
    *  jour disparaît — à la différence d'une suppression de sous-créneau ou
    *  de macro-créneau, qui elles retirent le binôme lui-même. */
-  async supprimerPosition(positionId: Id): Promise<void> {
-    if (!this.data.positionsGroupe.some((p) => p.id === positionId)) { return; }
-    if (this.ecriture) { await this.ecriture.supprimerPosition(positionId); }
+  async supprimerPosition(positionId: Id): Promise<{ok: true} | {ok: false; raison: string}> {
+    const position = this.data.positionsGroupe.find((p) => p.id === positionId);
+    if (!position) { return {ok: false, raison: 'Position introuvable.'}; }
+    if (this.ecriture) {
+      try {
+        await this.ecriture.supprimerPosition(positionId);
+      } catch {
+        return {ok: false, raison: "Échec de l'écriture dans le document Grist connecté. Réessayez."};
+      }
+    }
     this.data.positionsGroupe = this.data.positionsGroupe.filter((p) => p.id !== positionId);
     this.notifier();
+    return {ok: true};
   }
 
   /** Applique le résultat d'un calcul d'algorithme (§7.5.1) : chaque place du
    *  périmètre reçoit l'occupant proposé, verrouillée seulement si le moteur
    *  l'a demandé (jamais le cas pour une proposition d'algorithme — seule
    *  une correction manuelle verrouille, voir `logic/moteur-pont.ts`). */
-  appliquerPropositionsAlgorithme(propositions: {
+  async appliquerPropositionsAlgorithme(propositions: {
     placeId: Id; benevoleIdApres: Id | null; origineApres: OriginePlace; verrouilleeApres: boolean; score: number | null;
-  }[]): void {
-    for (const proposition of propositions) {
-      const place = this.data.places.find((p) => p.id === proposition.placeId);
+  }[]): Promise<{ok: true} | {ok: false; raison: string}> {
+    if (propositions.length === 0) { return {ok: true}; }
+    const patches = propositions.map((p) => ({
+      id: p.placeId, benevoleId: p.benevoleIdApres, origine: p.origineApres,
+      verrouillee: p.verrouilleeApres, score: p.score ?? 0,
+    }));
+    if (this.ecriture) {
+      try {
+        await this.ecriture.modifierPlaces(patches);
+      } catch {
+        return {ok: false, raison: "Échec de l'écriture dans le document Grist connecté. Réessayez."};
+      }
+    }
+    for (const patch of patches) {
+      const place = this.data.places.find((p) => p.id === patch.id);
       if (!place) { continue; }
-      place.Benevole = proposition.benevoleIdApres;
-      place.Origine = proposition.origineApres;
-      place.Verrouillee = proposition.verrouilleeApres;
-      place.Score = proposition.score ?? 0;
+      place.Benevole = patch.benevoleId;
+      place.Origine = patch.origine;
+      place.Verrouillee = patch.verrouillee;
+      place.Score = patch.score;
     }
     this.notifier();
+    return {ok: true};
   }
 
   // --- Simulation ------------------------------------------------------------
@@ -806,6 +1192,8 @@ export class Magasin {
    *  avant validation, §7.3) sans jamais toucher au magasin réel : les
    *  mutations faites sur le clone n'appellent pas ses abonnés. */
   cloner(): Magasin {
-    return new Magasin(structuredClone(this.data));
+    const clone = new Magasin(structuredClone(this.data));
+    clone.parametres = new Map(this.parametres);
+    return clone;
   }
 }

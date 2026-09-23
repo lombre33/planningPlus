@@ -30,15 +30,20 @@ const COULEUR_EQUIPE_PAR_DEFAUT = '#94a3b8';
 const DUREE_CRENEAU_PAR_DEFAUT_SECONDES = 90 * 60;
 
 export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
-  let jourIndex = 0;
   let equipeFiltre: Id | 'toutes' = 'toutes';
   let dernierMessage: {texte: string; ton: 'ok' | 'danger'} | null = null;
 
   function rafraichir(): void {
     const ix = indexer(m);
+    // Le jour affiché vient du filtre global par macro-créneau
+    // (`Magasin.macroCreneauSelectionne`, monté par `app.ts` au-dessus de
+    // cette vue) — plus une sélection propre à cet écran depuis le
+    // 2026-09-23 (demande d'Antoine : « un filtre macro qui va servir pour
+    // tout »). Retombe sur le premier jour si rien n'est encore sélectionné
+    // ou si la sélection ne correspond plus à aucun macro-créneau existant
+    // (cas transitoire : `app.ts` corrige la sélection au prochain rendu).
     const jours = regrouperParJour(m.macroCreneaux);
-    jourIndex = Math.min(jourIndex, Math.max(jours.length - 1, 0));
-    const jour = jours[jourIndex];
+    const jour = jours.find((j) => j.macros.some((ma) => ma.id === m.macroCreneauSelectionne)) ?? jours[0];
     const sousCreneaux = jour
       ? m.sousCreneaux.filter((sc) => jour.macros.some((ma) => ma.id === sc.Macro_creneau))
       : [];
@@ -52,14 +57,15 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
         h('button', {
           class: 'btn btn--primary btn--sm', type: 'button', onclick: () => ouvrirCreationMission(),
         }, '+ Nouvelle mission'),
+        jour && jours.length > 1
+          ? h('button', {
+            class: 'btn btn--ghost btn--sm', type: 'button', onclick: () => ouvrirCopieDepuisJour(jour, jours),
+          }, "Copier les créneaux d'un autre jour…")
+          : null,
         h('span', {class: 'view__intro', style: {margin: '0'}},
           "Le référentiel des missions — pas encore où ni quand : ça se joue case par case, ci-dessous."),
       ),
       h('div', {class: 'agenda__toolbar'},
-        ...jours.map((j, i) => h('button', {
-          class: `btn btn--sm${i === jourIndex ? ' btn--primary' : ''}`, type: 'button',
-          onclick: () => { jourIndex = i; rafraichir(); },
-        }, j.libelle.split(' ').slice(0, 1).join(' '))),
         h('select', {
           class: 'select',
           onchange: (e: Event) => {
@@ -389,6 +395,84 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
     ));
   }
 
+  /** Reproduit sur `jourCible` les besoins déjà construits sur un autre jour
+   *  (demande d'Antoine du 2026-09-23 : « une fois que j'ai créé les
+   *  éléments pour un jour, les importer/copier sur un autre »), avec leurs
+   *  indicatifs déjà positionnés « le cas échéant ». Un « jour » peut
+   *  grouper plusieurs macro-créneaux (`Jour.macros`, très rare en pratique
+   *  — le cas courant reste un macro-créneau par jour de festival) : on les
+   *  apparie dans l'ordre chronologique et on copie chaque paire via
+   *  `Magasin.copierCreneauxJour`, qui fait tout le travail (dédup des
+   *  communs, non-régression, indicatifs) pour une seule paire de
+   *  macro-créneaux. N'écrase jamais rien côté jour cible — voir le
+   *  commentaire de `copierCreneauxJour` dans `store.ts`. */
+  function ouvrirCopieDepuisJour(jourCible: Jour, jours: Jour[]): void {
+    const autresJours = jours.filter((j) => j.cle !== jourCible.cle);
+    const champJour = h('select', {class: 'select'},
+      ...autresJours.map((j) => h('option', {value: j.cle}, j.libelle)),
+    ) as HTMLSelectElement;
+    const erreur = creerErreur();
+    let resultatTexte: {texte: string; ton: 'ok' | 'danger'} | null = null;
+    const zoneResultat = h('div') as HTMLElement;
+    const rafraichirResultat = (): void => {
+      vider(zoneResultat);
+      if (resultatTexte) { zoneResultat.append(h('span', {class: `pill pill--${resultatTexte.ton}`}, resultatTexte.texte)); }
+    };
+
+    ouvrirModal("Copier les créneaux d'un autre jour", (fermer) => {
+      const boutonCopier = h('button', {
+        class: 'btn btn--primary', type: 'button',
+        onclick: async () => {
+          const jourSource = autresJours.find((j) => j.cle === champJour.value);
+          if (!jourSource) { erreur.afficher('Merci de choisir un jour.'); return; }
+          erreur.effacer();
+          boutonCopier.setAttribute('disabled', 'true');
+          const paires = jourSource.macros
+            .map((source, i) => [source, jourCible.macros[i]] as const)
+            .filter((p): p is [MacroCreneau, MacroCreneau] => p[1] != null);
+          let sousCreneauxCrees = 0;
+          let besoinsCrees = 0;
+          let indicatifsRepositionnes = 0;
+          for (const [source, cible] of paires) {
+            const resultat = await m.copierCreneauxJour(source.id, cible.id);
+            if (!resultat.ok) {
+              resultatTexte = {texte: resultat.raison, ton: 'danger'};
+              rafraichirResultat();
+              boutonCopier.removeAttribute('disabled');
+              return;
+            }
+            sousCreneauxCrees += resultat.sousCreneauxCrees;
+            besoinsCrees += resultat.besoinsCrees;
+            indicatifsRepositionnes += resultat.indicatifsRepositionnes;
+          }
+          resultatTexte = besoinsCrees === 0
+            ? {texte: `Rien à copier depuis ${jourSource.libelle} : tout y était déjà présent sur ${jourCible.libelle}.`, ton: 'ok'}
+            : {
+              texte: `${besoinsCrees} besoin${besoinsCrees > 1 ? 's' : ''} copié${besoinsCrees > 1 ? 's' : ''} depuis ${jourSource.libelle}`
+                + (sousCreneauxCrees > 0 ? ` (${sousCreneauxCrees} créneau${sousCreneauxCrees > 1 ? 'x' : ''} créé${sousCreneauxCrees > 1 ? 's' : ''})` : '')
+                + (indicatifsRepositionnes > 0 ? `, ${indicatifsRepositionnes} indicatif${indicatifsRepositionnes > 1 ? 's' : ''} repositionné${indicatifsRepositionnes > 1 ? 's' : ''}` : '')
+                + '.',
+              ton: 'ok',
+            };
+          rafraichirResultat();
+          boutonCopier.removeAttribute('disabled');
+        },
+      }, 'Copier') as HTMLButtonElement;
+
+      return h('div', {style: {display: 'flex', flexDirection: 'column', gap: '14px'}},
+        h('p', {class: 'topbar__subtitle'},
+          `Reproduit sur ${jourCible.libelle} les besoins déjà construits sur le jour choisi ci-dessous, avec leurs indicatifs déjà positionnés le cas échéant. N'écrase jamais ce qui existe déjà sur ${jourCible.libelle}.`),
+        h('div', {class: 'field'}, h('label', null, 'Copier depuis'), champJour),
+        erreur.noeud,
+        zoneResultat,
+        h('div', {class: 'modal__actions'},
+          h('button', {class: 'btn btn--ghost', type: 'button', onclick: fermer}, 'Fermer'),
+          boutonCopier,
+        ),
+      );
+    });
+  }
+
   function ouvrirDetailBesoin(besoinId: Id): void {
     const ix = indexer(m);
     const besoin = ix.besoin.get(besoinId);
@@ -433,7 +517,7 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
    *  de deux places — le même geste que la vue Affectation manuelle
    *  (`views/affectation.ts`), disponible ici aussi (§7.5 : le parcours
    *  d'affectation vaut où qu'il s'affiche, y compris dans cette grille). */
-  function deposerEchange(besoinId: Id, placeSourceId: Id, placeCibleId: Id): void {
+  async function deposerEchange(besoinId: Id, placeSourceId: Id, placeCibleId: Id): Promise<void> {
     const source = m.places.find((p) => p.id === placeSourceId);
     const cible = m.places.find((p) => p.id === placeCibleId);
     if (!source || !cible || source.Benevole == null) { return; }
@@ -454,8 +538,10 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
     const diff = apercuEchange(m, placeSourceId, placeCibleId);
     const benevoleSource = source.Benevole;
     const benevoleCible = cible.Benevole;
-    m.assignerPlace(placeSourceId, benevoleCible, 'Manuel');
-    m.assignerPlace(placeCibleId, benevoleSource, 'Manuel');
+    const resultat1 = await m.assignerPlace(placeSourceId, benevoleCible, 'Manuel');
+    if (!resultat1.ok) { dernierMessage = {texte: resultat1.raison, ton: 'danger'}; ouvrirDetailBesoin(besoinId); return; }
+    const resultat2 = await m.assignerPlace(placeCibleId, benevoleSource, 'Manuel');
+    if (!resultat2.ok) { dernierMessage = {texte: resultat2.raison, ton: 'danger'}; ouvrirDetailBesoin(besoinId); return; }
     const base = benevoleCible != null ? 'Échange effectué.' : 'Déplacé.';
     dernierMessage = diff.creees.length > 0
       ? {texte: `${base} ${diff.creees.length} anomalie${diff.creees.length > 1 ? 's' : ''} créée${diff.creees.length > 1 ? 's' : ''}.`, ton: 'danger'}
@@ -503,16 +589,21 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
       h('button', {
         class: 'btn btn--ghost btn--sm', type: 'button',
         title: place.Verrouillee ? 'Déverrouiller cette place' : 'Verrouiller cette place',
-        onclick: () => { m.basculerVerrouillage(place.id); ouvrirDetailBesoin(besoinId); },
+        onclick: () => { void (async () => {
+          const resultat = await m.basculerVerrouillage(place.id);
+          if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; }
+          ouvrirDetailBesoin(besoinId);
+        })(); },
       }, icone(ICONES.cadenas)),
       benevole
         ? h('button', {
           class: 'btn btn--ghost btn--sm', type: 'button',
-          onclick: () => {
+          onclick: () => { void (async () => {
             if (place.Verrouillee) { refuserVerrouillage(); return; }
-            m.assignerPlace(place.id, null);
+            const resultat = await m.assignerPlace(place.id, null);
+            if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; }
             ouvrirDetailBesoin(besoinId);
-          },
+          })(); },
         }, 'Vider')
         : h('button', {
           class: 'btn btn--sm', type: 'button',
@@ -540,10 +631,11 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
       candidats.length === 0
         ? h('p', {class: 'empty'}, 'Aucun candidat ne satisfait les contraintes dures pour cet indicatif.')
         : h('div', {style: {display: 'flex', flexDirection: 'column', gap: '8px'}},
-          ...candidats.map((c) => carteCandidat(c, () => {
-            m.assignerPlace(place.id, c.benevoleId, 'Manuel');
+          ...candidats.map((c) => carteCandidat(c, () => { void (async () => {
+            const resultat = await m.assignerPlace(place.id, c.benevoleId, 'Manuel');
+            if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; ouvrirDetailBesoin(besoinId); return; }
             fermerPanneau();
-          })),
+          })(); })),
         ),
     );
     ouvrirPanneau(panneau);

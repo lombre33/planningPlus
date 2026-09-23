@@ -18,11 +18,13 @@
 
 import type {Benevole, Besoin, Groupe, Id, Place} from '../domain/types';
 import {TYPE_BENEVOLE_DRAG as TYPE_BENEVOLE, TYPE_PLACE_DRAG as TYPE_PLACE} from '../logic/dnd-types';
-import {type Index, couvertureBesoin, heuresAffectees, indexer, regrouperParJour} from '../logic/derive';
+import {type Candidat, type Index, couvertureBesoin, heuresAffectees, indexer, regrouperParJour} from '../logic/derive';
 import {type DiffAnomalies, apercuAffectation, apercuEchange, verifierDepot} from '../logic/glisser-deposer';
 import {lancerAlgorithme, type ResumeLancement} from '../logic/moteur-pont';
+import {classerCandidats, raisonsPlaceVide} from '../moteur/adaptateur-magasin';
 import type {CodeAnomalie, GraviteAnomalie} from '../moteur';
 import type {Magasin} from '../store';
+import {carteCandidatCompacte} from '../ui/candidat-carte';
 import {formatHeures, h, icone, ICONES, vider} from '../ui/dom';
 
 type Ton = 'ok' | 'warn' | 'danger';
@@ -58,13 +60,33 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
     return {texte: parties.join(' — '), ton: diff.creees.length > 0 ? 'danger' : 'ok'};
   }
 
-  function executerAlgorithme(): void {
+  async function executerAlgorithme(): Promise<void> {
     dernierMessage = null;
-    dernierResume = lancerAlgorithme(m);
+    dernierResume = await lancerAlgorithme(m);
+    if (dernierResume.echecEcriture) {
+      dernierMessage = {texte: dernierResume.echecEcriture, ton: 'danger'};
+    }
     rafraichir();
   }
 
   function resumeAlgorithmeVue(resume: ResumeLancement): Node {
+    if (resume.placesTraitees === 0) {
+      const aucunePlace = m.places.length === 0;
+      // `placesTraitees` compte les propositions (un changement réel), pas
+      // le périmètre : une place non verrouillée mais qui reste vide faute
+      // de candidat (pénurie) ne produit aucune proposition non plus, donc
+      // ne doit pas être confondue avec « tout est verrouillé » — message
+      // qui pousserait à déverrouiller des places déjà libres, sans jamais
+      // pointer vers l'explication (juste en dessous, sur chaque place).
+      const toutVerrouille = !aucunePlace && m.places.every((p) => p.Verrouillee);
+      return h('div', {class: 'card', style: {marginBottom: '12px'}},
+        h('p', {class: 'view__intro', style: {margin: '0'}}, aucunePlace
+          ? "Rien à affecter : aucune place n'est encore positionnée sur un besoin. Positionnez des indicatifs (binômes) depuis la vue Indicatifs, puis relancez l'algorithme."
+          : toutVerrouille
+            ? "Rien à affecter : toutes les places existantes sont verrouillées (affectées à la main). Déverrouillez-en pour que l'algorithme puisse les reprendre."
+            : "Aucune place n'a pu être pourvue ou modifiée : les places non verrouillées restent sans candidat possible. Voir la raison affichée sur chacune, juste en dessous."),
+      );
+    }
     const groupes = new Map<CodeAnomalie, {gravite: GraviteAnomalie; nombre: number}>();
     for (const a of resume.resultat.anomalies) {
       const entree = groupes.get(a.code);
@@ -88,17 +110,18 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
     );
   }
 
-  function deposerBenevoleSurPlace(benevoleId: Id, placeId: Id): void {
+  async function deposerBenevoleSurPlace(benevoleId: Id, placeId: Id): Promise<void> {
     const verdict = verifierDepot(m, benevoleId, placeId);
     if (!verdict.ok) { dernierMessage = {texte: verdict.motif, ton: 'danger'}; rafraichir(); return; }
     const diff = apercuAffectation(m, placeId, benevoleId);
-    m.assignerPlace(placeId, benevoleId, 'Manuel');
+    const resultat = await m.assignerPlace(placeId, benevoleId, 'Manuel');
+    if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; rafraichir(); return; }
     const nom = indexer(m).benevole.get(benevoleId)?.Nom ?? 'Bénévole';
     dernierMessage = messageDepuisDiff(`${nom} affecté(e).`, diff);
     rafraichir();
   }
 
-  function deposerPlaceSurPlace(placeSourceId: Id, placeCibleId: Id): void {
+  async function deposerPlaceSurPlace(placeSourceId: Id, placeCibleId: Id): Promise<void> {
     const source = m.places.find((p) => p.id === placeSourceId);
     const cible = m.places.find((p) => p.id === placeCibleId);
     if (!source || !cible || source.Benevole == null) { return; }
@@ -119,20 +142,23 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
     const diff = apercuEchange(m, placeSourceId, placeCibleId);
     const benevoleSource = source.Benevole;
     const benevoleCible = cible.Benevole;
-    m.assignerPlace(placeSourceId, benevoleCible, 'Manuel');
-    m.assignerPlace(placeCibleId, benevoleSource, 'Manuel');
+    const resultat1 = await m.assignerPlace(placeSourceId, benevoleCible, 'Manuel');
+    if (!resultat1.ok) { dernierMessage = {texte: resultat1.raison, ton: 'danger'}; rafraichir(); return; }
+    const resultat2 = await m.assignerPlace(placeCibleId, benevoleSource, 'Manuel');
+    if (!resultat2.ok) { dernierMessage = {texte: resultat2.raison, ton: 'danger'}; rafraichir(); return; }
     dernierMessage = messageDepuisDiff(benevoleCible != null ? 'Échange effectué.' : 'Déplacé.', diff);
     rafraichir();
   }
 
-  function viderPlace(place: Place): void {
+  async function viderPlace(place: Place): Promise<void> {
     if (place.Verrouillee) {
       dernierMessage = {texte: 'Place verrouillée : déverrouillez-la avant de la modifier.', ton: 'danger'};
       rafraichir();
       return;
     }
     const diff = apercuAffectation(m, place.id, null);
-    m.assignerPlace(place.id, null);
+    const resultat = await m.assignerPlace(place.id, null);
+    if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; rafraichir(); return; }
     dernierMessage = messageDepuisDiff('Place vidée.', diff);
     rafraichir();
   }
@@ -142,8 +168,51 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
     return types.includes(TYPE_BENEVOLE) || types.includes(TYPE_PLACE);
   }
 
+  /**
+   * Pourquoi ce bénévole est ici plutôt qu'un autre (question du
+   * coordinateur, 2026-09-23) : les mêmes tags qu'un remplaçant proposé
+   * (`classerCandidats`, déjà utilisés en Jour J), mais pour l'occupant
+   * actuel plutôt qu'une suggestion — un arbitrage gagné (« avec un binôme
+   * souhaité ») se lit à côté d'un arbitrage perdu accepté quand même
+   * (« veut voir un artiste »), sans jamais montrer le score.
+   */
+  function pourquoiCeBenevole(ix: Index, place: Place, benevoleId: Id): Candidat | null {
+    const groupe = ix.groupe.get(place.Groupe);
+    if (!groupe) { return null; }
+    return classerCandidats(m, ix, groupe.id, {placeIdCible: place.id}).find((c) => c.benevoleId === benevoleId) ?? null;
+  }
+
+  /**
+   * Pourquoi cette place reste vide, en langage métier — le pendant côté
+   * échec de `pourquoiCeBenevole` (question du coordinateur, 2026-09-23).
+   * Seulement pour une place non verrouillée : une place vidée à la main
+   * (verrouillée) est un choix d'Antoine, pas un échec de l'algorithme à
+   * expliquer.
+   */
+  function pourquoiVide(place: Place): string[] {
+    if (place.Verrouillee) { return []; }
+    return raisonsPlaceVide(m, place.Groupe);
+  }
+
+  /**
+   * Qui choisir pour une place vide (question du coordinateur, 2026-09-23) :
+   * le roster seul ne dit ni qui convient, ni qui est déjà pris ailleurs sur
+   * ce créneau — le moteur le sait déjà, puisqu'il s'en sert pour classer.
+   * Purement informatif, comme `pourquoiCeBenevole` : le glisser-déposer
+   * libre reste inchangé, on n'empêche aucun choix que l'algorithme réprouve.
+   */
+  function candidatsPourPlaceVide(ix: Index, place: Place): Candidat[] {
+    if (place.Verrouillee) { return []; }
+    const groupe = ix.groupe.get(place.Groupe);
+    if (!groupe) { return []; }
+    return classerCandidats(m, ix, groupe.id).slice(0, 5);
+  }
+
   function placeSlot(ix: Index, place: Place): HTMLElement {
     const benevole = place.Benevole != null ? ix.benevole.get(place.Benevole) : null;
+    const pourquoi = benevole ? pourquoiCeBenevole(ix, place, benevole.id) : null;
+    const raisonsVide = benevole ? [] : pourquoiVide(place);
+    const candidatsVide = benevole ? [] : candidatsPourPlaceVide(ix, place);
     const classes = ['place-slot'];
     classes.push(benevole ? 'place-slot--occupee' : 'place-slot--vide');
     if (place.Verrouillee) { classes.push('place-slot--verrouillee'); }
@@ -175,8 +244,25 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
     },
       h('span', {class: 'place-slot__rang mono'}, `#${place.Rang}`),
       benevole
-        ? h('span', {class: 'place-slot__nom'}, benevole.Nom)
-        : h('span', {class: 'place-slot__vide-texte'}, 'Glissez un bénévole ici'),
+        ? h('div', {class: 'place-slot__contenu'},
+          h('span', {class: 'place-slot__nom'}, benevole.Nom),
+          pourquoi && pourquoi.tags.length > 0
+            ? h('div', {class: 'place-slot__pourquoi'}, ...pourquoi.tags.map((t) => h('span', {class: `tag tag--${t.sens}`}, t.texte)))
+            : null,
+        )
+        : h('div', {class: 'place-slot__contenu'},
+          h('span', {class: 'place-slot__vide-texte'}, 'Glissez un bénévole ici'),
+          raisonsVide.length > 0
+            ? h('span', {class: 'place-slot__raison-vide'}, raisonsVide.map((r) => r[0]!.toUpperCase() + r.slice(1)).join(' · '))
+            : null,
+          candidatsVide.length > 0
+            ? h('div', {class: 'place-slot__candidats'}, ...candidatsVide.map((c) => carteCandidatCompacte(
+              c,
+              () => deposerBenevoleSurPlace(c.benevoleId, place.id),
+              {avecScore: false},
+            )))
+            : null,
+        ),
       place.Verrouillee
         ? h('span', {class: 'pill pill--neutral'}, icone(ICONES.cadenas), 'Verrouillée')
         : null,
@@ -184,7 +270,10 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
         h('button', {
           class: 'btn btn--ghost btn--sm', type: 'button',
           title: place.Verrouillee ? 'Déverrouiller cette place' : 'Verrouiller cette place',
-          onclick: () => m.basculerVerrouillage(place.id),
+          onclick: () => { void (async () => {
+            const resultat = await m.basculerVerrouillage(place.id);
+            if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; rafraichir(); }
+          })(); },
         }, icone(ICONES.cadenas)),
         benevole ? h('button', {
           class: 'btn btn--ghost btn--sm', type: 'button', title: 'Vider',
@@ -253,8 +342,8 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
       ? new Set(m.sousCreneaux.filter((sc) => jour.macros.some((ma) => ma.id === sc.Macro_creneau)).map((sc) => sc.id))
       : new Set<Id>();
 
-    const besoinsDuJour = m.besoins
-      .filter((b) => sousCreneauxDuJour.has(b.Sous_creneau))
+    const besoinsExistantsDuJour = m.besoins.filter((b) => sousCreneauxDuJour.has(b.Sous_creneau));
+    const besoinsDuJour = besoinsExistantsDuJour
       .map((besoin) => ({besoin, c: couvertureBesoin(m, ix, besoin.id)}))
       .filter(({c}) => voirTout || c.statut !== 'ok')
       .sort((a, b) => {
@@ -313,12 +402,18 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
             ),
           ),
           h('div', {class: 'affectation__roster-liste'},
-            ...roster.map((b) => rosterCard(ix, b)),
+            roster.length === 0
+              ? h('p', {class: 'empty'}, m.benevoles.length === 0
+                ? "Aucun bénévole importé pour l'instant : rien à affecter tant que le fil Disponibilités n'a pas importé les bénévoles."
+                : 'Aucun bénévole ne correspond à ce filtre.')
+              : roster.map((b) => rosterCard(ix, b)),
           ),
         ),
         h('div', {class: 'affectation__board'},
           besoinsDuJour.length === 0
-            ? h('p', {class: 'empty'}, voirTout ? 'Aucun besoin ce jour.' : "Rien à traiter ce jour : tous les besoins sont couverts. Cochez « afficher aussi les besoins déjà couverts » pour les revoir.")
+            ? h('p', {class: 'empty'}, besoinsExistantsDuJour.length === 0
+              ? "Aucun besoin positionné ce jour : créez-en depuis la vue Missions."
+              : "Rien à traiter ce jour : tous les besoins sont couverts. Cochez « afficher aussi les besoins déjà couverts » pour les revoir.")
             : besoinsDuJour.map(({besoin}) => besoinCarte(ix, besoin)),
         ),
       ),

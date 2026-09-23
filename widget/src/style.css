@@ -1279,28 +1279,6 @@ table.grille .mission-cell .lieu {
   gap: 10px;
 }
 
-/* Un bloc étroit (créneau court, largeur proportionnelle à sa durée dans la
-   frise) élargit sa cible de dépôt au survol/focus plutôt que de rester
-   coincé sous la largeur minimale utile aux puces et au bouton « + binôme »
-   — retour d'Antoine du 2026-09-23, vue Indicatifs bloquée sans lui. Scopé
-   à `.indicatifs-layout` : Missions et Artistes, qui partagent le même
-   `.timeline__bloc`, ne sont jamais concernés. 108px = l'ancienne largeur
-   minimale de `.besoin-cell` (avant la frise). Vérifié (Playwright) : un
-   bloc ne grandit que vers la droite (bord gauche ancré sur sa colonne de
-   grille), donc ne rejoint jamais l'étiquette de ligne collante à gauche
-   quel que soit le z-index ; `position: sticky; top: 0` sur l'en-tête
-   (`.timeline__coin`/`.axe-quart`) est inerte ici (`.timeline-wrap` ne
-   développe jamais son propre défilement vertical, son contenu tient
-   toujours dans sa hauteur), donc pas de conflit non plus avec l'en-tête.
-   Reste : dépasser un voisin non survolé (z-index auto) dans la même ligne,
-   ce que ce z-index confirmé suffit à couvrir. */
-.indicatifs-layout .timeline__bloc:hover,
-.indicatifs-layout .timeline__bloc:focus-within {
-  min-width: 108px;
-  overflow: visible;
-  z-index: 5;
-}
-
 .mode-bandeau {
   display: flex;
   align-items: center;
@@ -1809,17 +1787,59 @@ table.grille .mission-cell .lieu {
   width: 16px;
 }
 
-.place-slot__nom {
+.place-slot__contenu {
   flex: 1;
+  min-width: 0;
+}
+
+.place-slot__nom {
   font-size: 12px;
   font-weight: 600;
 }
 
+.place-slot__pourquoi {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 3px;
+}
+
 .place-slot__vide-texte {
-  flex: 1;
   font-size: 11px;
   color: var(--text-faint);
   font-style: italic;
+}
+
+.place-slot__raison-vide {
+  display: block;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.place-slot__candidats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.place-slot__candidats .candidat {
+  padding: 6px 8px;
+  gap: 3px;
+}
+
+.place-slot__candidats .candidat__nom {
+  font-size: 11.5px;
+}
+
+.place-slot__candidats .candidat__raisons {
+  gap: 3px;
+}
+
+.place-slot__candidats .btn {
+  padding: 2px 8px;
+  font-size: 11px;
 }
 
 .place-slot__actions {
@@ -2040,9 +2060,13 @@ table.dispos-table td {
   top: 0;
   z-index: 2;
   background: var(--surface);
-  width: 11px;
-  min-width: 11px;
-  max-width: 11px;
+  /* Doublé de 11 à 22px (= `LARGEUR_QUART_PX`, `ui/frise.ts`, déjà éprouvé
+     lisible ailleurs dans l'app) : trop étroit pour être lisible au clic,
+     demande explicite d'Antoine le 2026-09-23. La grille défile déjà
+     horizontalement (`.dispos-scroll`), s'allonger n'a pas d'autre effet. */
+  width: 22px;
+  min-width: 22px;
+  max-width: 22px;
   font-family: var(--font-mono);
   font-size: 9px;
   font-weight: 400;
@@ -2069,8 +2093,8 @@ table.dispos-table td {
 }
 
 .dispos-cellule {
-  width: 11px;
-  min-width: 11px;
+  width: 22px;
+  min-width: 22px;
   height: 18px;
   padding: 0;
 }
@@ -2081,7 +2105,10 @@ table.dispos-table td {
 
 .dispos-cellule--disponible { background: var(--brand-tint); }
 .dispos-cellule--indisponible { background: var(--surface-muted); }
-.dispos-cellule--artiste { background: var(--accent-2-tint); }
+/* Teinte pleine, pas `--accent-2-tint` : sur une cellule de 11×18px, deux
+   pastels pâles (bleu/violet) ne se distinguent pas assez au survol rapide
+   de la grille — demande explicite d'Antoine le 2026-09-23. */
+.dispos-cellule--artiste { background: var(--accent-2); }
 
 .contrainte-badge {
   display: inline-flex;

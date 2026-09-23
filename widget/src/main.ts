@@ -20,28 +20,40 @@
 import './style.css';
 import {demarrerApp} from './app';
 import type {Id} from './domain/types';
-import type {DocApiEcriture} from './grist';
+import type {Affinite, Benevole} from './domain/types';
+import type {DocApiEcriture, LigneParametre, NouvelleDisponibilite, TableBrute} from './grist';
 import {
-  actionsCreerArtiste, actionsCreerBesoin, actionsCreerEquipe, actionsCreerGroupe, actionsCreerMacroCreneau,
-  actionsCreerMission, actionsCreerSousCreneaux, actionsCreerTablesManquantes, actionsDefinirPlaces,
-  actionsDeplacerMacroCreneau, actionsDeplacerPositionGroupe, actionsModifierArtiste, actionsModifierSousCreneaux,
+  actionsActualiserBenevolesSource,
+  actionsAjouterColonneManquante,
+  actionsCreerAffinites,
+  actionsCreerArtiste, actionsCreerBenevolesSource, actionsCreerBesoin, actionsCreerEquipe, actionsCreerGroupe,
+  actionsCreerMacroCreneau,
+  actionsCreerMission, actionsCreerSousCreneaux, actionsCreerTablesManquantes, actionsDefinirAbsence,
+  actionsDefinirParametre, actionsDefinirPlaces, actionsDeplacerMacroCreneau, actionsDeplacerPositionGroupe,
+  actionsEcrireDisponibilites, actionsModifierArtiste, actionsModifierPlaces, actionsModifierSousCreneaux,
   actionsPositionnerGroupe, actionsReglerAffichage, actionsRenommerMacroCreneau, actionsRepointerBesoins,
-  actionsRetirerPositionGroupe, actionsRetirerPositionsGroupe, actionsSupprimerBesoins, actionsSupprimerMacroCreneau,
-  actionsSupprimerSousCreneaux,
+  actionsRetirerPositionGroupe, actionsRetirerPositionsGroupe, actionsSupprimerBesoins, actionsSupprimerDisponibilites,
+  actionsSupprimerMacroCreneau, actionsSupprimerSousCreneaux,
   appliquerActions,
-  LIBELLE_PAR_TABLE, lireDocument, zipperTable,
+  benevoleDepuisLigne,
+  colonnesDeTable,
+  decoderNombre, decoderRef, decoderTexte,
+  LIBELLE_PAR_TABLE, lireDocument, tablesDuDocument, zipperTable,
 } from './grist';
 import {type EcritureGrist, Magasin, SuppressionApresCreationEchouee} from './store';
 
-/** Les 14 tables que lit `construireModele` (`./grist/modele.ts`) — tout ce
- *  dont le `Modele` de l'UI a besoin. `Versions`, `Parametres` et `Journal`
- *  existent dans `LIBELLE_PAR_TABLE` mais ne nourrissent pas `Modele` : les
- *  omettre ici évite de bloquer le widget sur une table que rien n'affiche
- *  encore ne lit. */
+/** Les 14 tables que lit `construireModele` (`./grist/modele.ts`), plus
+ *  `Parametres` : elle ne nourrit pas `Modele` (voir `demarrer`, qui la lit
+ *  à part), mais plusieurs écritures en dépendent désormais (mappage de
+ *  colonnes, libellés d'import — §6.4) et échouent sans bruit sur un
+ *  document où elle n'existe pas encore (constaté par Connexion Grist le
+ *  2026-09-23 sur un document neuf). `Versions` et `Journal` restent hors
+ *  de cette liste : `LIBELLE_PAR_TABLE` les connaît, mais rien ne lit ni
+ *  n'écrit encore dedans, inutile de bloquer le widget dessus. */
 const TABLES_REQUISES = [
   'Equipes', 'Lieux', 'Benevoles', 'Missions', 'Artistes', 'Macro_creneaux',
   'Sous_creneaux', 'Besoins', 'Groupes', 'Positions_groupe', 'Places',
-  'Disponibilites', 'Souhaits_missions', 'Affinites',
+  'Disponibilites', 'Souhaits_missions', 'Affinites', 'Parametres',
 ] as const;
 
 /**
@@ -51,8 +63,24 @@ const TABLES_REQUISES = [
  * par `lireDocument`) traduit les noms canoniques de table en identifiants
  * réels du document (`grist/tables.ts`) ; `appliquerActions` s'en sert pour
  * chaque action envoyée.
+ *
+ * `docApi` porte ici aussi `fetchTable` (au-delà du strict `DocApiEcriture`,
+ * même élargissement que `reglerAffichageTablesCreees`) : `valeursColonneBrute`
+ * lit une colonne brute directement, sans passer par une action.
+ *
+ * `parametresInitiales` (les lignes de `Parametres` telles que lues par
+ * `lireDocument` au démarrage) est recopié dans une variable locale mutable :
+ * `definirParametre` doit savoir, à chaque appel, si une clé a déjà une
+ * ligne (`UpdateRecord`) ou non (`AddRecord`, dont l'id créé est alors
+ * retenu ici pour le prochain appel sur la même clé) — voir `upsertParametres`
+ * (`grist/ecriture.ts`).
  */
-function construireEcritureGrist(docApi: DocApiEcriture, resolution: Record<string, string>): EcritureGrist {
+function construireEcritureGrist(
+  docApi: DocApiEcriture & {fetchTable(tableId: string): Promise<TableBrute>},
+  resolution: Record<string, string>,
+  parametresInitiales: readonly (LigneParametre & {id: Id})[],
+): EcritureGrist {
+  const lignesParametres: (LigneParametre & {id: Id})[] = [...parametresInitiales];
   return {
     async creerEquipe(equipe) {
       const [id] = await appliquerActions(docApi, actionsCreerEquipe({
@@ -161,8 +189,158 @@ function construireEcritureGrist(docApi: DocApiEcriture, resolution: Record<stri
       const [ids] = await appliquerActions(docApi, actionsPositionnerGroupe(groupeId, [besoinId]), resolution);
       return (ids as Id[])[0] as Id;
     },
+    async modifierPlaces(patches) {
+      await appliquerActions(docApi, actionsModifierPlaces(patches), resolution);
+    },
     async supprimerPosition(positionId) {
       await appliquerActions(docApi, actionsRetirerPositionGroupe(positionId), resolution);
+    },
+    async definirAbsence(benevoleId, absent, placeIdsLiberees) {
+      await appliquerActions(docApi, actionsDefinirAbsence(benevoleId, absent, placeIdsLiberees), resolution);
+    },
+    async valeursColonneBrute(tableId, colId) {
+      // Lecture directe (pas d'`appliquerActions` : rien à écrire), et pas de
+      // résolution canonique — `tableId`/`colId` sont déjà les identifiants
+      // réels du document (voir l'en-tête d'`EcritureGrist.valeursColonneBrute`,
+      // `store.ts`) : ce ne sont jamais nos propres tables.
+      const table = await docApi.fetchTable(tableId);
+      const ids = table.id ?? [];
+      const colonne = table[colId] ?? [];
+      return new Map(ids.map((id, i) => [id as Id, colonne[i]]));
+    },
+    async colonnesTable(tableId) {
+      // Lecture directe des tables système (mêmes deux tables et même id
+      // réel que `reglerAffichageTablesCreees` juste au-dessus, pour un
+      // usage différent) : pas de résolution canonique ici non plus,
+      // `tableId` est déjà l'identifiant réel du document.
+      const [lignesTables, lignesColonnes] = await Promise.all([
+        docApi.fetchTable('_grist_Tables').then(zipperTable),
+        docApi.fetchTable('_grist_Tables_column').then(zipperTable),
+      ]);
+      return colonnesDeTable(lignesTables, lignesColonnes, tableId);
+    },
+    async tablesDocument() {
+      // Même source que `colonnesTable` juste au-dessus (`_grist_Tables`
+      // seule ici, pas besoin des colonnes) — sert à laisser Antoine
+      // désigner lui-même la table où sont ses bénévoles plutôt que d'en
+      // deviner une (2026-09-23, `TABLE_BENEVOLES` en dur jamais vérifié).
+      const lignesTables = await docApi.fetchTable('_grist_Tables').then(zipperTable);
+      return tablesDuDocument(lignesTables);
+    },
+    async definirParametre(cle, valeur) {
+      const [retVal] = await appliquerActions(docApi, actionsDefinirParametre(cle, valeur, lignesParametres), resolution);
+      const existante = lignesParametres.find((l) => l.cle === cle);
+      if (existante) {
+        existante.valeur = valeur;
+      } else {
+        lignesParametres.push({id: retVal as Id, cle, valeur});
+      }
+    },
+    async remplacerDisponibilites(benevoleId, debut, fin, nouvelles) {
+      // Un seul aller-retour (contrairement à `remplacerSousCreneaux`) :
+      // aucune table ne référence une ligne de `Disponibilites` par son
+      // identifiant, rien à repointer après coup — vérifié avant d'écrire
+      // cette méthode (voir `Magasin.remplacerDisponibilites`, `store.ts`).
+      const table = await docApi.fetchTable(resolution.Disponibilites ?? 'Disponibilites');
+      const idsARetirer = zipperTable(table)
+        .filter((l) => decoderNombre(l.Benevole) === benevoleId)
+        .filter((l) => { const q = decoderNombre(l.Quart_heure); return q >= debut && q < fin; })
+        .map((l) => l.id as Id);
+      const nouvellesGrist: NouvelleDisponibilite[] = nouvelles.map((d) => ({
+        benevoleId: d.Benevole, quartHeure: d.Quart_heure, statut: d.Statut, artisteId: d.Artiste,
+      }));
+      await appliquerActions(
+        docApi,
+        [...actionsSupprimerDisponibilites(idsARetirer), ...actionsEcrireDisponibilites(nouvellesGrist)],
+        resolution,
+      );
+    },
+    async peuplerBenevoles(tableSourceId, colNomId, colContactId, equipeParDefautId) {
+      const idBenevoles = resolution.Benevoles ?? 'Benevoles';
+
+      const [lignesTables, lignesColonnes] = await Promise.all([
+        docApi.fetchTable('_grist_Tables').then(zipperTable),
+        docApi.fetchTable('_grist_Tables_column').then(zipperTable),
+      ]);
+
+      // Garde-fou avant toute écriture (signalé par le coordinateur le
+      // 2026-09-23) : `resolution.Benevoles` vient d'une résolution par
+      // libellé normalisé (`resoudreIdsTables`, `grist/tables.ts`), qui ne
+      // départagerait pas deux tables titrées « Bénévoles » dont une serait
+      // la sienne. Sans toucher ce mécanisme (hors de portée de ce fichier),
+      // on vérifie ici, juste avant la plus grosse écriture du chantier, que
+      // la table visée porte bien tout notre schéma Bénévoles — aucune table
+      // à Antoine n'a de raison de porter ces colonnes précises sous ces noms
+      // précis. Un document tout juste amorcé par `demarrer()` les a
+      // toujours (`TABLES_REQUISES` garantit la table avant tout appel ici) ;
+      // seule une mauvaise résolution ferait échouer ce test.
+      const colonnesCible = new Set(colonnesDeTable(lignesTables, lignesColonnes, idBenevoles).map((c) => c.colId));
+      const colonnesSchemaAttendues = ['Quota_heures_min', 'Quota_heures_max', 'Statut', 'Competences'];
+      if (!colonnesSchemaAttendues.every((c) => colonnesCible.has(c))) {
+        throw new Error(
+          `La table "${idBenevoles}" ne porte pas notre schéma Bénévoles — peuplement refusé pour ne pas risquer d'écrire dans une table qui n'est pas la nôtre.`,
+        );
+      }
+
+      // 1. La colonne Id_source peut manquer sur une table Bénévoles créée
+      // avant ce mécanisme (2026-09-23) — jamais recréée si déjà là, et
+      // jamais posée sur une autre table que la nôtre (voir le doc-comment
+      // d'`actionsAjouterColonneManquante`).
+      const actionsColonne = actionsAjouterColonneManquante('Benevoles', 'Id_source', lignesTables, lignesColonnes, idBenevoles);
+      if (actionsColonne.length > 0) { await docApi.applyUserActions(actionsColonne); }
+
+      // 2. Notre table Bénévoles telle qu'elle est maintenant, pour
+      // reconnaître par Id_source les bénévoles déjà peuplés lors d'un
+      // appel précédent (jamais recréés, jamais leur équipe/quota/statut
+      // retouchés).
+      const lignesBenevolesActuelles = zipperTable(await docApi.fetchTable(idBenevoles));
+      const idNotreParIdSource = new Map<number, Id>();
+      for (const l of lignesBenevolesActuelles) {
+        const idSource = decoderRef(l.Id_source);
+        if (idSource != null) { idNotreParIdSource.set(idSource, l.id as Id); }
+      }
+
+      // 3. La table source, jamais modifiée (lecture seule, comme
+      // `valeursColonneBrute`) : une ligne sans nom ne crée rien, on ne
+      // devine pas de nom vide.
+      const lignesSource = zipperTable(await docApi.fetchTable(tableSourceId));
+      const aCreer: {idSource: Id; nom: string; contact: string}[] = [];
+      const aActualiser: {id: Id; nom: string; contact: string}[] = [];
+      for (const l of lignesSource) {
+        const nom = decoderTexte(l[colNomId]).trim();
+        if (!nom) { continue; }
+        const contact = colContactId ? decoderTexte(l[colContactId]) : '';
+        const idSource = l.id as Id;
+        const idExistant = idNotreParIdSource.get(idSource);
+        if (idExistant != null) {
+          aActualiser.push({id: idExistant, nom, contact});
+        } else {
+          aCreer.push({idSource, nom, contact});
+        }
+      }
+
+      if (aCreer.length > 0) {
+        await appliquerActions(docApi, actionsCreerBenevolesSource(aCreer, equipeParDefautId), resolution);
+      }
+      if (aActualiser.length > 0) {
+        await appliquerActions(docApi, actionsActualiserBenevolesSource(aActualiser), resolution);
+      }
+
+      // 4. L'état complet et à jour, pour que le Magasin remplace son cache
+      // local plutôt que de le reconstruire lui-même (voir
+      // `Magasin.peuplerBenevoles`).
+      const lignesRelues = zipperTable(await docApi.fetchTable(idBenevoles));
+      const benevoles: Benevole[] = lignesRelues.map(benevoleDepuisLigne);
+      return {benevoles, crees: aCreer.length, actualises: aActualiser.length};
+    },
+    async creerAffinites(paires) {
+      // `actionsCreerAffinites` est un `BulkAddRecord` : son retValue est le
+      // tableau des ids créés, dans le même ordre que `paires` (même
+      // discipline qu'`ajouterPosition` ci-dessus).
+      const [ids] = await appliquerActions(docApi, actionsCreerAffinites(paires), resolution);
+      return paires.map((p, i): Affinite => ({
+        id: (ids as Id[])[i] as Id, Benevole_A: p.benevoleAId, Benevole_B: p.benevoleBId, Type: 'Ensemble',
+      }));
     },
   };
 }
@@ -268,8 +446,10 @@ async function demarrer(): Promise<void> {
       await reglerAffichageTablesCreees(window.grist.docApi, tablesManquantes, relu.resolution);
       resultatFinal = relu;
     }
-    const magasin = new Magasin(resultatFinal.modele);
-    magasin.brancherEcriture(construireEcritureGrist(window.grist.docApi, resultatFinal.resolution));
+    const magasin = new Magasin(resultatFinal.modele, resultatFinal.parametres);
+    magasin.brancherEcriture(
+      construireEcritureGrist(window.grist.docApi, resultatFinal.resolution, resultatFinal.parametres),
+    );
     demarrerApp(racine, magasin, 'Document Grist connecté');
   } catch (erreur) {
     afficherErreurConnexion(racine, erreur);

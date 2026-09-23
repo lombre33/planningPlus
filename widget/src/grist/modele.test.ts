@@ -146,7 +146,26 @@ describe('construireModele', () => {
       Quota_heures_max: 12,
       Statut: 'Actif',
       Notes: '',
+      Id_source: null,
     }]);
+  });
+
+  it("décode Id_source d'un bénévole peuplé depuis une table externe (§6.4), et null quand la colonne n'existe pas encore sur le document (créée avant ce mécanisme)", () => {
+    const peuple = construireModele({
+      Benevoles: {
+        id: [2], Nom: ['Bob'], Contact: [''], Equipe: [10], Competences: [[]],
+        Quota_heures_min: [0], Quota_heures_max: [40], Statut: ['Actif'], Notes: [''], Id_source: [57],
+      },
+    });
+    expect(peuple.benevoles[0]?.Id_source).toBe(57);
+
+    const sansColonne = construireModele({
+      Benevoles: {
+        id: [3], Nom: ['Chloé'], Contact: [''], Equipe: [10], Competences: [[]],
+        Quota_heures_min: [0], Quota_heures_max: [40], Statut: ['Actif'], Notes: [''],
+      },
+    });
+    expect(sansColonne.benevoles[0]?.Id_source).toBeNull();
   });
 
   it('décode une mission, y compris Description et Lieu', () => {
@@ -159,6 +178,16 @@ describe('construireModele', () => {
       Priorite: 'Critique',
       Competences_requises: ['Majeur'],
     }]);
+  });
+
+  it("décode une mission sans Priorité renseignée (colonne jamais remplie) comme Normale, pas comme une valeur manquante", () => {
+    const sansPriorite = construireModele({
+      Missions: {
+        id: [21], Nom: ['Sécurité'], Description: [''], Lieu: [0], Equipe: [10],
+        Priorite: [''], Competences_requises: [[]],
+      },
+    });
+    expect(sansPriorite.missions[0]).toMatchObject({Priorite: 'Normale'});
   });
 
   it('décode un sous-créneau, y compris son Libelle', () => {

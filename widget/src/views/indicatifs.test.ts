@@ -121,7 +121,14 @@ describe('planning complet : missions et besoin, mais zone volontairement vide',
         remplacerSousCreneaux: refuse(), modifierSousCreneaux: refuse(), repointerBesoins: refuse(),
         creerBesoin: refuse(), creerGroupe: refuse(), positionnerGroupe: refuse(),
         definirPlaces: refuse(), deplacerPosition: refuse(), ajouterPosition: refuse(),
-        supprimerPosition: refuse(),
+        modifierPlaces: refuse(), supprimerPosition: refuse(), definirAbsence: refuse(),
+        valeursColonneBrute: refuse(),
+        colonnesTable: refuse(),
+        tablesDocument: refuse(),
+        definirParametre: refuse(),
+        remplacerDisponibilites: refuse(),
+        peuplerBenevoles: refuse(),
+        creerAffinites: refuse(),
       };
     }
 
@@ -307,6 +314,14 @@ describe('panneau : supprimer une position (retour Antoine 2026-09-23 : jusqu’
       remplacerSousCreneaux: async () => [], modifierSousCreneaux: async () => {}, repointerBesoins: async () => {},
       creerBesoin: async () => 1, creerGroupe: async () => 1, positionnerGroupe: async () => {},
       definirPlaces: async () => {}, deplacerPosition: async () => {}, ajouterPosition: async () => 1,
+      modifierPlaces: async () => {}, definirAbsence: async () => {},
+      valeursColonneBrute: async () => new Map(),
+      colonnesTable: async () => [],
+      tablesDocument: async () => [],
+      definirParametre: async () => {},
+      remplacerDisponibilites: async () => {},
+      peuplerBenevoles: async () => ({benevoles: [], crees: 0, actualises: 0}),
+      creerAffinites: async () => [],
       supprimerPosition: async () => { throw new Error('document indisponible'); },
     });
     const nbPositionsAvant = m.positionsGroupe.length;

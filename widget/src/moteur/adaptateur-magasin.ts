@@ -38,7 +38,7 @@
  */
 
 import type {Anomalie as AnomalieUI, Candidat, Index} from '../logic/derive';
-import {couvertureBesoin} from '../logic/derive';
+import {couvertureBesoin, missionsCouvertesParGroupe, positionsDuGroupe} from '../logic/derive';
 import type {Magasin} from '../store';
 import type {
   Affinite as AffiniteUI,
@@ -54,7 +54,10 @@ import type {
 
 import {classerCandidats as moteurClasserCandidats} from './affectation';
 import {detecterAnomalies as moteurDetecterAnomalies} from './anomalies';
-import type {Affinite, Benevole, Besoin, DonneesPlanning, Groupe, Mission, NiveauPreferenceMission, Place, PositionGroupe, SousCreneau} from './types';
+import type {
+  Affinite, Benevole, Besoin, DonneesPlanning, Groupe, Mission, NiveauPreferenceMission, Place, PositionGroupe,
+  RaisonInEligibilite, SousCreneau,
+} from './types';
 
 // --- Conversion Magasin -> DonneesPlanning ---------------------------------
 //
@@ -130,9 +133,15 @@ const ORDRE_PREFERENCE: NiveauPreferenceMission[] = ['Refuse', 'Réticent', 'Neu
  * réimplémentation indépendante du score. Voir l'écart n°1 en tête de
  * fichier : les inéligibles restent filtrés ici, comme dans l'ancien mock.
  */
-export function classerCandidats(m: Magasin, ix: Index, groupeId: Id, options: {exclure?: Id} = {}): Candidat[] {
+export function classerCandidats(
+  m: Magasin, ix: Index, groupeId: Id, options: {exclure?: Id; placeIdCible?: Id} = {},
+): Candidat[] {
   const donnees = versDonneesPlanning(m);
-  const classement = moteurClasserCandidats(donnees, groupeId);
+  // `placeIdCible` libère d'abord l'occupant actuel de cette place (voir le
+  // moteur, `classerCandidats`) : sans ça, l'occupant d'une place déjà
+  // pourvue est toujours exclu de son propre classement (« deja_occupe »),
+  // ce qui empêche d'expliquer pourquoi il est là (`views/affectation.ts`).
+  const classement = moteurClasserCandidats(donnees, groupeId, options.placeIdCible);
 
   const resultats: Candidat[] = [];
   for (const c of classement) {
@@ -159,6 +168,17 @@ export function classerCandidats(m: Magasin, ix: Index, groupeId: Id, options: {
     else if (meilleurSouhait === 'Intéressé') { tags.push({texte: 'intéressé', sens: 'plus'}); }
     else if (meilleurSouhait === 'Réticent') { tags.push({texte: 'réticent', sens: 'moins'}); }
 
+    // Le binôme souhaité (§7.2 objectif 2, devant l'artiste depuis le
+    // 2026-09-23) est ce qui peut faire accepter le conflit artiste
+    // ci-dessous : les deux tags doivent donc pouvoir apparaître ensemble,
+    // pour qu'on lise « avec son binôme, au prix de l'artiste » plutôt que
+    // de ne voir que le sacrifice.
+    if (c.explication.affinite === 'positive') {
+      tags.push({texte: 'binôme souhaité', sens: 'plus'});
+    } else if (c.explication.affinite === 'negative') {
+      tags.push({texte: 'binôme à éviter', sens: 'moins'});
+    }
+
     if (c.explication.conflitArtiste) {
       tags.push({texte: 'veut voir un artiste sur ce créneau', sens: 'moins'});
     }
@@ -174,6 +194,134 @@ export function classerCandidats(m: Magasin, ix: Index, groupeId: Id, options: {
 
   // Déjà trié éligibles-d'abord par score décroissant par le moteur.
   return resultats.slice(0, 8);
+}
+
+// --- raisonsPlaceVide --------------------------------------------------------
+
+const LIBELLE_RAISON: Record<RaisonInEligibilite, string> = {
+  indisponible: 'personne de disponible sur ce créneau',
+  competence_manquante: "personne n'a la compétence requise",
+  deja_occupe: 'les bénévoles disponibles sont déjà occupés ailleurs sur ce créneau',
+  refus_mission: 'les bénévoles disponibles ont refusé cette mission',
+  statut_absent: 'les seuls bénévoles qui conviendraient sont marqués absents',
+};
+
+/**
+ * Pourquoi une place reste vide, en langage métier (question du
+ * coordinateur, 2026-09-23 : le pendant de l'explicabilité d'une
+ * affectation, côté échec cette fois — écart n°1 noté en tête de fichier,
+ * jamais exploité jusqu'ici). Le moteur sait déjà pourquoi chaque bénévole
+ * est inéligible (`raison`, §7.5.3) ; cette fonction agrège ces raisons sur
+ * tout le groupe en une ou deux phrases courtes, au lieu de forcer
+ * l'utilisateur à deviner depuis un simple compteur de sous-effectifs.
+ */
+export function raisonsPlaceVide(m: Magasin, groupeId: Id): string[] {
+  const donnees = versDonneesPlanning(m);
+  // Cas particulier : sans aucun bénévole importé, le moteur n'a personne à
+  // classer, donc aucune `raison` d'inéligibilité n'est jamais produite — la
+  // boucle ci-dessous resterait silencieuse (§7.5.3, écart trouvé sur le
+  // banc le 2026-09-23 en rejouant l'état d'Antoine : zéro bénévole importé,
+  // la page semblait ne rien faire faute d'explication).
+  if (donnees.benevoles.length === 0) {
+    return ['aucun bénévole importé'];
+  }
+  const classement = moteurClasserCandidats(donnees, groupeId);
+  const eligibles = classement.filter((c) => c.eligible);
+
+  if (eligibles.length > 0) {
+    // Des candidats existent mais tous en conflit avec un souhait « voir un
+    // artiste » (§7.2 objectif 7) : non utilisés ici car pas nécessaires
+    // pour l'effectif minimum de ce besoin (voir `estNecessairePourMinimum`).
+    if (eligibles.every((c) => c.explication?.conflitArtiste)) {
+      return ['un binôme existe mais uniquement en conflit avec un souhait « voir un artiste », pas nécessaire ici'];
+    }
+    return []; // un candidat propre existe : ne devrait pas arriver sur une place restée vide
+  }
+
+  const raisons = new Set<RaisonInEligibilite>();
+  for (const c of classement) {
+    if (!c.eligible && c.raison) { raisons.add(c.raison); }
+  }
+  return [...raisons].map((r) => LIBELLE_RAISON[r]);
+}
+
+// --- proposerPermutation (Jour J) -------------------------------------------
+
+export interface EtapePermutation {
+  benevoleId: Id;
+  benevoleNom: string;
+  place: PlaceUI;
+  groupeCode: string;
+  depuisMissionNom: string | null; // null = candidat frais, ne quitte aucune autre place
+  versMissionNom: string;
+}
+
+/**
+ * Remplace `derive.ts` `proposerPermutation` (déménagé ici le 2026-09-23) :
+ * même signature, même comportement — cherche une permutation à un cran
+ * pour repourvoir `placeVacanteId` quand aucun remplaçant direct propre
+ * n'existe (§7.3), en déplaçant un bénévole déjà affecté ailleurs sur un
+ * besoin qui resterait couvert sans lui, puis en cherchant un candidat
+ * frais pour la place qu'il libère à son tour. Classe désormais ses
+ * candidats via `classerCandidats` ci-dessus (le vrai moteur) plutôt que
+ * via l'ancien mock de `derive.ts` : sans ce déménagement, la chaîne de
+ * permutation proposée en Jour J ignorait l'affinité (priorité 3
+ * d'Antoine) alors que les remplaçants directs la respectent déjà. Ne
+ * modifie rien : c'est à l'appelant de valider.
+ */
+export function proposerPermutation(m: Magasin, ix: Index, placeVacanteId: Id): EtapePermutation[] | null {
+  const placeVacante = m.places.find((p) => p.id === placeVacanteId);
+  if (!placeVacante) { return null; }
+  const groupeCible = ix.groupe.get(placeVacante.Groupe)!;
+  const missionCible = missionsCouvertesParGroupe(m, ix, groupeCible.id)
+    .map((id) => ix.mission.get(id)!)[0];
+
+  const directs = classerCandidats(m, ix, groupeCible.id);
+  const meilleurDirect = directs[0];
+  const direct = meilleurDirect && !meilleurDirect.tags.some((t) => t.sens === 'moins');
+  if (direct) { return null; } // un remplaçant propre existe déjà, inutile de permuter
+
+  for (const donneur of m.places) {
+    if (donneur.Benevole == null || donneur.Verrouillee || donneur.id === placeVacanteId) { continue; }
+    const groupeDonneur = ix.groupe.get(donneur.Groupe)!;
+    if (groupeDonneur.id === groupeCible.id) { continue; }
+
+    // Le groupe donneur ne doit pas tomber sous le minimum une fois ce
+    // bénévole retiré : on vérifie chacun de ses besoins positionnés.
+    const resteAuDessusDuMinimum = positionsDuGroupe(m, ix, groupeDonneur.id).every(({besoin}) => {
+      const c = couvertureBesoin(m, ix, besoin.id);
+      return c.pourvues - 1 >= besoin.Effectif_min;
+    });
+    if (!resteAuDessusDuMinimum) { continue; }
+
+    // Le donneur doit lui-même être un candidat propre (sans motif négatif)
+    // pour la place cible, sans quoi la permutation ne résout rien.
+    const evalCible = classerCandidats(m, ix, groupeCible.id).find((c) => c.benevoleId === donneur.Benevole);
+    if (!evalCible || evalCible.tags.some((t) => t.sens === 'moins')) { continue; }
+
+    const candidatsPourDonneur = classerCandidats(m, ix, groupeDonneur.id, {exclure: donneur.Benevole});
+    if (candidatsPourDonneur.length === 0) { continue; }
+    const remplacant = candidatsPourDonneur[0]!;
+
+    const benevoleDonneur = ix.benevole.get(donneur.Benevole)!;
+    const missionDonneur = missionsCouvertesParGroupe(m, ix, groupeDonneur.id).map((id) => ix.mission.get(id)!)[0];
+
+    return [
+      {
+        benevoleId: benevoleDonneur.id, benevoleNom: benevoleDonneur.Nom, place: placeVacante,
+        groupeCode: groupeCible.Code,
+        depuisMissionNom: missionDonneur?.Nom ?? groupeDonneur.Code,
+        versMissionNom: missionCible?.Nom ?? groupeCible.Code,
+      },
+      {
+        benevoleId: remplacant.benevoleId, benevoleNom: remplacant.nom, place: donneur,
+        groupeCode: groupeDonneur.Code,
+        depuisMissionNom: null,
+        versMissionNom: missionDonneur?.Nom ?? groupeDonneur.Code,
+      },
+    ];
+  }
+  return null;
 }
 
 // --- calculerAnomalies -------------------------------------------------------

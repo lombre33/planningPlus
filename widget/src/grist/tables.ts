@@ -51,17 +51,53 @@ function normaliser(texte: string): string {
 }
 
 /**
+ * Regroupe les identifiants réels du document par forme normalisée — sert à
+ * la fois à `resoudreIdsTables` et `ambiguitesTables` juste en dessous.
+ */
+function candidatsParNormalise(idsReels: readonly string[]): Map<string, string[]> {
+  const candidats = new Map<string, string[]>();
+  for (const id of idsReels) {
+    const cle = normaliser(id);
+    const liste = candidats.get(cle);
+    if (liste) { liste.push(id); } else { candidats.set(cle, [id]); }
+  }
+  return candidats;
+}
+
+/**
  * Résout, pour chaque table canonique connue de ce widget
  * (`LIBELLE_PAR_TABLE`), son identifiant réel dans le document ouvert. Une
  * table canonique absente du document (jamais créée) est simplement absente
  * du résultat plutôt que de lever — utile tant que le schéma bouge encore.
+ *
+ * Deux étapes, jamais une seule comparaison normalisée directe (régression
+ * corrigée le 2026-09-23, signalée par le coordinateur) :
+ *  1. l'identifiant de schéma existe tel quel dans le document (cas courant :
+ *     ce widget crée toujours ses tables sous cet identifiant exact) — il
+ *     gagne toujours, sans même regarder les candidats normalisés ;
+ *  2. sinon, repli sur la comparaison normalisée (`Positions_groupe` ->
+ *     `Positions_de_groupe`, etc.), mais seulement si elle désigne un
+ *     candidat unique. Constaté en pratique : une table étrangère au widget
+ *     (ex. `Bene_voles`, un identifiant réel que Grist n'a pas jugé assez
+ *     proche de `Benevoles` pour le suffixer, alors que notre normalisation,
+ *     elle, les confond) peut normaliser vers le même libellé que la nôtre.
+ *     Avant ce correctif, la dernière table rencontrée dans le document
+ *     gagnait silencieusement l'identifiant canonique — potentiellement la
+ *     table d'un utilisateur plutôt que la nôtre, avec le risque d'y écrire
+ *     par-dessus ses données. Une table canonique ambiguë (plusieurs
+ *     candidats, aucun identifiant exact) est maintenant omise du résultat
+ *     plutôt que résolue au hasard — traitée comme une table absente
+ *     (`main.ts` la recréera plutôt que d'écrire dans l'une des deux tables
+ *     réelles en présence, jamais pire que l'existant).
  */
 export function resoudreIdsTables(idsReels: readonly string[]): Record<string, string> {
-  const parNormalise = new Map(idsReels.map((id) => [normaliser(id), id]));
+  const idsReelsPresents = new Set(idsReels);
+  const parNormalise = candidatsParNormalise(idsReels);
   const resolues: Record<string, string> = {};
   for (const [canonique, libelle] of Object.entries(LIBELLE_PAR_TABLE)) {
-    const reel = parNormalise.get(normaliser(libelle));
-    if (reel) { resolues[canonique] = reel; }
+    if (idsReelsPresents.has(canonique)) { resolues[canonique] = canonique; continue; }
+    const candidats = parNormalise.get(normaliser(libelle)) ?? [];
+    if (candidats.length === 1) { resolues[canonique] = candidats[0]!; }
   }
   return resolues;
 }

@@ -76,12 +76,7 @@ export function montrerEquipe(container: HTMLElement, m: Magasin): () => void {
     }
     vider(container);
 
-    if (equipeId == null) {
-      container.append(h('p', {class: 'empty'}, 'Aucune équipe dans ce jeu de données.'));
-      return;
-    }
-
-    const indicatifs = indicatifsDeLEquipe(m, ix, equipeId);
+    const indicatifs = equipeId == null ? [] : indicatifsDeLEquipe(m, ix, equipeId);
 
     container.append(
       h('div', {class: 'agenda__toolbar', style: {marginBottom: '14px'}},
@@ -90,12 +85,14 @@ export function montrerEquipe(container: HTMLElement, m: Magasin): () => void {
           onclick: () => { equipeId = eq.id; rafraichir(); },
         }, eq.Nom)),
       ),
-      h('p', {class: 'view__intro'},
-        `${indicatifs.length} indicatif${indicatifs.length > 1 ? 's' : ''} pour cette équipe, sur toute la durée du festival.`,
-      ),
-      indicatifs.length === 0
-        ? h('p', {class: 'empty'}, 'Aucun indicatif pour cette équipe.')
-        : h('div', null, ...indicatifs.map(carteIndicatif)),
+      equipeId == null
+        ? h('p', {class: 'empty'}, 'Aucune équipe dans ce jeu de données.')
+        : h('p', {class: 'view__intro'},
+          `${indicatifs.length} indicatif${indicatifs.length > 1 ? 's' : ''} pour cette équipe, sur toute la durée du festival.`),
+      ...(equipeId != null && indicatifs.length === 0
+        ? [h('p', {class: 'empty'}, 'Aucun indicatif pour cette équipe.')]
+        : []),
+      ...(indicatifs.length > 0 ? [h('div', null, ...indicatifs.map(carteIndicatif))] : []),
     );
   }
 

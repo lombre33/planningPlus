@@ -1,9 +1,11 @@
 # PlanningPlus — Cahier des charges
 
-**Version :** v1.9 (§7.2 précisé, 2026-09-23 : la disponibilité est une
-contrainte dure et non un objectif arbitrable, l'ordre des objectifs n'est
-pas paramétrable, et l'objectif 7 « binôme souhaité » est confirmé et câblé
-— voir aussi v1.6, v1.7, v1.8)
+**Version :** v1.12 (§7.2 : le binôme souhaité passe objectif 2, devant
+l'artiste souhaité qui recule en objectif 7 — renversement volontaire
+d'Antoine, 2026-09-23 17h49, ce que ça implique côté moteur noté pour le
+fil Algorithme ; priorité de mission en cas de pénurie reconfirmée par
+Antoine, déjà en place et testée — v1.11 avait posé §8 : correctif Artistes
+et mécanisme du filtre global, voir aussi v1.6 à v1.10)
 **Statut :** structure et règles validées (§6.3, §7.5) ; développement agile
 par incréments courts depuis le 2026-09-22 (§11.1) ; document tenu à jour au
 fil du code plutôt qu'en fin de sprint, sur consigne du coordinateur
@@ -513,20 +515,39 @@ plutôt que d'être bloqué. Décision Antoine, 2026-09-21 ; voir §6.3 et §7.4
    (voir ci-dessous). Un besoin qui ne peut être couvert qu'en affectant
    quelqu'un contre son souhait reste sous-staffé plutôt que forcé ; c'est
    remonté dans la vue anomalies, pas un échec silencieux. *(Décision Antoine,
-   2026-09-21 : « sous-staffée » plutôt que « forcer la mission ».)*
-2. **Artiste souhaité** : ne pas placer un bénévole sur un quart d'heure où il
-   a déclaré vouloir voir un artiste. Préférence très forte mais non absolue :
-   violable seulement si aucune autre solution n'existe pour couvrir un
-   besoin, et alors signalée. *(Décision Antoine, 2026-09-21 : « préférence
-   forte », pas une interdiction absolue.)* La disponibilité elle-même n'est
-   **pas** dans cette liste d'objectifs : c'est une contrainte dure (§7.1,
-   règle 2), jamais arbitrée contre ce qui suit — un bénévole indisponible
-   sur le quart d'heure n'est même pas candidat. *(Précision du 2026-09-23,
-   à la lecture du moteur par le fil Algorithme d'affectation : le libellé
-   précédent de cet objectif, « Disponibilité et artistes souhaités »,
-   laissait croire que la disponibilité s'arbitrait comme une préférence ;
-   seul le souhait « voir un artiste » l'est — voir `evaluerEligibilite`
-   dans `widget/src/moteur/eligibilite.ts`.)*
+   2026-09-21 : « sous-staffée » plutôt que « forcer la mission ».)* *(Antoine,
+   2026-09-23 17h49, a redemandé ce même comportement en le motivant par le
+   risque de pénurie de bénévoles à un instant donné — il était déjà en place
+   avant sa demande : `Mission.Priorite` (Critique/Normale/Confort), réglable
+   à la création d'une mission (`grille.ts`), comportement de pénurie prouvé
+   par test (`affectation.test.ts`, « sert le groupe de priorité Critique
+   avant celui de priorité Confort quand un seul candidat existe pour les
+   deux »). Il manque un écran pour changer la priorité d'une mission déjà
+   créée — Missions étant gelée (voir consignes en vigueur), ce champ se
+   modifie en attendant directement dans la table `Missions` du document
+   Grist.)*
+2. **Binôme souhaité** : bonus/malus de score entre deux bénévoles qui ont
+   demandé à être « Ensemble » ou à s'« Éviter » (table `Affinites`, §6.4).
+   Distinct de l'objectif 6 : celui-ci porte sur la stabilité de l'indicatif
+   dans son ensemble d'un macro-créneau à l'autre, pas sur un souhait nommé
+   entre deux bénévoles précis. *(Confirmé par Antoine le 2026-09-23 15h45 ;
+   câblage effectif le jour même par le fil Algorithme d'affectation, qui
+   jusque-là calculait ce score sans jamais le lire — voir
+   `versDonneesPlanning` dans `widget/src/moteur/adaptateur-magasin.ts`.)*
+
+   **Passe devant l'artiste souhaité (objectif 7) depuis le 2026-09-23
+   17h49** : « par défaut on va valider le binôme souhaité » (Antoine). Ceci
+   **renverse** l'ordre validé le 2026-09-21, où l'artiste souhaité tenait
+   cette place — renversement daté et volontaire, pas une correction d'une
+   erreur de rédaction. *(Note pour le fil Algorithme d'affectation : les
+   deux mécanismes ne sont aujourd'hui pas au même niveau structurel. Un
+   conflit avec un artiste sépare déjà les candidats en deux pools —
+   `propre`/`secours` — tenté l'un après l'autre avant même le calcul du
+   score (`affectation.ts`) ; le binôme souhaité n'est qu'un terme du score
+   (`poids.affiniteEnsemble: 0.1` / `affiniteEviter: -0.1`, contre
+   `poids.conflitArtiste: -0.4`, voir `moteur/types.ts`). Un simple réglage
+   des poids ne suffira probablement pas à faire passer le binôme devant
+   dans tous les cas : la partition en deux pools reste à revoir.)*
 3. **Missions souhaitées** : privilégier les missions que le bénévole
    souhaite, ne jamais l'affecter à une mission qu'il a explicitement
    écartée (voir objectif 1).
@@ -544,20 +565,21 @@ plutôt que d'être bloqué. Décision Antoine, 2026-09-21 ; voir §6.3 et §7.4
 6. **Continuité** : limiter le nombre de missions différentes par bénévole. Ne
    s'applique plus à la stabilité des binômes, portée nativement par le
    mécanisme des indicatifs (§6.3) plutôt que par un objectif d'algorithme.
-7. **Binôme souhaité** : bonus/malus de score entre deux bénévoles qui ont
-   demandé à être « Ensemble » ou à s'« Éviter » (table `Affinites`, §6.4),
-   pour départager des candidats par ailleurs à égalité. Distinct de
-   l'objectif 6 : celui-ci porte sur la stabilité de l'indicatif dans son
-   ensemble d'un macro-créneau à l'autre, pas sur un souhait nommé entre deux
-   bénévoles précis. *(Ce score existait dans le moteur depuis tôt en
-   développement, câblé en miroir de la table `Affinites` mais jamais
-   confirmé par Antoine ni écrit ici — question posée le 2026-09-21 par le
-   fil « Vues disponibilités et terrain ». Confirmé par Antoine le
-   2026-09-23 : c'est sa priorité « le fait d'être avec le bénévole
-   souhaité », citée dans le chat du projet à 15h45. Câblage effectif du
-   score le même jour par le fil Algorithme d'affectation, qui jusque-là le
-   calculait sans jamais le lire — voir `versDonneesPlanning` dans
-   `widget/src/moteur/adaptateur-magasin.ts`.)*
+7. **Artiste souhaité** : ne pas placer un bénévole sur un quart d'heure où il
+   a déclaré vouloir voir un artiste. Préférence forte mais non absolue :
+   violable seulement si aucune autre solution n'existe pour couvrir un
+   besoin, et alors signalée. *(Décision Antoine, 2026-09-21 : « préférence
+   forte », pas une interdiction absolue.)* La disponibilité elle-même n'est
+   **pas** dans cette liste d'objectifs : c'est une contrainte dure (§7.1,
+   règle 2) — un bénévole indisponible sur le quart d'heure n'est même pas
+   candidat. *(Précision du 2026-09-23, à la lecture du moteur par le fil
+   Algorithme d'affectation : le libellé précédent de cet objectif,
+   « Disponibilité et artistes souhaités », laissait croire que la
+   disponibilité s'arbitrait comme une préférence ; seul le souhait « voir
+   un artiste » l'est — voir `evaluerEligibilite` dans
+   `widget/src/moteur/eligibilite.ts`.)* **Objectif 2 jusqu'au 2026-09-23
+   17h49, désormais après le binôme souhaité (objectif 2) — voir la note de
+   renversement ci-dessus, y compris ce que ça implique côté moteur.**
 
 Les poids relatifs de ces sept objectifs sont paramétrables ; leur **ordre**,
 lui, est une propriété structurelle de l'algorithme fixée par ce document,
@@ -698,6 +720,29 @@ fait gagner du temps le jour J.
 Liste de travail, à arbitrer (voir le brainstorm dans le fil et la
 [liste de questions](questions-cadrage.md#9-vues-et-ux)).
 
+**Le macro-créneau est l'ossature de l'application, pas une entité parmi
+d'autres** (Décision Antoine, 2026-09-23 17h18) : ses bornes découpent le
+festival en jours, et ce découpage sert d'axe et de **filtre global à
+toutes les vues** — bénévoles et artistes compris, pas seulement la grille
+Missions (point 2 ci-dessous) où il a été construit en premier. Une vue qui
+calerait son propre découpage en jours sur autre chose que les
+macro-créneaux (c'était le cas de la vue Artistes, voir point 8) est un
+écart à corriger, jamais une variante voulue.
+
+Techniquement, ce filtre global vit dans la coquille de l'application
+(`app.ts`) : un drapeau `DefinitionOnglet.filtreJour` marque les vues qui
+s'y accrochent, `demarrerApp` monte alors au-dessus d'elles un bandeau
+commun (`construireBandeauJours`, dans `ui/bandeauJours.ts`), et la
+sélection elle-même vit dans le magasin (`Magasin.macroCreneauSelectionne`,
+modifiée par `Magasin.selectionnerMacroCreneau`). Il se branche vue par vue,
+pas d'un coup : au 2026-09-23, Missions, Disponibilités et Artistes portent
+`filtreJour: true` ; Indicatifs, Affectation et Terrain calent déjà leurs
+jours sur les mêmes macro-créneaux mais gardent encore leur propre
+sélecteur de jour, non partagé avec les autres vues — chantier en cours,
+vue par vue, pas un défaut à signaler à nouveau. Un fil qui branche une
+nouvelle vue sur ce filtre n'a que le drapeau à poser : le mécanisme est
+déjà générique.
+
 1. **Agenda** — création, édition et suppression des macro-créneaux et
    sous-créneaux, en horizontal (la disposition verticale et le comparatif
    envisagés en cadrage ont été abandonnés). Permet aussi le découpage
@@ -732,15 +777,25 @@ Liste de travail, à arbitrer (voir le brainstorm dans le fil et la
 
    Présentée en frise, sur le même principe que la grille Missions (§8.2) :
    chaque artiste est une ligne, ses passages des blocs posés sur un axe
-   commun au quart d'heure, un onglet par jour de festival. Glisser un bloc
-   le déplace, ALT maintenu le redimensionne depuis le bord saisi — ce geste
-   se cale au quart d'heure (l'axe de la frise), même si le formulaire reste
-   en durée libre. Cliquer la piste d'une ligne crée un nouveau passage pour
-   ce même artiste, nom verrouillé. Un passage n'est rattaché à aucun
-   macro-créneau : l'axe de chaque jour se calcule à partir des passages de ce
-   jour, pas des macro-créneaux, pour que la vue reste utilisable même sans
-   aucune mission créée. *(Demande Antoine, 2026-09-22, en suite de la
-   refonte de la grille Missions.)*
+   commun au quart d'heure. Glisser un bloc le déplace, ALT maintenu le
+   redimensionne depuis le bord saisi — ce geste se cale au quart d'heure
+   (l'axe de la frise), même si le formulaire reste en durée libre. Cliquer
+   la piste d'une ligne crée un nouveau passage pour ce même artiste, nom
+   verrouillé. Un passage n'est rattaché à aucun macro-créneau **en base**
+   (`Artistes` n'a pas de colonne macro-créneau) : c'est seulement l'axe
+   *affiché* qui s'aligne dessus, pas le modèle de données.
+
+   **L'axe et le découpage en jours suivent les macro-créneaux, comme
+   toutes les autres vues** (Décision Antoine, 2026-09-23 17h18 — voir la
+   note en tête du §8 — qui **annule** la décision ci-dessous du
+   2026-09-22 : « l'axe de chaque jour se calcule à partir des passages de
+   ce jour, pas des macro-créneaux »). Ce premier choix laissait la vue
+   entièrement vide tant qu'aucun artiste n'y avait été créé, sans jamais
+   montrer les jours du festival déjà posés dans l'Agenda — cause directe
+   du mécontentement d'Antoine le 2026-09-23. **Corrigé et posé** (commit
+   `3efdfec`, fil Vue artistes, 2026-09-23) : la vue s'accroche désormais au
+   filtre global par macro-créneau (`filtreJour: true`), création du passage
+   toujours en deux temps (voir ci-dessus).
 9. **Vue jour J** — ce qui tourne maintenant, absences et remplacements.
 10. **Vue disponibilités** — saisie et correction rapides.
 

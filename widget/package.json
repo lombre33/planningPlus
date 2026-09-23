@@ -6,6 +6,7 @@
   "description": "Custom widget Grist de PlanningPlus.",
   "scripts": {
     "dev": "vite",
+    "dev:bench": "vite --open /dev-bench.html",
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
     "preview": "vite preview"

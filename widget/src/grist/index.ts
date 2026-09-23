@@ -12,31 +12,40 @@ export {zipperTable} from './brut';
 
 export {construireDonneesPlanning, construireLignesParametres, lireDocument} from './lecture';
 
-export {construireModele} from './modele';
+export {benevoleDepuisLigne, construireModele} from './modele';
 
 export type {
+  BenevoleSourceActualise,
   DocApiEcriture,
+  NouveauBenevoleSource,
   NouveauBesoin,
   NouveauGroupe,
   NouveauMacroCreneau,
   NouveauSousCreneau,
   NouvelArtiste,
+  NouvelleAffiniteEnsemble,
   NouvelleDisponibilite,
   NouvelleEquipe,
   NouvelleMission,
   NouvellePlace,
+  PatchPlace,
   PatchSousCreneau,
   UserAction,
 } from './ecriture';
 export {
+  actionsActualiserBenevolesSource,
+  actionsCreerAffinites,
   actionsCreerArtiste,
+  actionsCreerBenevolesSource,
   actionsCreerBesoin,
   actionsCreerEquipe,
   actionsCreerGroupe,
   actionsCreerMacroCreneau,
   actionsCreerMission,
   actionsCreerSousCreneaux,
+  actionsDefinirAbsence,
   actionsDefinirCompetencesBenevole,
+  actionsDefinirParametre,
   actionsDefinirPlaces,
   actionsDeplacerMacroCreneau,
   actionsDeplacerPositionGroupe,
@@ -46,6 +55,7 @@ export {
   actionsModifierArtiste,
   actionsModifierGroupe,
   actionsModifierMission,
+  actionsModifierPlaces,
   actionsModifierSousCreneau,
   actionsModifierSousCreneaux,
   actionsPositionnerGroupe,
@@ -55,6 +65,7 @@ export {
   actionsRetirerPositionsGroupe,
   actionsSupprimerBesoin,
   actionsSupprimerBesoins,
+  actionsSupprimerDisponibilites,
   actionsSupprimerGroupe,
   actionsSupprimerMacroCreneau,
   actionsSupprimerMission,
@@ -65,7 +76,10 @@ export {
 
 export {idsReelsDeTest, LIBELLE_PAR_TABLE, resoudreIdsTables} from './tables';
 
-export {actionsCreerTablesManquantes, actionsReglerAffichage} from './creation';
+export type {ColonneTable, TableDocument} from './colonnes';
+export {colonnesDeTable, tablesDuDocument} from './colonnes';
+
+export {actionsAjouterColonneManquante, actionsCreerTablesManquantes, actionsReglerAffichage} from './creation';
 
 export type {LigneParametre} from './parametres';
 export {

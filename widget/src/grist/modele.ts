@@ -53,7 +53,15 @@ function lieuDepuisLigne(l: LigneBrute): Lieu {
   return {id: l.id, Nom: decoderTexte(l.Nom), Description: decoderTexte(l.Description)};
 }
 
-function benevoleDepuisLigne(l: LigneBrute): Benevole {
+/** Exportée pour être réutilisée par `main.ts` après un peuplement de
+ *  bénévoles (`EcritureGrist.peuplerBenevoles`) : relire la table à jour
+ *  plutôt que de reconstruire l'état local à la main. `Id_source` se lit
+ *  comme n'importe quelle colonne de référence (`decoderRef`, 0/absente
+ *  vaut `null`) même si ce n'est pas une vraie colonne `Ref` Grist — la
+ *  colonne peut ne pas encore exister sur un document où elle n'a pas
+ *  encore été provisionnée (`grist/creation.ts`), auquel cas `l.Id_source`
+ *  est `undefined` et se décode déjà proprement en `null`. */
+export function benevoleDepuisLigne(l: LigneBrute): Benevole {
   return {
     id: l.id,
     Nom: decoderTexte(l.Nom),
@@ -64,6 +72,7 @@ function benevoleDepuisLigne(l: LigneBrute): Benevole {
     Quota_heures_max: decoderNombre(l.Quota_heures_max),
     Statut: l.Statut === 'Absent' ? 'Absent' : 'Actif',
     Notes: decoderTexte(l.Notes),
+    Id_source: decoderRef(l.Id_source),
   };
 }
 

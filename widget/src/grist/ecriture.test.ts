@@ -1,6 +1,8 @@
 import {describe, expect, it} from 'vitest';
 import {
+  actionsActualiserBenevolesSource,
   actionsCreerArtiste,
+  actionsCreerBenevolesSource,
   actionsCreerBesoin,
   actionsCreerGroupe,
   actionsCreerMacroCreneau,
@@ -8,6 +10,7 @@ import {
   actionsCreerSousCreneaux,
   actionsDefinirAbsence,
   actionsDefinirCompetencesBenevole,
+  actionsDefinirParametre,
   actionsDefinirPlaces,
   actionsDeplacerMacroCreneau,
   actionsDeplacerPositionGroupe,
@@ -24,6 +27,7 @@ import {
   actionsRenommerMacroCreneau,
   actionsRetirerPositionGroupe,
   actionsSupprimerBesoin,
+  actionsSupprimerDisponibilites,
   actionsSupprimerGroupe,
   actionsSupprimerMacroCreneau,
   actionsSupprimerMission,
@@ -373,11 +377,63 @@ describe('actionsEcrireDisponibilites', () => {
   });
 });
 
+describe('actionsSupprimerDisponibilites', () => {
+  it('construit un BulkRemoveRecord', () => {
+    expect(actionsSupprimerDisponibilites([10, 11, 12])).toEqual([
+      ['BulkRemoveRecord', 'Disponibilites', [10, 11, 12]],
+    ]);
+  });
+
+  it('ne construit aucune action pour une liste vide', () => {
+    expect(actionsSupprimerDisponibilites([])).toEqual([]);
+  });
+});
+
 describe('actionsDefinirCompetencesBenevole', () => {
   it('encode la ChoiceList avec le code L', () => {
     expect(actionsDefinirCompetencesBenevole(1, ['Majeur', 'SST'])).toEqual([
       ['UpdateRecord', 'Benevoles', 1, {Competences: ['L', 'Majeur', 'SST']}],
     ]);
+  });
+});
+
+describe('actionsCreerBenevolesSource', () => {
+  it('construit un BulkAddRecord avec Id_source, une équipe par défaut commune, et des quotas/statut par défaut', () => {
+    expect(actionsCreerBenevolesSource(
+      [{idSource: 501, nom: 'Alice', contact: '0600000000'}, {idSource: 502, nom: 'Bob', contact: ''}],
+      7,
+    )).toEqual([[
+      'BulkAddRecord', 'Benevoles', [null, null],
+      {
+        Nom: ['Alice', 'Bob'],
+        Contact: ['0600000000', ''],
+        Equipe: [7, 7],
+        Quota_heures_min: [0, 0],
+        Quota_heures_max: [40, 40],
+        Statut: ['Actif', 'Actif'],
+        Id_source: [501, 502],
+      },
+    ]]);
+  });
+
+  it('tableau vide : aucune action', () => {
+    expect(actionsCreerBenevolesSource([], 7)).toEqual([]);
+  });
+});
+
+describe('actionsActualiserBenevolesSource', () => {
+  it('construit un BulkUpdateRecord limité à Nom/Contact, jamais équipe/quota/statut', () => {
+    expect(actionsActualiserBenevolesSource([
+      {id: 1, nom: 'Alice Martin', contact: '0600000000'},
+      {id: 2, nom: 'Bob', contact: ''},
+    ])).toEqual([[
+      'BulkUpdateRecord', 'Benevoles', [1, 2],
+      {Nom: ['Alice Martin', 'Bob'], Contact: ['0600000000', '']},
+    ]]);
+  });
+
+  it('tableau vide : aucune action', () => {
+    expect(actionsActualiserBenevolesSource([])).toEqual([]);
   });
 });
 
@@ -433,6 +489,19 @@ describe('upsert sur Parametres', () => {
 
     // Une clé déjà présente ne doit jamais réapparaître comme AddRecord.
     expect(actions.some((a) => a[0] === 'AddRecord' && (a[3] as {Cle: string}).Cle === 'pas_secondes')).toBe(false);
+  });
+
+  it('actionsDefinirParametre crée la ligne pour une clé quelconque absente', () => {
+    expect(actionsDefinirParametre('cle_arbitraire', 'valeur', [])).toEqual([
+      ['AddRecord', 'Parametres', null, {Cle: 'cle_arbitraire', Valeur: 'valeur'}],
+    ]);
+  });
+
+  it('actionsDefinirParametre met à jour la ligne existante plutôt que d\'en créer une deuxième', () => {
+    const existantes = [{id: 55, cle: 'cle_arbitraire', valeur: 'ancienne'}];
+    expect(actionsDefinirParametre('cle_arbitraire', 'nouvelle', existantes)).toEqual([
+      ['UpdateRecord', 'Parametres', 55, {Valeur: 'nouvelle'}],
+    ]);
   });
 });
 

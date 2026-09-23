@@ -7,7 +7,10 @@
  * démonter proprement la vue précédente à chaque changement d'onglet.
  */
 
+import {regrouperParJour} from './logic/derive';
 import type {Magasin} from './store';
+import {cleJourFestival} from './temps';
+import {construireBandeauJours} from './ui/bandeauJours';
 import {h, ICONES, icone, vider} from './ui/dom';
 import {montrerAffectation} from './views/affectation';
 import {montrerAgenda} from './views/agenda';
@@ -33,6 +36,11 @@ interface DefinitionOnglet {
   titre: string;
   sousTitre: string;
   montrer: (container: HTMLElement, m: Magasin) => () => void;
+  /** Cette vue s'accroche au filtre global par jour de festival
+   *  (`Magasin.macroCreneauSelectionne`), monté par `demarrerApp` juste
+   *  au-dessus d'elle — Missions et Artistes pour l'instant, les autres
+   *  vues s'y accrocheront une par une (demande d'Antoine du 2026-09-23). */
+  filtreJour?: boolean;
   /** Rang dans le parcours utilisateur de référence (§1.1 du cahier des
    *  charges, cf. Antoine, 2026-09-21) : 1 créneaux, 2 sous-créneaux/
    *  missions, 3 indicatifs, 4 disponibilités, 5 lancer l'algorithme et
@@ -56,6 +64,7 @@ const ONGLETS: DefinitionOnglet[] = [
     titre: 'Missions × sous-créneaux',
     sousTitre: 'Qui est où. Cliquez une case pour voir la couverture et affecter un candidat classé.',
     montrer: montrerGrille,
+    filtreJour: true,
     etape: 2,
   },
   {
@@ -70,6 +79,7 @@ const ONGLETS: DefinitionOnglet[] = [
     titre: 'Disponibilités des bénévoles',
     sousTitre: 'Qui est disponible, indisponible ou veut voir un artiste, au quart d’heure, un jour de festival à la fois.',
     montrer: montrerDisponibilites,
+    filtreJour: true,
     etape: 4,
   },
   {
@@ -114,6 +124,7 @@ const ONGLETS: DefinitionOnglet[] = [
     titre: 'Artistes',
     sousTitre: 'Qui joue quand, et combien de bénévoles veulent le voir — et parmi eux, combien sont déjà en conflit.',
     montrer: montrerArtistes,
+    filtreJour: true,
   },
 ];
 
@@ -155,9 +166,44 @@ export function demarrerApp(racine: HTMLElement, magasin: Magasin, sourceLibelle
   );
 
   const topbar = h('header', {class: 'topbar'});
+  const bandeauJours = h('div', {class: 'app-bandeau-jours'});
   const vue = h('div', {class: 'view'});
-  const main = h('div', {class: 'main'}, topbar, vue);
+  const main = h('div', {class: 'main'}, topbar, bandeauJours, vue);
   const shell = h('div', {class: 'app-shell'}, rail, main);
+
+  /** Redessine le filtre global par jour de festival, pour l'onglet actif
+   *  seulement s'il s'y accroche (`filtreJour`) — voir `DefinitionOnglet`.
+   *  Rappelée à chaque changement d'onglet et à chaque notification du
+   *  magasin (un macro-créneau ajouté ou supprimé pendant que l'onglet est
+   *  déjà ouvert doit mettre le bandeau à jour sans y toucher soi-même). */
+  function redessinerBandeauJours(): void {
+    const def = ONGLETS.find((o) => o.id === ongletActif);
+    vider(bandeauJours);
+    if (!def?.filtreJour) { return; }
+    const jours = regrouperParJour(magasin.macroCreneaux);
+    const selectionValide = jours.some((j) => j.macros.some((ma) => ma.id === magasin.macroCreneauSelectionne));
+    if (jours.length > 0 && !selectionValide) {
+      // Sélection absente ou devenue invalide (aucun macro-créneau encore
+      // choisi, ou celui choisi a disparu) : retombe sur le jour courant
+      // s'il existe, sinon le premier jour disponible. `selectionnerMacroCreneau`
+      // notifie, ce qui rappelle cette même fonction — elle s'arrête alors
+      // ici, la sélection étant désormais valide.
+      const cleAujourdhui = cleJourFestival(Math.floor(Date.now() / 1000));
+      const jourParDefaut = jours.find((j) => j.cle === cleAujourdhui) ?? jours[0]!;
+      magasin.selectionnerMacroCreneau(jourParDefaut.macros[0]!.id);
+      return;
+    }
+    if (jours.length === 0 && magasin.macroCreneauSelectionne !== null) {
+      // Plus aucun macro-créneau (dernier supprimé) : ne pas laisser un id
+      // fantôme en mémoire, même si son absence de conséquence visible
+      // (le cas `jour` indéfini est déjà géré par la vue) le rendait inoffensif.
+      magasin.selectionnerMacroCreneau(null);
+      return;
+    }
+    bandeauJours.append(
+      construireBandeauJours(jours, magasin.macroCreneauSelectionne, (id) => magasin.selectionnerMacroCreneau(id)),
+    );
+  }
 
   function activer(id: IdOnglet): void {
     if (id === ongletActif) {
@@ -180,12 +226,14 @@ export function demarrerApp(racine: HTMLElement, magasin: Magasin, sourceLibelle
         h('span', {class: 'pill pill--neutral'}, sourceLibelle),
       ),
     );
+    redessinerBandeauJours();
     vider(vue);
     detruireVue = def.montrer(vue, magasin);
   }
 
   racine.replaceChildren(shell);
   activer('agenda');
+  magasin.subscribe(redessinerBandeauJours);
 
   // Zone d'impression : un enfant direct de <body>, pas de #app, pour que
   // masquer « tout sauf elle » (`.impression-active` dans style.css) au

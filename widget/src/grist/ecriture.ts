@@ -13,8 +13,12 @@
  * disponibilités, le verrouillage d'une place, et les deux réglages qui ont
  * valeur d'audit (paramètres d'algorithme, heure de coupure). Artistes
  * (création et modification, demandé le 2026-09-22 pour le fil Artistes).
- * Bénévoles, lieux et équipes restent saisis nativement dans Grist — ce
- * module ne les écrit pas, tant que rien ne le demande.
+ * Bénévoles : statut et compétences depuis le début, et depuis le
+ * 2026-09-23 leur création/mise à jour en masse par peuplement depuis une
+ * table externe qu'Antoine désigne lui-même (§6.4) — jamais un
+ * remplacement intégral, jamais une suppression. Lieux et équipes restent
+ * saisis nativement dans Grist — ce module ne les écrit pas, tant que rien
+ * ne le demande.
  *
  * Chaque `actionsXxx` est une fonction pure qui rend un tableau d'actions ;
  * `appliquerActions` est le seul point qui parle réellement à
@@ -566,11 +570,101 @@ export function actionsEcrireDisponibilites(disponibilites: readonly NouvelleDis
   ]];
 }
 
+/** Retire des disponibilités en masse (un ré-import ou une resaisie remplace
+ *  l'ensemble existant plutôt que de le fusionner ligne à ligne — même
+ *  logique que `actionsSupprimerBesoins`/`actionsRetirerPositionsGroupe`).
+ *  Aucune table ne référence une ligne de `Disponibilites` par son
+ *  identifiant (le type de domaine n'en a même pas), donc rien à repointer
+ *  après coup, contrairement à un sous-créneau. */
+export function actionsSupprimerDisponibilites(ids: readonly Id[]): UserAction[] {
+  if (ids.length === 0) { return []; }
+  return [['BulkRemoveRecord', 'Disponibilites', [...ids]]];
+}
+
 // --- Bénévoles (statut, compétences) ---------------------------------------
 
 /** Met à jour les compétences d'un bénévole (colonne `ChoiceList`) : exemple d'utilisation d'`encoderListe`. */
 export function actionsDefinirCompetencesBenevole(benevoleId: Id, competences: readonly string[]): UserAction[] {
   return [['UpdateRecord', 'Benevoles', benevoleId, {Competences: encoderListe(competences)}]];
+}
+
+// --- Bénévoles (peuplement depuis la table source d'Antoine, §6.4, 2026-09-23) ---
+
+export interface NouveauBenevoleSource {
+  idSource: Id;
+  nom: string;
+  contact: string;
+}
+
+/**
+ * Crée des bénévoles dans NOTRE table à partir de lignes lues dans la
+ * table qu'Antoine a désignée (jamais modifiée : ce module n'écrit ici que
+ * dans `Benevoles`). `Id_source` porte l'identifiant de la ligne d'origine,
+ * pour qu'un second peuplement reconnaisse ces mêmes bénévoles au lieu
+ * d'en recréer (`actionsActualiserBenevolesSource`, l'upsert
+ * correspondant). Équipe/quotas/statut reçoivent un défaut raisonnable À
+ * LA CRÉATION SEULEMENT : un peuplement ultérieur ne les touche plus
+ * jamais, ce sont des champs qu'Antoine gère ensuite depuis le widget.
+ */
+export function actionsCreerBenevolesSource(benevoles: readonly NouveauBenevoleSource[], equipeParDefautId: Id): UserAction[] {
+  if (benevoles.length === 0) { return []; }
+  return [[
+    'BulkAddRecord', 'Benevoles', benevoles.map(() => null),
+    {
+      Nom: benevoles.map((b) => b.nom),
+      Contact: benevoles.map((b) => b.contact),
+      Equipe: benevoles.map(() => encoderRef(equipeParDefautId)),
+      Quota_heures_min: benevoles.map(() => 0),
+      Quota_heures_max: benevoles.map(() => 40),
+      Statut: benevoles.map(() => 'Actif'),
+      Id_source: benevoles.map((b) => b.idSource),
+    },
+  ]];
+}
+
+export interface BenevoleSourceActualise {
+  id: Id;
+  nom: string;
+  contact: string;
+}
+
+/** Met à jour Nom/Contact des bénévoles déjà liés à une ligne source
+ *  (`Id_source` déjà posé lors d'un peuplement précédent) — jamais leurs
+ *  autres champs, voir `actionsCreerBenevolesSource`. */
+export function actionsActualiserBenevolesSource(benevoles: readonly BenevoleSourceActualise[]): UserAction[] {
+  if (benevoles.length === 0) { return []; }
+  return [[
+    'BulkUpdateRecord', 'Benevoles', benevoles.map((b) => b.id),
+    {
+      Nom: benevoles.map((b) => b.nom),
+      Contact: benevoles.map((b) => b.contact),
+    },
+  ]];
+}
+
+// --- Affinités (binôme souhaité, import, §6.4 point 4, 2026-09-23) ---------
+
+export interface NouvelleAffiniteEnsemble {
+  benevoleAId: Id;
+  benevoleBId: Id;
+}
+
+/**
+ * Crée des lignes `Affinites` de type "Ensemble" (binôme souhaité) —
+ * l'algorithme les fait déjà primer sur l'artiste souhaité, voir
+ * `moteur/adaptateur-magasin.ts`. L'appelant filtre déjà les paires qui
+ * existent déjà (upsert, voir la vue) : cette fonction crée sans vérifier.
+ */
+export function actionsCreerAffinites(paires: readonly NouvelleAffiniteEnsemble[]): UserAction[] {
+  if (paires.length === 0) { return []; }
+  return [[
+    'BulkAddRecord', 'Affinites', paires.map(() => null),
+    {
+      Benevole_A: paires.map((p) => encoderRef(p.benevoleAId)),
+      Benevole_B: paires.map((p) => encoderRef(p.benevoleBId)),
+      Type: paires.map(() => 'Ensemble'),
+    },
+  ]];
 }
 
 /**
@@ -643,4 +737,15 @@ export function actionsEnregistrerHeureCoupure(
   lignesExistantes: readonly (LigneParametre & {id: Id})[],
 ): UserAction[] {
   return upsertParametres([[CLE_HEURE_COUPURE, String(heure)]], lignesExistantes);
+}
+
+/** Enregistre une clé/valeur quelconque dans `Parametres` (upsert) : même
+ *  `upsertParametres` privé qu'`actionsEnregistrerHeureCoupure`, mais sur
+ *  une clé fournie par l'appelant plutôt que fixée ici — pour un réglage
+ *  qui n'a pas encore sa propre fonction dédiée. */
+export function actionsDefinirParametre(
+  cle: string, valeur: string,
+  lignesExistantes: readonly (LigneParametre & {id: Id})[],
+): UserAction[] {
+  return upsertParametres([[cle, valeur]], lignesExistantes);
 }

@@ -25,6 +25,23 @@ describe('resoudreIdsTables', () => {
   it('ignore une table réelle qui ne correspond à aucune table canonique', () => {
     expect(resoudreIdsTables(['Table1', 'Groupes'])).toEqual({Groupes: 'Groupes'});
   });
+
+  it('une table étrangère qui normalise comme la nôtre ne la remplace jamais : l\'identifiant de schéma exact gagne toujours (régression corrigée le 2026-09-23, prouvée sur instance réelle)', () => {
+    // "Bene_voles" est un identifiant réel que Grist n'a pas jugé assez
+    // proche de "Benevoles" pour le suffixer à la création, mais qui
+    // normalise identiquement (ponctuation retirée) — vérifié empiriquement
+    // sur une vraie instance Grist ce soir.
+    expect(resoudreIdsTables(['Benevoles', 'Bene_voles'])).toMatchObject({Benevoles: 'Benevoles'});
+    // Et dans l'autre ordre, pour prouver que ce n'est plus « le dernier
+    // rencontré gagne » (le défaut avant correctif).
+    expect(resoudreIdsTables(['Bene_voles', 'Benevoles'])).toMatchObject({Benevoles: 'Benevoles'});
+  });
+
+  it('sans identifiant de schéma exact, deux candidats qui normalisent pareil restent tous deux ignorés plutôt que d\'en deviner un', () => {
+    // Ni "Bene_voles" ni "Bene-voles" n'est l'identifiant de schéma exact
+    // ("Benevoles") : aucun ne doit gagner par hasard.
+    expect(resoudreIdsTables(['Bene_voles', 'Bene-voles'])).not.toHaveProperty('Benevoles');
+  });
 });
 
 describe('idsReelsDeTest', () => {

@@ -64,6 +64,16 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
     rafraichir();
   }
 
+  /** `Magasin.supprimerPosition` ne lève jamais : elle rend `{ok, raison}`
+   *  (même contrat que `supprimerMacroCreneau`, voir `views/agenda.ts`) —
+   *  `ecrire()` ci-dessus, bâti pour des méthodes qui lèvent, ne verrait
+   *  donc jamais l'échec. */
+  async function supprimerPosition(positionId: Id): Promise<void> {
+    const resultat = await m.supprimerPosition(positionId);
+    dernierMessage = resultat.ok ? null : {texte: resultat.raison, ton: 'danger'};
+    rafraichir();
+  }
+
   function rafraichir(): void {
     const ix = indexer(m);
     const jours = regrouperParJour(m.macroCreneaux);
@@ -417,7 +427,7 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
             // affectés restent, seule cette position du jour disparaît.
             h('button', {
               class: 'btn btn--ghost btn--sm', type: 'button', title: 'Supprimer cette position',
-              onclick: () => void ecrire(() => m.supprimerPosition(position.id)),
+              onclick: () => void supprimerPosition(position.id),
             }, 'Supprimer'),
           ))),
         h('button', {
