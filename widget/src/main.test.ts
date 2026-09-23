@@ -219,4 +219,55 @@ describe('démarrage du widget', () => {
     expect(document.querySelector('.pill--neutral')).toBeNull();
     expect(document.body.textContent).toContain('Macro-créneaux');
   });
+
+  it("sur un document neuf sans la table Parametres, la crée automatiquement (Cle/Valeur) plutôt que de laisser "
+    + 'toute écriture qui en dépend échouer en silence (régression constatée par Connexion Grist le 2026-09-23 : '
+    + 'Parametres manquait de TABLES_REQUISES malgré des écritures qui en dépendent désormais)', async () => {
+    let parametresCreee = false;
+    const actionsRecues: unknown[][][] = [];
+    window.grist = {
+      ready: () => {},
+      docApi: {
+        listTables: async () => (
+          parametresCreee ? TOUTES_LES_TABLES : TOUTES_LES_TABLES.filter((t) => t !== LIBELLE_PAR_TABLE.Parametres)
+        ),
+        fetchTable: async () => ({id: []}),
+        applyUserActions: async (actions: unknown[][]) => {
+          actionsRecues.push(actions);
+          if ((actions[0] as unknown[])?.[0] === 'AddTable' && (actions[0] as unknown[])?.[1] === 'Parametres') {
+            parametresCreee = true;
+          }
+          return {retValues: []};
+        },
+      },
+    };
+    await demarrerEtAttendre();
+
+    expect(document.querySelector('.pill--neutral')?.textContent).toBe('Document Grist connecté');
+    expect(actionsRecues).toEqual([[['AddTable', 'Parametres', [
+      {id: 'Cle', type: 'Text', isFormula: false, formula: '', label: 'Clé'},
+      {id: 'Valeur', type: 'Text', isFormula: false, formula: '', label: 'Valeur'},
+    ]]]]);
+  });
+
+  it("sur un document où Parametres existe déjà avec des lignes, ne la recrée ni ne l'écrase (document de "
+    + 'production, pas un document neuf)', async () => {
+    const actionsRecues: unknown[][][] = [];
+    window.grist = {
+      ready: () => {},
+      docApi: {
+        listTables: async () => TOUTES_LES_TABLES,
+        fetchTable: async (id: string) => (
+          id === LIBELLE_PAR_TABLE.Parametres
+            ? {id: [1], Cle: ['heure_coupure_jour'], Valeur: ['7']}
+            : {id: []}
+        ),
+        applyUserActions: async (actions: unknown[][]) => { actionsRecues.push(actions); return {retValues: []}; },
+      },
+    };
+    await demarrerEtAttendre();
+
+    expect(document.querySelector('.pill--neutral')?.textContent).toBe('Document Grist connecté');
+    expect(actionsRecues).toEqual([]);
+  });
 });

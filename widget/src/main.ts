@@ -36,15 +36,18 @@ import {
 } from './grist';
 import {type EcritureGrist, Magasin, SuppressionApresCreationEchouee} from './store';
 
-/** Les 14 tables que lit `construireModele` (`./grist/modele.ts`) — tout ce
- *  dont le `Modele` de l'UI a besoin. `Versions`, `Parametres` et `Journal`
- *  existent dans `LIBELLE_PAR_TABLE` mais ne nourrissent pas `Modele` : les
- *  omettre ici évite de bloquer le widget sur une table que rien n'affiche
- *  encore ne lit. */
+/** Les 14 tables que lit `construireModele` (`./grist/modele.ts`), plus
+ *  `Parametres` : elle ne nourrit pas `Modele` (voir `demarrer`, qui la lit
+ *  à part), mais plusieurs écritures en dépendent désormais (mappage de
+ *  colonnes, libellés d'import — §6.4) et échouent sans bruit sur un
+ *  document où elle n'existe pas encore (constaté par Connexion Grist le
+ *  2026-09-23 sur un document neuf). `Versions` et `Journal` restent hors
+ *  de cette liste : `LIBELLE_PAR_TABLE` les connaît, mais rien ne lit ni
+ *  n'écrit encore dedans, inutile de bloquer le widget dessus. */
 const TABLES_REQUISES = [
   'Equipes', 'Lieux', 'Benevoles', 'Missions', 'Artistes', 'Macro_creneaux',
   'Sous_creneaux', 'Besoins', 'Groupes', 'Positions_groupe', 'Places',
-  'Disponibilites', 'Souhaits_missions', 'Affinites',
+  'Disponibilites', 'Souhaits_missions', 'Affinites', 'Parametres',
 ] as const;
 
 /**
