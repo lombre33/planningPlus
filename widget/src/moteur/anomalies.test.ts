@@ -2,6 +2,7 @@ import {beforeEach, describe, expect, it} from 'vitest';
 import {detecterAnomalies} from './anomalies';
 import type {DonneesPlanning} from './types';
 import {
+  creerArtiste,
   creerBenevole,
   creerBesoin,
   creerGroupe,
@@ -18,7 +19,7 @@ import {
 function donnees(partiel: Partial<DonneesPlanning>): DonneesPlanning {
   return {
     benevoles: [], missions: [], sousCreneaux: [], besoins: [], groupes: [],
-    positionsGroupe: [], places: [], disponibilites: [], souhaitsMissions: [], affinites: [],
+    positionsGroupe: [], places: [], disponibilites: [], souhaitsMissions: [], affinites: [], artistes: [],
     ...partiel,
   };
 }
@@ -213,6 +214,25 @@ describe('detecterAnomalies — catalogue exact du §7.4', () => {
     expect(anomalies).toEqual([expect.objectContaining({
       code: 'conflit_artiste', gravite: 'a_surveiller', placeId: place.id, sousCreneauId: sousCreneau.id,
     })]);
+  });
+
+  it("ne signale plus de conflit artiste quand 30 minutes du passage complet restent libres (règle du 2026-09-23)", () => {
+    const mission = creerMission();
+    const sousCreneau = creerSousCreneau(h(0, 20), h(0, 20, 30)); // n'occupe qu'une partie du passage
+    const artiste = creerArtiste(h(0, 20), h(0, 21, 30)); // passage de 90 minutes
+    const besoin = creerBesoin(mission.id, sousCreneau.id, {effectifMin: 1, effectifMax: 1});
+    const groupe = creerGroupe();
+    const position = creerPositionGroupe(groupe.id, besoin.id);
+    const benevole = creerBenevole();
+    const place = creerPlace(groupe.id, 1, {benevoleId: benevole.id, origine: 'Manuel', verrouillee: true});
+
+    const anomalies = detecterAnomalies(donnees({
+      benevoles: [benevole], missions: [mission], sousCreneaux: [sousCreneau], besoins: [besoin],
+      groupes: [groupe], positionsGroupe: [position], places: [place], artistes: [artiste],
+      disponibilites: disponibilitesIntervalle(benevole.id, sousCreneau.debut, sousCreneau.fin, 'Artiste', 900, artiste.id),
+    }));
+
+    expect(anomalies.some((a) => a.code === 'conflit_artiste')).toBe(false);
   });
 
   it('détecte un chevauchement de créneaux (à surveiller)', () => {

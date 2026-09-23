@@ -15,6 +15,7 @@
 
 import type {Contexte} from './contexte';
 import {clePaireBenevoles} from './contexte';
+import {peutVoirArtiste} from './temps';
 import type {CandidatEligible, ExplicationScore, Id, ParametresAlgorithme, RaisonInEligibilite} from './types';
 
 export interface EtatOccupation {
@@ -136,13 +137,30 @@ export function evaluerEligibilite(ctx: Contexte, etat: EtatOccupation, groupeId
 
   let conflitArtiste = false;
   const disponibilitesDuBenevole = ctx.disponibiliteParBenevoleEtQuart.get(benevoleId);
+  const artistesSouhaites = new Set<Id>();
   for (const quart of quarts) {
-    const statut = disponibilitesDuBenevole?.get(quart)?.statut ?? 'Indisponible';
+    const dispo = disponibilitesDuBenevole?.get(quart);
+    const statut = dispo?.statut ?? 'Indisponible';
     if (statut === 'Indisponible') {
       return {eligible: false, raison: 'indisponible'};
     }
     if (statut === 'Artiste') {
-      conflitArtiste = true;
+      // Un souhait sans artiste identifié ne peut pas être jugé sur la règle
+      // des 30 minutes ci-dessous (§7.2, 2026-09-23) : conflit par défaut,
+      // comme avant cette règle.
+      if (dispo?.artisteId != null) { artistesSouhaites.add(dispo.artisteId); } else { conflitArtiste = true; }
+    }
+  }
+  if (artistesSouhaites.size > 0) {
+    const quartsOccupesApres = new Set(etat.quartsParBenevole.get(benevoleId) ?? []);
+    for (const quart of quarts) { quartsOccupesApres.add(quart); }
+    for (const artisteId of artistesSouhaites) {
+      const artiste = ctx.artisteParId.get(artisteId);
+      // Référence orpheline (artiste supprimé depuis) : conflit par défaut,
+      // même raisonnement que ci-dessus — impossible à juger sans le passage.
+      if (!artiste || !peutVoirArtiste(artiste.debut, artiste.fin, quartsOccupesApres, ctx.parametres.pasSecondes)) {
+        conflitArtiste = true;
+      }
     }
   }
 

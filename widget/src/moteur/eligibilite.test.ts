@@ -11,6 +11,7 @@ import {PARAMETRES_PAR_DEFAUT} from './types';
 import type {DonneesPlanning} from './types';
 import {
   creerAffinite,
+  creerArtiste,
   creerBenevole,
   creerBesoin,
   creerGroupe,
@@ -42,7 +43,7 @@ function scenarioSimple(overrides: {
 function donnees(partiel: Partial<DonneesPlanning>): DonneesPlanning {
   return {
     benevoles: [], missions: [], sousCreneaux: [], besoins: [], groupes: [],
-    positionsGroupe: [], places: [], disponibilites: [], souhaitsMissions: [], affinites: [],
+    positionsGroupe: [], places: [], disponibilites: [], souhaitsMissions: [], affinites: [], artistes: [],
     ...partiel,
   };
 }
@@ -173,6 +174,34 @@ describe('evaluerEligibilite', () => {
       benevoles: [benevole], missions: [s.mission], sousCreneaux: [s.sousCreneau], besoins: [s.besoin],
       groupes: [s.groupe], positionsGroupe: [s.position], places: [s.place],
       disponibilites: disponibilitesIntervalle(benevole.id, s.sousCreneau.debut, s.sousCreneau.fin, 'Artiste', 900, 42),
+    });
+    const ctx = construireContexte(d, PARAMETRES_PAR_DEFAUT);
+    const etat = construireEtatOccupation(ctx);
+    expect(evaluerEligibilite(ctx, etat, s.groupe.id, benevole.id)).toEqual({eligible: true, conflitArtiste: true});
+  });
+
+  it("n'a plus de conflit artiste s'il reste au moins 30 minutes libres d'affilée sur le passage complet de l'artiste (règle du 2026-09-23, pas seulement le créneau du groupe)", () => {
+    const s = scenarioSimple({debut: h(0, 20), fin: h(0, 20, 30)}); // n'occupe qu'une partie du passage
+    const artiste = creerArtiste(h(0, 20), h(0, 21, 30)); // passage de 90 minutes
+    const benevole = creerBenevole();
+    const d = donnees({
+      benevoles: [benevole], missions: [s.mission], sousCreneaux: [s.sousCreneau], besoins: [s.besoin],
+      groupes: [s.groupe], positionsGroupe: [s.position], places: [s.place], artistes: [artiste],
+      disponibilites: disponibilitesIntervalle(benevole.id, s.sousCreneau.debut, s.sousCreneau.fin, 'Artiste', 900, artiste.id),
+    });
+    const ctx = construireContexte(d, PARAMETRES_PAR_DEFAUT);
+    const etat = construireEtatOccupation(ctx);
+    expect(evaluerEligibilite(ctx, etat, s.groupe.id, benevole.id)).toEqual({eligible: true, conflitArtiste: false});
+  });
+
+  it("garde le conflit artiste s'il resterait moins de 30 minutes libres d'affilée sur le passage", () => {
+    const s = scenarioSimple({debut: h(0, 20), fin: h(0, 21, 15)}); // n'en laisse que 15 min libres
+    const artiste = creerArtiste(h(0, 20), h(0, 21, 30)); // passage de 90 minutes
+    const benevole = creerBenevole();
+    const d = donnees({
+      benevoles: [benevole], missions: [s.mission], sousCreneaux: [s.sousCreneau], besoins: [s.besoin],
+      groupes: [s.groupe], positionsGroupe: [s.position], places: [s.place], artistes: [artiste],
+      disponibilites: disponibilitesIntervalle(benevole.id, s.sousCreneau.debut, s.sousCreneau.fin, 'Artiste', 900, artiste.id),
     });
     const ctx = construireContexte(d, PARAMETRES_PAR_DEFAUT);
     const etat = construireEtatOccupation(ctx);

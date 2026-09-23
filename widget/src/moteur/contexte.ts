@@ -11,6 +11,7 @@
  */
 
 import type {
+  Artiste,
   Besoin,
   Benevole,
   DonneesPlanning,
@@ -42,6 +43,7 @@ export interface Contexte {
   besoinParId: Map<Id, Besoin>;
   groupeParId: Map<Id, Groupe>;
   placeParId: Map<Id, Place>;
+  artisteParId: Map<Id, Artiste>;
 
   placesParGroupe: Map<Id, Place[]>;
   positionsParGroupe: Map<Id, PositionGroupe[]>;
@@ -93,6 +95,7 @@ export function construireContexte(
   const besoinParId = indexerParId(donnees.besoins);
   const groupeParId = indexerParId(donnees.groupes);
   const placeParId = indexerParId(donnees.places);
+  const artisteParId = indexerParId(donnees.artistes);
 
   const placesParGroupe = grouperPar(donnees.places, (p) => p.groupeId);
   const positionsParGroupe = grouperPar(donnees.positionsGroupe, (p) => p.groupeId);
@@ -171,6 +174,7 @@ export function construireContexte(
     besoinParId,
     groupeParId,
     placeParId,
+    artisteParId,
     placesParGroupe,
     positionsParGroupe,
     disponibiliteParBenevoleEtQuart,

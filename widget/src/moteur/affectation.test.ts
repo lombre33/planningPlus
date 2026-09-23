@@ -28,7 +28,7 @@ import {
 function donnees(partiel: Partial<DonneesPlanning>): DonneesPlanning {
   return {
     benevoles: [], missions: [], sousCreneaux: [], besoins: [], groupes: [],
-    positionsGroupe: [], places: [], disponibilites: [], souhaitsMissions: [], affinites: [],
+    positionsGroupe: [], places: [], disponibilites: [], souhaitsMissions: [], affinites: [], artistes: [],
     ...partiel,
   };
 }

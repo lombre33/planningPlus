@@ -11,6 +11,7 @@
 import {quartsDIntervalle} from './temps';
 import type {
   Affinite,
+  Artiste,
   Benevole,
   Besoin,
   Disponibilite,
@@ -32,7 +33,7 @@ export function resetIds(): void { compteur = 1; }
 export function creerDonneesVides(): DonneesPlanning {
   return {
     benevoles: [], missions: [], sousCreneaux: [], besoins: [], groupes: [],
-    positionsGroupe: [], places: [], disponibilites: [], souhaitsMissions: [], affinites: [],
+    positionsGroupe: [], places: [], disponibilites: [], souhaitsMissions: [], affinites: [], artistes: [],
   };
 }
 
@@ -82,6 +83,10 @@ export function creerSouhait(benevoleId: Id, missionId: Id, preference: SouhaitM
 
 export function creerAffinite(benevoleAId: Id, benevoleBId: Id, type: Affinite['type']): Affinite {
   return {benevoleAId, benevoleBId, type};
+}
+
+export function creerArtiste(debut: number, fin: number, partiel: Partial<Artiste> = {}): Artiste {
+  return {id: idSuivant(), debut, fin, ...partiel};
 }
 
 /** Une ligne de disponibilité par quart d'heure sur [debut, fin). */

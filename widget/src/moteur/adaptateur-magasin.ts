@@ -42,6 +42,7 @@ import {couvertureBesoin, missionsCouvertesParGroupe, positionsDuGroupe} from '.
 import type {Magasin} from '../store';
 import type {
   Affinite as AffiniteUI,
+  Artiste as ArtisteUI,
   Benevole as BenevoleUI,
   Besoin as BesoinUI,
   Groupe as GroupeUI,
@@ -55,7 +56,7 @@ import type {
 import {classerCandidats as moteurClasserCandidats} from './affectation';
 import {detecterAnomalies as moteurDetecterAnomalies} from './anomalies';
 import type {
-  Affinite, Benevole, Besoin, DonneesPlanning, Groupe, Mission, NiveauPreferenceMission, Place, PositionGroupe,
+  Affinite, Artiste, Benevole, Besoin, DonneesPlanning, Groupe, Mission, NiveauPreferenceMission, Place, PositionGroupe,
   RaisonInEligibilite, SousCreneau,
 } from './types';
 
@@ -100,6 +101,10 @@ function versPlace(p: PlaceUI): Place {
   return {id: p.id, groupeId: p.Groupe, rang: p.Rang, benevoleId: p.Benevole, origine: p.Origine, verrouillee: p.Verrouillee, score: p.Score};
 }
 
+function versArtiste(a: ArtisteUI): Artiste {
+  return {id: a.id, debut: a.Debut, fin: a.Fin};
+}
+
 function versAffinite(a: AffiniteUI): Affinite {
   return {benevoleAId: a.Benevole_A, benevoleBId: a.Benevole_B, type: a.Type};
 }
@@ -119,6 +124,7 @@ export function versDonneesPlanning(m: Magasin): DonneesPlanning {
     })),
     souhaitsMissions: m.souhaitsMissions.map((s) => ({benevoleId: s.Benevole, missionId: s.Mission, preference: s.Preference})),
     affinites: m.affinites.map(versAffinite),
+    artistes: m.artistes.map(versArtiste),
   };
 }
 

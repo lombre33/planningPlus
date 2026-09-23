@@ -14,6 +14,7 @@
 
 import type {
   Affinite,
+  Artiste,
   Benevole,
   Besoin,
   Disponibilite,
@@ -127,6 +128,10 @@ function souhaitMissionDepuisLigne(l: LigneBrute): SouhaitMission {
   };
 }
 
+function artisteDepuisLigne(l: LigneBrute): Artiste {
+  return {id: l.id, debut: decoderNombre(l.Debut), fin: decoderNombre(l.Fin)};
+}
+
 function affiniteDepuisLigne(l: LigneBrute): Affinite {
   return {
     benevoleAId: decoderNombre(l.Benevole_A),
@@ -156,6 +161,7 @@ export function construireDonneesPlanning(document: DocumentBrut): DonneesPlanni
     disponibilites: zipperTable(document.Disponibilites).map(disponibiliteDepuisLigne),
     souhaitsMissions: zipperTable(document.Souhaits_missions).map(souhaitMissionDepuisLigne),
     affinites: zipperTable(document.Affinites).map(affiniteDepuisLigne),
+    artistes: zipperTable(document.Artistes).map(artisteDepuisLigne),
   };
 }
 

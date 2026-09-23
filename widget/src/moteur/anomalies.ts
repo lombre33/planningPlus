@@ -9,7 +9,7 @@
 import type {Contexte} from './contexte';
 import {construireContexte} from './contexte';
 import {construireEtatOccupation, heuresActuelles} from './eligibilite';
-import {quartsDIntervalle, seChevauchent} from './temps';
+import {peutVoirArtiste, quartsDIntervalle, seChevauchent} from './temps';
 import type {Anomalie, DonneesPlanning, Id, ParametresAlgorithme} from './types';
 import {GRAVITE_PAR_CODE, PARAMETRES_PAR_DEFAUT} from './types';
 
@@ -64,6 +64,10 @@ function detecterEffectifs(ctx: Contexte): Anomalie[] {
 /** Souhait refusé, indisponibilité et conflit artiste : un passage par place pourvue et par position de son groupe. */
 function detecterViolationsParPlace(ctx: Contexte): Anomalie[] {
   const anomalies: Anomalie[] = [];
+  // Sert à juger la règle des 30 minutes (§7.2, 2026-09-23) sur l'ensemble
+  // du planning déjà occupé par le bénévole, pas seulement ce sous-créneau
+  // — même état que `evaluerEligibilite`, pour ne jamais diverger de lui.
+  const etat = construireEtatOccupation(ctx);
   for (const place of ctx.donnees.places) {
     if (place.benevoleId == null) { continue; }
     const benevoleId = place.benevoleId;
@@ -94,7 +98,25 @@ function detecterViolationsParPlace(ctx: Contexte): Anomalie[] {
       if (sousCreneau) {
         const quarts = quartsDIntervalle(sousCreneau.debut, sousCreneau.fin, ctx.parametres.pasSecondes);
         const indisponible = quarts.some((q) => (disponibilitesDuBenevole?.get(q)?.statut ?? 'Indisponible') === 'Indisponible');
-        const conflitArtiste = quarts.some((q) => disponibilitesDuBenevole?.get(q)?.statut === 'Artiste');
+        // Règle des 30 minutes (§7.2, 2026-09-23, même calcul que
+        // `evaluerEligibilite`) : un souhait sans artiste identifié reste un
+        // conflit par défaut, faute de passage à juger.
+        const artistesSouhaites = new Set<Id>();
+        let conflitArtiste = false;
+        for (const q of quarts) {
+          const dispo = disponibilitesDuBenevole?.get(q);
+          if (dispo?.statut !== 'Artiste') { continue; }
+          if (dispo.artisteId != null) { artistesSouhaites.add(dispo.artisteId); } else { conflitArtiste = true; }
+        }
+        if (artistesSouhaites.size > 0) {
+          const quartsOccupes = etat.quartsParBenevole.get(benevoleId) ?? new Set<number>();
+          for (const artisteId of artistesSouhaites) {
+            const artiste = ctx.artisteParId.get(artisteId);
+            if (!artiste || !peutVoirArtiste(artiste.debut, artiste.fin, quartsOccupes, ctx.parametres.pasSecondes)) {
+              conflitArtiste = true;
+            }
+          }
+        }
         if (indisponible) {
           anomalies.push({
             code: 'indisponibilite',

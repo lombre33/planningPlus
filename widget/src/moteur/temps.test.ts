@@ -1,5 +1,8 @@
 import {describe, expect, it} from 'vitest';
-import {heuresDIntervalle, quartsDIntervalle, seChevauchent} from './temps';
+import {
+  heuresDIntervalle, minutesLibresConsecutives, peutVoirArtiste, quartsDIntervalle,
+  SEUIL_MINUTES_VOIR_ARTISTE, seChevauchent,
+} from './temps';
 import {h} from './test-fixtures';
 
 describe('quartsDIntervalle', () => {
@@ -61,5 +64,54 @@ describe('seChevauchent', () => {
   it('détecte un recouvrement qui franchit minuit', () => {
     // Une soirée 22h→2h et une autre plage qui commence à 1h la nuit suivante.
     expect(seChevauchent(h(0, 22), h(1, 2), h(1, 1), h(1, 3))).toBe(true);
+  });
+});
+
+describe('minutesLibresConsecutives', () => {
+  it('rend la durée totale quand rien n’est occupé', () => {
+    const libre = minutesLibresConsecutives(h(0, 20), h(0, 21), new Set(), 900);
+    expect(libre).toBe(60);
+  });
+
+  it('rend 0 quand tout est occupé', () => {
+    const quarts = new Set([h(0, 20), h(0, 20, 15), h(0, 20, 30), h(0, 20, 45)]);
+    expect(minutesLibresConsecutives(h(0, 20), h(0, 21), quarts, 900)).toBe(0);
+  });
+
+  it('garde le plus long segment, pas le total, quand le libre est scindé en deux', () => {
+    // 20h-21h, occupé seulement à 20h30 : deux segments de 30 min de part et d'autre.
+    const quarts = new Set([h(0, 20, 30)]);
+    expect(minutesLibresConsecutives(h(0, 20), h(0, 21), quarts, 900)).toBe(30);
+  });
+
+  it('ne compte pas un segment scindé en plusieurs petits morceaux comme un seul grand', () => {
+    // 20h-21h, occupé à 20h15 et 20h45 : trois segments de 15 min, jamais 30 d'affilée.
+    const quarts = new Set([h(0, 20, 15), h(0, 20, 45)]);
+    expect(minutesLibresConsecutives(h(0, 20), h(0, 21), quarts, 900)).toBe(15);
+  });
+});
+
+describe('peutVoirArtiste', () => {
+  it(`accepte un passage d'une heure avec ${SEUIL_MINUTES_VOIR_ARTISTE} minutes libres d'affilée`, () => {
+    // 20h-21h, occupé seulement la première demi-heure : 30 min libres d'affilée à la fin.
+    const quarts = new Set([h(0, 20), h(0, 20, 15)]);
+    expect(peutVoirArtiste(h(0, 20), h(0, 21), quarts, 900)).toBe(true);
+  });
+
+  it('refuse un passage avec moins de 30 minutes libres, même scindées en plusieurs segments', () => {
+    // Libre seulement à 20h00 et 20h45 (2×15 min), jamais 30 d'affilée.
+    const quarts = new Set([h(0, 20, 15), h(0, 20, 30)]);
+    expect(peutVoirArtiste(h(0, 20), h(0, 21), quarts, 900)).toBe(false);
+  });
+
+  it("accepte un passage plus court que le seuil dès qu'il est entièrement libre", () => {
+    // Passage de 20 minutes seulement, entièrement libre.
+    expect(peutVoirArtiste(h(0, 20), h(0, 20, 20), new Set(), 900)).toBe(true);
+  });
+
+  it("refuse un passage plus court que le seuil s'il n'est pas entièrement libre", () => {
+    // Passage de 20 minutes, occupé sur un seul quart d'heure.
+    const quarts = new Set([h(0, 20)]);
+    expect(peutVoirArtiste(h(0, 20), h(0, 20, 20), quarts, 900)).toBe(false);
   });
 });

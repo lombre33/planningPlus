@@ -17,6 +17,7 @@ import {genererFestival as genererFestivalBrut} from '../../../dev/seed/generate
 import {calculerAffectation} from './affectation';
 import type {
   Affinite,
+  Artiste,
   Benevole,
   Besoin,
   Disponibilite,
@@ -53,6 +54,7 @@ interface Festival {
     Mission: RefGrist; Sous_creneau: RefGrist;
     Effectif_min: number; Effectif_max: number; Taille_groupe: number;
   }>;
+  Artistes: Array<{Nom: string; Lieu: RefGrist; Debut: number; Fin: number}>;
   Groupes: Array<{Code: string; Taille: number; Equipe: RefGrist}>;
   Positions_groupe: Array<{Groupe: RefGrist; Besoin: RefGrist}>;
   Places: Array<{Groupe: RefGrist; Rang: number; Benevole: RefGrist; Origine: string; Verrouillee: boolean; Score: number}>;
@@ -113,6 +115,9 @@ function versDonneesPlanning(festival: ReturnType<typeof genererFestival>): Donn
     effectifMax: b.Effectif_max,
     tailleGroupe: b.Taille_groupe,
   }));
+  const artistes: Artiste[] = festival.Artistes.map((a, i): Artiste => ({
+    id: i + 1, debut: a.Debut, fin: a.Fin,
+  }));
   const groupes: Groupe[] = festival.Groupes.map((g, i): Groupe => ({
     id: i + 1, code: g.Code, taille: g.Taille, equipeId: ref(g.Equipe),
   }));
@@ -147,7 +152,7 @@ function versDonneesPlanning(festival: ReturnType<typeof genererFestival>): Donn
 
   return {
     benevoles, missions, sousCreneaux, besoins, groupes, positionsGroupe, places,
-    disponibilites, souhaitsMissions, affinites,
+    disponibilites, souhaitsMissions, affinites, artistes,
   };
 }
 

@@ -121,6 +121,17 @@ export interface Affinite {
   type: TypeAffinite;
 }
 
+/**
+ * Le passage d'un artiste sur scène : juste ce dont le moteur a besoin pour
+ * la règle « voir au moins 30 minutes de l'artiste » (§7.2, demande
+ * d'Antoine du 2026-09-23) — voir `temps.ts` `peutVoirArtiste`.
+ */
+export interface Artiste {
+  id: Id;
+  debut: number;
+  fin: number;
+}
+
 /** L'état complet dont le moteur a besoin pour calculer ou ajuster un planning. */
 export interface DonneesPlanning {
   benevoles: Benevole[];
@@ -133,6 +144,7 @@ export interface DonneesPlanning {
   disponibilites: Disponibilite[];
   souhaitsMissions: SouhaitMission[];
   affinites: Affinite[];
+  artistes: Artiste[];
 }
 
 /**
@@ -299,7 +311,12 @@ export interface ExplicationScore {
   competencesOk: boolean;
   /** L'équipe du candidat correspond-elle à celle du groupe ? `null` si l'une des deux n'est pas renseignée. */
   equipeCorrespond: boolean | null;
-  /** Le candidat veut voir un artiste pendant au moins un quart d'heure occupé par le groupe. */
+  /**
+   * L'affecter ici lui ferait manquer un artiste qu'il voulait voir : moins
+   * de 30 minutes libres, d'affilée, restant sur le passage de cet artiste
+   * une fois ce groupe occupé (passage entier s'il dure moins de 30 minutes
+   * — §7.2, revu le 2026-09-23, voir `temps.ts` `peutVoirArtiste`).
+   */
   conflitArtiste: boolean;
   /** Souhaits du candidat pour chacune des missions distinctes servies par le groupe. */
   souhaitsMission: {missionId: Id; preference: NiveauPreferenceMission | null}[];

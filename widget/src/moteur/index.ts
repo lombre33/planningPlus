@@ -17,6 +17,7 @@
 export type {
   Affinite,
   Anomalie,
+  Artiste,
   Benevole,
   Besoin,
   CandidatClasse,
@@ -62,4 +63,7 @@ export {
 
 export {detecterAnomalies} from './anomalies';
 
-export {heuresDIntervalle, quartsDIntervalle, seChevauchent} from './temps';
+export {
+  heuresDIntervalle, minutesLibresConsecutives, peutVoirArtiste, quartsDIntervalle,
+  SEUIL_MINUTES_VOIR_ARTISTE, seChevauchent,
+} from './temps';
