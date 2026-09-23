@@ -1,7 +1,9 @@
 # PlanningPlus — Cahier des charges
 
-**Version :** v1.8 (retrait du mode démonstration, 2026-09-23 : le widget ne
-vise plus que l'intérieur d'un document Grist — voir aussi v1.6, v1.7)
+**Version :** v1.9 (§7.2 précisé, 2026-09-23 : la disponibilité est une
+contrainte dure et non un objectif arbitrable, l'ordre des objectifs n'est
+pas paramétrable, et l'objectif 7 « binôme souhaité » est confirmé et câblé
+— voir aussi v1.6, v1.7, v1.8)
 **Statut :** structure et règles validées (§6.3, §7.5) ; développement agile
 par incréments courts depuis le 2026-09-22 (§11.1) ; document tenu à jour au
 fil du code plutôt qu'en fin de sprint, sur consigne du coordinateur
@@ -479,7 +481,7 @@ disponibilité explicitement déclarée ouvre la possibilité d'une affectation.
 | --- | --- |
 | `Versions` | `Nom`, `Date`, `Auteur`, `Commentaire`, `Instantane` (données sérialisées) |
 | `Journal` | `Date`, `Auteur`, `Action`, `Place` (→), `Avant`, `Apres`, `Motif` |
-| `Parametres` | `Cle`, `Valeur` (ordre et poids des objectifs du §7.2, heure de coupure du jour de festival du §6.2, etc. — voir §5.4) |
+| `Parametres` | `Cle`, `Valeur` (poids des objectifs du §7.2 — l'ordre, lui, n'est pas paramétrable — heure de coupure du jour de festival du §6.2, etc. — voir §5.4) |
 
 `Versions.Instantane` est la seule donnée volontairement non lisible nativement ;
 elle sert à revenir à un état antérieur et à comparer deux planifications. Le
@@ -512,11 +514,19 @@ plutôt que d'être bloqué. Décision Antoine, 2026-09-21 ; voir §6.3 et §7.4
    quelqu'un contre son souhait reste sous-staffé plutôt que forcé ; c'est
    remonté dans la vue anomalies, pas un échec silencieux. *(Décision Antoine,
    2026-09-21 : « sous-staffée » plutôt que « forcer la mission ».)*
-2. **Disponibilité et artistes souhaités** : ne pas placer un bénévole sur un
-   quart d'heure où il a déclaré vouloir voir un artiste. Préférence très
-   forte mais non absolue : violable seulement si aucune autre solution
-   n'existe pour couvrir un besoin, et alors signalée. *(Décision Antoine,
-   2026-09-21 : « préférence forte », pas une interdiction absolue.)*
+2. **Artiste souhaité** : ne pas placer un bénévole sur un quart d'heure où il
+   a déclaré vouloir voir un artiste. Préférence très forte mais non absolue :
+   violable seulement si aucune autre solution n'existe pour couvrir un
+   besoin, et alors signalée. *(Décision Antoine, 2026-09-21 : « préférence
+   forte », pas une interdiction absolue.)* La disponibilité elle-même n'est
+   **pas** dans cette liste d'objectifs : c'est une contrainte dure (§7.1,
+   règle 2), jamais arbitrée contre ce qui suit — un bénévole indisponible
+   sur le quart d'heure n'est même pas candidat. *(Précision du 2026-09-23,
+   à la lecture du moteur par le fil Algorithme d'affectation : le libellé
+   précédent de cet objectif, « Disponibilité et artistes souhaités »,
+   laissait croire que la disponibilité s'arbitrait comme une préférence ;
+   seul le souhait « voir un artiste » l'est — voir `evaluerEligibilite`
+   dans `widget/src/moteur/eligibilite.ts`.)*
 3. **Missions souhaitées** : privilégier les missions que le bénévole
    souhaite, ne jamais l'affecter à une mission qu'il a explicitement
    écartée (voir objectif 1).
@@ -534,11 +544,29 @@ plutôt que d'être bloqué. Décision Antoine, 2026-09-21 ; voir §6.3 et §7.4
 6. **Continuité** : limiter le nombre de missions différentes par bénévole. Ne
    s'applique plus à la stabilité des binômes, portée nativement par le
    mécanisme des indicatifs (§6.3) plutôt que par un objectif d'algorithme.
+7. **Binôme souhaité** : bonus/malus de score entre deux bénévoles qui ont
+   demandé à être « Ensemble » ou à s'« Éviter » (table `Affinites`, §6.4),
+   pour départager des candidats par ailleurs à égalité. Distinct de
+   l'objectif 6 : celui-ci porte sur la stabilité de l'indicatif dans son
+   ensemble d'un macro-créneau à l'autre, pas sur un souhait nommé entre deux
+   bénévoles précis. *(Ce score existait dans le moteur depuis tôt en
+   développement, câblé en miroir de la table `Affinites` mais jamais
+   confirmé par Antoine ni écrit ici — question posée le 2026-09-21 par le
+   fil « Vues disponibilités et terrain ». Confirmé par Antoine le
+   2026-09-23 : c'est sa priorité « le fait d'être avec le bénévole
+   souhaité », citée dans le chat du projet à 15h45. Câblage effectif du
+   score le même jour par le fil Algorithme d'affectation, qui jusque-là le
+   calculait sans jamais le lire — voir `versDonneesPlanning` dans
+   `widget/src/moteur/adaptateur-magasin.ts`.)*
 
-L'ordre et les poids relatifs sont paramétrables, et le paramétrage est stocké
-dans le document pour être audité et rejoué, dans une table dédiée
-(`Parametres` : `Cle`, `Valeur` — voir aussi §5.4) plutôt que dans le code du
-widget, pour rester visible et modifiable sans déploiement.
+Les poids relatifs de ces sept objectifs sont paramétrables ; leur **ordre**,
+lui, est une propriété structurelle de l'algorithme fixée par ce document,
+pas par le paramétrage. *(Précision du 2026-09-23 : `ParametresAlgorithme`
+ne rend réglables que les poids, jamais l'ordre — voir
+`widget/src/moteur/types.ts`.)* Le paramétrage des poids est stocké dans le
+document pour être audité et rejoué, dans une table dédiée (`Parametres` :
+`Cle`, `Valeur` — voir aussi §5.4) plutôt que dans le code du widget, pour
+rester visible et modifiable sans déploiement.
 
 ### 7.3 Propriétés attendues
 
