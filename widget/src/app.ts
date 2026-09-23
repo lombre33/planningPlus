@@ -37,9 +37,9 @@ interface DefinitionOnglet {
   sousTitre: string;
   montrer: (container: HTMLElement, m: Magasin) => () => void;
   /** Cette vue s'accroche au filtre global par jour de festival
-   *  (`Magasin.jourSelectionne`), monté par `demarrerApp` juste au-dessus
-   *  d'elle — Missions et Artistes pour l'instant, les autres vues s'y
-   *  accrocheront une par une (demande d'Antoine du 2026-09-23). */
+   *  (`Magasin.macroCreneauSelectionne`), monté par `demarrerApp` juste
+   *  au-dessus d'elle — Missions et Artistes pour l'instant, les autres
+   *  vues s'y accrocheront une par une (demande d'Antoine du 2026-09-23). */
   filtreJour?: boolean;
   /** Rang dans le parcours utilisateur de référence (§1.1 du cahier des
    *  charges, cf. Antoine, 2026-09-21) : 1 créneaux, 2 sous-créneaux/
@@ -191,6 +191,13 @@ export function demarrerApp(racine: HTMLElement, magasin: Magasin, sourceLibelle
       const cleAujourdhui = cleJourFestival(Math.floor(Date.now() / 1000));
       const jourParDefaut = jours.find((j) => j.cle === cleAujourdhui) ?? jours[0]!;
       magasin.selectionnerMacroCreneau(jourParDefaut.macros[0]!.id);
+      return;
+    }
+    if (jours.length === 0 && magasin.macroCreneauSelectionne !== null) {
+      // Plus aucun macro-créneau (dernier supprimé) : ne pas laisser un id
+      // fantôme en mémoire, même si son absence de conséquence visible
+      // (le cas `jour` indéfini est déjà géré par la vue) le rendait inoffensif.
+      magasin.selectionnerMacroCreneau(null);
       return;
     }
     bandeauJours.append(
