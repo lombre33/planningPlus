@@ -19,6 +19,7 @@
 import type {Groupe, Id, Mission, SousCreneau} from '../domain/types';
 import {
   type Index, couvertureBesoin, indexer, placesDuGroupe, positionsDuGroupe, regrouperParJour,
+  sousCreneauxApplicables,
 } from '../logic/derive';
 import type {Magasin} from '../store';
 import {fermerPanneau, h, ouvrirPanneau, vider} from '../ui/dom';
@@ -92,18 +93,6 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
     } else {
       fermerPanneau();
     }
-  }
-
-  /** Sous-créneaux qu'une mission voit sur le jour affiché (§6.2, « communs,
-   *  avec exceptions ») : dès qu'elle a au moins un sous-créneau à elle, ceux-
-   *  ci remplacent entièrement les communs pour elle — jamais un mélange.
-   *  Duplique volontairement `views/grille.ts` (même règle, même 4 lignes) —
-   *  demande envoyée au coordinateur pour l'extraire en code partagé plutôt
-   *  que de la réécrire ici indépendamment ; à retirer une fois posée. */
-  function sousCreneauxApplicables(mission: Mission, tousSousCreneaux: SousCreneau[]): SousCreneau[] {
-    const propres = tousSousCreneaux.filter((sc) => sc.Mission === mission.id);
-    const base = propres.length > 0 ? propres : tousSousCreneaux.filter((sc) => sc.Mission === null);
-    return base.slice().sort((a, b) => a.Debut - b.Debut);
   }
 
   /** Colonnes de la grille : l'union des sous-créneaux applicables à chaque
