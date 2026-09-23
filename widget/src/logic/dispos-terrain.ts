@@ -17,7 +17,10 @@ import {epochDebutJourFestival, HEURE_COUPURE_JOUR_FESTIVAL, libelleJourCourt, P
 
 export {cleJourFestival} from '../temps';
 
-function quartsEntre(debut: Epoch, fin: Epoch): Epoch[] {
+/** Les quarts d'heure d'une plage [debut, fin[ (borne haute exclue). Exportée
+ *  pour `logic/import-disponibilites.ts`, qui en a besoin pour étaler une
+ *  réponse macro-créneau ou un passage d'artiste sur ses quarts d'heure. */
+export function quartsEntre(debut: Epoch, fin: Epoch): Epoch[] {
   const quarts: Epoch[] = [];
   for (let t = debut; t < fin; t += PAS_SECONDES) { quarts.push(t); }
   return quarts;
