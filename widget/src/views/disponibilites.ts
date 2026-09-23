@@ -249,6 +249,12 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
       colonnesBenevoles === 'erreur'
         ? h('p', {class: 'pill pill--warn'}, "Impossible de lire la liste de tes colonnes pour l'instant — tape l'identifiant à la main ci-dessous.")
         : null,
+      Array.isArray(colonnesBenevoles) && colonnesEligibles(colonnesBenevoles).length === 0
+        ? h('p', {class: 'empty'},
+            "Aucune colonne de ta table Bénévoles ne peut être associée ici : ajoute-lui d'abord, dans Grist, une "
+            + 'colonne de texte ou de choix (par exemple les souhaits d\'artistes, ou une réponse de disponibilité).',
+          )
+        : null,
       champ("Colonne des souhaits d'artistes (choix multiple)", champColonne(CLE_COLONNE_SOUHAITS_ARTISTES, "Colonne des souhaits d'artistes")),
       macrosTries.length === 0
         ? h('p', {class: 'empty'}, "Crée d'abord tes macro-créneaux (vue Agenda) pour associer une colonne de réponse par créneau.")
