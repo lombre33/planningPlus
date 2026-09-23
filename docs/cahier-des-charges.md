@@ -1,10 +1,11 @@
 # PlanningPlus — Cahier des charges
 
-**Version :** v1.11 (§8 : correctif Artistes posé (commit `3efdfec`) et
-mécanisme du filtre global par macro-créneau documenté — branché sur
-Missions, Disponibilités et Artistes au 2026-09-23, les autres vues
-restant à raccorder une par une ; v1.10 avait posé la décision, voir aussi
-v1.6 à v1.9)
+**Version :** v1.12 (§7.2 : le binôme souhaité passe objectif 2, devant
+l'artiste souhaité qui recule en objectif 7 — renversement volontaire
+d'Antoine, 2026-09-23 17h49, ce que ça implique côté moteur noté pour le
+fil Algorithme ; priorité de mission en cas de pénurie reconfirmée par
+Antoine, déjà en place et testée — v1.11 avait posé §8 : correctif Artistes
+et mécanisme du filtre global, voir aussi v1.6 à v1.10)
 **Statut :** structure et règles validées (§6.3, §7.5) ; développement agile
 par incréments courts depuis le 2026-09-22 (§11.1) ; document tenu à jour au
 fil du code plutôt qu'en fin de sprint, sur consigne du coordinateur
@@ -514,20 +515,39 @@ plutôt que d'être bloqué. Décision Antoine, 2026-09-21 ; voir §6.3 et §7.4
    (voir ci-dessous). Un besoin qui ne peut être couvert qu'en affectant
    quelqu'un contre son souhait reste sous-staffé plutôt que forcé ; c'est
    remonté dans la vue anomalies, pas un échec silencieux. *(Décision Antoine,
-   2026-09-21 : « sous-staffée » plutôt que « forcer la mission ».)*
-2. **Artiste souhaité** : ne pas placer un bénévole sur un quart d'heure où il
-   a déclaré vouloir voir un artiste. Préférence très forte mais non absolue :
-   violable seulement si aucune autre solution n'existe pour couvrir un
-   besoin, et alors signalée. *(Décision Antoine, 2026-09-21 : « préférence
-   forte », pas une interdiction absolue.)* La disponibilité elle-même n'est
-   **pas** dans cette liste d'objectifs : c'est une contrainte dure (§7.1,
-   règle 2), jamais arbitrée contre ce qui suit — un bénévole indisponible
-   sur le quart d'heure n'est même pas candidat. *(Précision du 2026-09-23,
-   à la lecture du moteur par le fil Algorithme d'affectation : le libellé
-   précédent de cet objectif, « Disponibilité et artistes souhaités »,
-   laissait croire que la disponibilité s'arbitrait comme une préférence ;
-   seul le souhait « voir un artiste » l'est — voir `evaluerEligibilite`
-   dans `widget/src/moteur/eligibilite.ts`.)*
+   2026-09-21 : « sous-staffée » plutôt que « forcer la mission ».)* *(Antoine,
+   2026-09-23 17h49, a redemandé ce même comportement en le motivant par le
+   risque de pénurie de bénévoles à un instant donné — il était déjà en place
+   avant sa demande : `Mission.Priorite` (Critique/Normale/Confort), réglable
+   à la création d'une mission (`grille.ts`), comportement de pénurie prouvé
+   par test (`affectation.test.ts`, « sert le groupe de priorité Critique
+   avant celui de priorité Confort quand un seul candidat existe pour les
+   deux »). Il manque un écran pour changer la priorité d'une mission déjà
+   créée — Missions étant gelée (voir consignes en vigueur), ce champ se
+   modifie en attendant directement dans la table `Missions` du document
+   Grist.)*
+2. **Binôme souhaité** : bonus/malus de score entre deux bénévoles qui ont
+   demandé à être « Ensemble » ou à s'« Éviter » (table `Affinites`, §6.4).
+   Distinct de l'objectif 6 : celui-ci porte sur la stabilité de l'indicatif
+   dans son ensemble d'un macro-créneau à l'autre, pas sur un souhait nommé
+   entre deux bénévoles précis. *(Confirmé par Antoine le 2026-09-23 15h45 ;
+   câblage effectif le jour même par le fil Algorithme d'affectation, qui
+   jusque-là calculait ce score sans jamais le lire — voir
+   `versDonneesPlanning` dans `widget/src/moteur/adaptateur-magasin.ts`.)*
+
+   **Passe devant l'artiste souhaité (objectif 7) depuis le 2026-09-23
+   17h49** : « par défaut on va valider le binôme souhaité » (Antoine). Ceci
+   **renverse** l'ordre validé le 2026-09-21, où l'artiste souhaité tenait
+   cette place — renversement daté et volontaire, pas une correction d'une
+   erreur de rédaction. *(Note pour le fil Algorithme d'affectation : les
+   deux mécanismes ne sont aujourd'hui pas au même niveau structurel. Un
+   conflit avec un artiste sépare déjà les candidats en deux pools —
+   `propre`/`secours` — tenté l'un après l'autre avant même le calcul du
+   score (`affectation.ts`) ; le binôme souhaité n'est qu'un terme du score
+   (`poids.affiniteEnsemble: 0.1` / `affiniteEviter: -0.1`, contre
+   `poids.conflitArtiste: -0.4`, voir `moteur/types.ts`). Un simple réglage
+   des poids ne suffira probablement pas à faire passer le binôme devant
+   dans tous les cas : la partition en deux pools reste à revoir.)*
 3. **Missions souhaitées** : privilégier les missions que le bénévole
    souhaite, ne jamais l'affecter à une mission qu'il a explicitement
    écartée (voir objectif 1).
@@ -545,20 +565,21 @@ plutôt que d'être bloqué. Décision Antoine, 2026-09-21 ; voir §6.3 et §7.4
 6. **Continuité** : limiter le nombre de missions différentes par bénévole. Ne
    s'applique plus à la stabilité des binômes, portée nativement par le
    mécanisme des indicatifs (§6.3) plutôt que par un objectif d'algorithme.
-7. **Binôme souhaité** : bonus/malus de score entre deux bénévoles qui ont
-   demandé à être « Ensemble » ou à s'« Éviter » (table `Affinites`, §6.4),
-   pour départager des candidats par ailleurs à égalité. Distinct de
-   l'objectif 6 : celui-ci porte sur la stabilité de l'indicatif dans son
-   ensemble d'un macro-créneau à l'autre, pas sur un souhait nommé entre deux
-   bénévoles précis. *(Ce score existait dans le moteur depuis tôt en
-   développement, câblé en miroir de la table `Affinites` mais jamais
-   confirmé par Antoine ni écrit ici — question posée le 2026-09-21 par le
-   fil « Vues disponibilités et terrain ». Confirmé par Antoine le
-   2026-09-23 : c'est sa priorité « le fait d'être avec le bénévole
-   souhaité », citée dans le chat du projet à 15h45. Câblage effectif du
-   score le même jour par le fil Algorithme d'affectation, qui jusque-là le
-   calculait sans jamais le lire — voir `versDonneesPlanning` dans
-   `widget/src/moteur/adaptateur-magasin.ts`.)*
+7. **Artiste souhaité** : ne pas placer un bénévole sur un quart d'heure où il
+   a déclaré vouloir voir un artiste. Préférence forte mais non absolue :
+   violable seulement si aucune autre solution n'existe pour couvrir un
+   besoin, et alors signalée. *(Décision Antoine, 2026-09-21 : « préférence
+   forte », pas une interdiction absolue.)* La disponibilité elle-même n'est
+   **pas** dans cette liste d'objectifs : c'est une contrainte dure (§7.1,
+   règle 2) — un bénévole indisponible sur le quart d'heure n'est même pas
+   candidat. *(Précision du 2026-09-23, à la lecture du moteur par le fil
+   Algorithme d'affectation : le libellé précédent de cet objectif,
+   « Disponibilité et artistes souhaités », laissait croire que la
+   disponibilité s'arbitrait comme une préférence ; seul le souhait « voir
+   un artiste » l'est — voir `evaluerEligibilite` dans
+   `widget/src/moteur/eligibilite.ts`.)* **Objectif 2 jusqu'au 2026-09-23
+   17h49, désormais après le binôme souhaité (objectif 2) — voir la note de
+   renversement ci-dessus, y compris ce que ça implique côté moteur.**
 
 Les poids relatifs de ces sept objectifs sont paramétrables ; leur **ordre**,
 lui, est une propriété structurelle de l'algorithme fixée par ce document,
