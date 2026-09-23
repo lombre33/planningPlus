@@ -334,6 +334,80 @@ describe('panneau : supprimer une position (retour Antoine 2026-09-23 : jusqu’
   });
 });
 
+describe('couleur de la puce par créneau (retour Antoine 2026-09-23, point 3)', () => {
+  function benevole(id: number, equipeId: number): Modele['benevoles'][number] {
+    return {
+      id, Nom: `Bénévole ${id}`, Contact: '', Equipe: equipeId, Competences: [],
+      Quota_heures_min: 0, Quota_heures_max: 40, Statut: 'Actif', Notes: '',
+    };
+  }
+
+  function modele(): Modele {
+    return {
+      ...modeleVide(),
+      equipes: [{id: 1, Nom: 'Bars', Couleur: '#c00', Referent: null, Notes: ''}],
+      benevoles: [benevole(1, 1), benevole(2, 1)],
+      missions: [
+        {id: 1, Nom: 'Sécurité scène', Description: '', Lieu: 1, Equipe: 1, Priorite: 'Critique', Competences_requises: []},
+        {id: 2, Nom: 'Buvette', Description: '', Lieu: 1, Equipe: 1, Priorite: 'Normale', Competences_requises: []},
+      ],
+      lieux: [{id: 1, Nom: 'Scène A', Description: ''}],
+      macroCreneaux: [{id: 1, Nom: 'Vendredi', Debut: 1_700_000_000, Fin: 1_700_030_000}],
+      sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: '10h-11h', Debut: 1_700_000_000, Fin: 1_700_003_600}],
+    };
+  }
+
+  function classesPuce(): string[] {
+    return Array.from(document.querySelectorAll('.groupe-chip')).map((el) => el.className);
+  }
+
+  it('non pourvu sur une mission Critique : rouge (groupe-chip--critique)', async () => {
+    const m = new Magasin(modele());
+    await m.creerBesoin(1, 1);
+    await m.creerGroupeSurBesoin(m.besoins[0]!.id);
+    montrerIndicatifs(container, m);
+
+    expect(classesPuce()[0]).toContain('groupe-chip--critique');
+    expect(classesPuce()[0]).not.toContain('groupe-chip--pourvu');
+  });
+
+  it('non pourvu sur une mission Normale : orange (groupe-chip--non-pourvu)', async () => {
+    const m = new Magasin(modele());
+    await m.creerBesoin(2, 1);
+    await m.creerGroupeSurBesoin(m.besoins[0]!.id);
+    montrerIndicatifs(container, m);
+
+    expect(classesPuce()[0]).toContain('groupe-chip--non-pourvu');
+    expect(classesPuce()[0]).not.toContain('groupe-chip--critique');
+  });
+
+  it('les deux places pourvues, même sur une mission Critique : vert (groupe-chip--pourvu)', async () => {
+    const m = new Magasin(modele());
+    await m.creerBesoin(1, 1);
+    const groupeId = await m.creerGroupeSurBesoin(m.besoins[0]!.id);
+    const [p1, p2] = m.places.filter((p) => p.Groupe === groupeId);
+    await m.assignerPlace(p1!.id, 1);
+    await m.assignerPlace(p2!.id, 2);
+    montrerIndicatifs(container, m);
+
+    expect(classesPuce()[0]).toContain('groupe-chip--pourvu');
+    expect(classesPuce()[0]).not.toContain('groupe-chip--critique');
+    expect(classesPuce()[0]).not.toContain('groupe-chip--non-pourvu');
+  });
+
+  it('une seule des deux places pourvue reste un trou (pas vert)', async () => {
+    const m = new Magasin(modele());
+    await m.creerBesoin(2, 1);
+    const groupeId = await m.creerGroupeSurBesoin(m.besoins[0]!.id);
+    const [p1] = m.places.filter((p) => p.Groupe === groupeId);
+    await m.assignerPlace(p1!.id, 1);
+    montrerIndicatifs(container, m);
+
+    expect(classesPuce()[0]).toContain('groupe-chip--non-pourvu');
+    expect(classesPuce()[0]).not.toContain('groupe-chip--pourvu');
+  });
+});
+
 describe('créneaux propres à une mission (retour Antoine 2026-09-23, §6.2 : « communs, avec exceptions »)', () => {
   // Mission A (id 1) a matérialisé ses deux créneaux propres (décalés de
   // 30 min par rapport aux communs, comme le fait un glisser dans la vue

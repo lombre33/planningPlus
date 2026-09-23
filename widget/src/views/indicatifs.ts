@@ -313,11 +313,20 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
     });
   }
 
+  /** Couleur de la puce (retour Antoine du 2026-09-23, point 3) : verte
+   *  pourvue, rouge non pourvue sur une mission Critique, orange non pourvue
+   *  sur Normale/Confort — tranché créneau par créneau, puisque c'est le
+   *  créneau (donc son besoin, donc sa mission) qui porte la priorité, pas
+   *  l'indicatif dans l'absolu. « Pourvue » exige les deux places du binôme
+   *  (choix du coordinateur ; une place manquante reste un trou), pas
+   *  seulement l'une d'elles. */
   function puceGroupe(ix: Index, groupe: Groupe, besoinId: Id): HTMLElement {
     const equipe = ix.equipe.get(groupe.Equipe)!;
     const places = placesDuGroupe(m, groupe.id);
     const vide = places.every((p) => p.Benevole == null);
-    const incomplete = places.some((p) => p.Benevole == null);
+    const pourvu = places.every((p) => p.Benevole != null);
+    const mission = ix.mission.get(ix.besoin.get(besoinId)!.Mission)!;
+    const statut = pourvu ? 'pourvu' : mission.Priorite === 'Critique' ? 'critique' : 'non-pourvu';
     const noms = places.map((p) => (p.Benevole != null ? courtNom(ix.benevole.get(p.Benevole)!.Nom) : '—')).join(' · ');
 
     let ordre: number | null = null;
@@ -327,10 +336,9 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
     }
 
     const chip = h('button', {
-      class: `groupe-chip${vide ? ' groupe-chip--vide' : ''}`
+      class: `groupe-chip groupe-chip--${statut}${vide ? ' groupe-chip--vide' : ''}`
         + `${groupeSelectionne === groupe.id ? ' groupe-chip--selectionnee' : ''}`
-        + `${groupeSelectionne != null && groupeSelectionne !== groupe.id ? ' groupe-chip--estompee' : ''}`
-        + `${incomplete ? ' groupe-chip--sous-effectif' : ''}`,
+        + `${groupeSelectionne != null && groupeSelectionne !== groupe.id ? ' groupe-chip--estompee' : ''}`,
       type: 'button',
       draggable: 'true',
       // Composition en toutes lettres au survol/panneau, pas dans la puce

@@ -1442,7 +1442,12 @@ table.grille .mission-cell .lieu {
 
 .groupe-chip--estompee { opacity: 0.4; }
 
-.groupe-chip--sous-effectif { border-color: var(--warn); }
+/* Couleur par créneau (retour Antoine du 2026-09-23, point 3) : verte
+   pourvue, rouge non pourvue sur une mission Critique, orange non pourvue
+   sur Normale/Confort — voir `puceGroupe`, `views/indicatifs.ts`. */
+.groupe-chip--pourvu { background: var(--ok-tint); border-color: var(--ok); }
+.groupe-chip--critique { background: var(--danger-tint); border-color: var(--danger); }
+.groupe-chip--non-pourvu { background: var(--warn-tint); border-color: var(--warn); }
 
 .groupe-chip__ordre {
   flex: 0 0 auto;
