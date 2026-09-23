@@ -1299,6 +1299,11 @@ table.grille .mission-cell .lieu {
   flex-direction: column;
   gap: 5px;
   width: 100%;
+  /* Sans ça, un enfant non compressible (le code d'une puce, par exemple)
+     peut forcer cette cellule — et donc le bloc de frise qui la porte — à
+     déborder plus large que la largeur qui lui est réellement allouée,
+     jusque sur le bloc voisin (retour Connexion Grist 2026-09-23). */
+  min-width: 0;
   box-sizing: border-box;
   min-height: 52px;
   padding: 2px;
@@ -1336,10 +1341,40 @@ table.grille .mission-cell .lieu {
   font-size: 10.5px;
   color: var(--text-faint);
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 5px;
   min-height: 12px;
+  min-width: 0;
+}
+
+/* Sur un bloc de 15-30 min, ni "min 2" ni "≈1 binôme" ne tiennent en
+   entier. Un retour à la ligne libre (`overflow-wrap`) a été essayé et
+   rejeté : sans mot assez court où couper, le texte s'empile caractère
+   par caractère et gonfle la hauteur du bloc à plus de 300px (mesuré en
+   Chromium réel) — pire que le rognage d'origine. Une troncature en
+   ellipse sur une seule ligne reste illisible en entier mais garde une
+   hauteur normale ; le texte complet reste dans `title`
+   (`indicatif-cell__reco`) ou visible dès que le bloc est un peu plus
+   large. */
+.indicatif-cell__eff span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* `.besoin-cell__libelle` (l'horaire du créneau) est en `white-space:
+   nowrap` pour son usage d'origine, la cellule de tableau `.besoin-cell`
+   (108px, largement assez large). Dans la frise Indicatifs, un bloc de
+   15-30 min est plus étroit que l'horaire lui-même : tronquer en ellipse
+   plutôt que déborder hors du bloc (disparaît sous l'overflow:hidden) ou
+   passer à la ligne (même défaut de hauteur explosive que ci-dessus).
+   Scopé à `.indicatif-cell` : la frise Missions, qui réutilise la même
+   classe sans ce conteneur, n'est pas concernée. */
+.indicatif-cell .besoin-cell__libelle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .indicatif-cell__eff--sous {
@@ -1362,12 +1397,13 @@ table.grille .mission-cell .lieu {
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   width: 100%;
+  min-width: 0;
   background: var(--surface-muted);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 4px 7px;
+  padding: 3px 5px;
   cursor: grab;
 }
 
@@ -1422,22 +1458,27 @@ table.grille .mission-cell .lieu {
   justify-content: center;
 }
 
+/* Icône seule (pas un bouton en toutes lettres) et visible au repos, jamais
+   seulement au survol : sur un bloc de 15-30 min, ce qui n'est pas visible
+   sans survoler n'existe pas pour l'utilisateur (retour Connexion Grist
+   2026-09-23, après que l'élargissement au survol a recouvert le bloc
+   voisin plutôt que d'aider). */
 .ajouter-binome {
   align-self: flex-start;
-  font-size: 10.5px;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  line-height: 1;
   color: var(--text-faint);
   background: transparent;
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius-sm);
-  padding: 2px 7px;
+  padding: 0;
   cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.12s ease;
-}
-
-.indicatif-cell:hover .ajouter-binome,
-.indicatif-cell:focus-within .ajouter-binome {
-  opacity: 1;
 }
 
 .ajouter-binome:hover {

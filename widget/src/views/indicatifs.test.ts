@@ -100,7 +100,8 @@ describe('planning complet : missions et besoin, mais zone volontairement vide',
     m.creerBesoin(1, 1);
     montrerIndicatifs(container, m);
     expect(container.querySelector('.groupe-chip')).toBeNull();
-    expect(container.querySelector('.ajouter-binome')?.textContent).toBe('+ positionner un binôme');
+    expect(container.querySelector('.ajouter-binome')?.textContent).toBe('+');
+    expect(container.querySelector('.ajouter-binome')?.getAttribute('title')).toBe('Positionner un binôme sur ce besoin (§6.3)');
   });
 
   it('indique le nombre de binômes recommandé (effectif ÷ 2, arrondi au-dessus), sans jamais en créer', () => {

@@ -229,8 +229,11 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
       // L'horaire n'a plus d'en-tête de colonne partagé (frise, retour
       // Antoine 2026-09-23) : chaque bloc porte le sien, comme la vue
       // Missions le fait déjà pour ses propres blocs.
-      h('span', {class: 'besoin-cell__libelle'}, sc.Libelle),
-      h('div', {class: `indicatif-cell__eff${sousEffectif ? ' indicatif-cell__eff--sous' : ''}`},
+      h('span', {class: 'besoin-cell__libelle', title: sc.Libelle}, sc.Libelle),
+      h('div', {
+        class: `indicatif-cell__eff${sousEffectif ? ' indicatif-cell__eff--sous' : ''}`,
+        title: `min ${c.besoin.Effectif_min} · ≈${binomesRecommandes} binôme${binomesRecommandes > 1 ? 's' : ''}`,
+      },
         h('span', null, `min ${c.besoin.Effectif_min}`),
         h('span', {
           class: 'indicatif-cell__reco',
@@ -241,12 +244,18 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
       ...c.groupesPositionnes.map((g) => puceGroupe(ix, g.groupe, besoinId)),
     );
 
+    // Icône seule, jamais un bouton en toutes lettres (retour Connexion
+    // Grist 2026-09-23 : « + positionner un binôme » mesure ~55px, plus
+    // large qu'un bloc de 15-30 min même déplié — et un survol qui doit
+    // rester lisible AU REPOS ne peut pas dépendre d'un élargissement, qui
+    // recouvre alors le bloc voisin). Le texte complet reste en `title`.
     cellule.append(h('button', {
       class: 'ajouter-binome', type: 'button',
-      style: c.groupesPositionnes.length === 0 ? {opacity: '1'} : undefined,
-      title: c.groupesPositionnes.length === 0 ? undefined : 'Ajouter un binôme supplémentaire sur ce besoin (§6.3)',
+      title: c.groupesPositionnes.length === 0
+        ? 'Positionner un binôme sur ce besoin (§6.3)'
+        : 'Ajouter un binôme supplémentaire sur ce besoin (§6.3)',
       onclick: (e: Event) => { e.stopPropagation(); selectionnerNouveauGroupe(besoinId); },
-    }, c.groupesPositionnes.length === 0 ? '+ positionner un binôme' : '+ binôme'));
+    }, '+'));
 
     cellule.addEventListener('dragover', (e: DragEvent) => {
       if (groupeDeplace == null || besoinOrigineDeplace === besoinId) { return; }
