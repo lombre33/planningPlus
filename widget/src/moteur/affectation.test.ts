@@ -9,8 +9,9 @@ import {
   previsualiserDeplacement,
   repositionnerGroupe,
 } from './affectation';
-import type {DonneesPlanning} from './types';
+import type {DonneesPlanning, SouhaitMission} from './types';
 import {
+  creerAffinite,
   creerBenevole,
   creerBesoin,
   creerGroupe,
@@ -129,6 +130,68 @@ describe('calculerAffectation — conflit artiste (§7.2 objectif 2)', () => {
     // La place ciblée (celle du bénévole en conflit) doit rester vide.
     expect(resultat.propositions.some((p) => p.benevoleIdApres != null)).toBe(false);
     expect(resultat.anomalies.some((a) => a.code === 'conflit_artiste')).toBe(false);
+  });
+});
+
+describe('calculerAffectation — priorité 3 : binôme souhaité (affinité)', () => {
+  /** Un binôme (groupe de taille 2) : `dejaLa` tient déjà une place, verrouillée
+   *  pour rester fixe pendant le calcul ; l'autre place doit choisir entre
+   *  `souhaite` (affinité « Ensemble » avec `dejaLa`) et `autre` (aucune
+   *  affinité). `pref` fixe leur souhait de mission respectif et `dispoSouhaite`
+   *  la disponibilité de `souhaite` — de quoi isoler l'effet de l'affinité seule,
+   *  puis la faire céder devant la disponibilité (contrainte dure, §7.1) et le
+   *  souhait de mission (objectif de poids le plus fort, §7.2 objectif 3). */
+  function scenarioBinome(options: {
+    prefSouhaite?: SouhaitMission['preference']; prefAutre?: SouhaitMission['preference']; dispoSouhaite?: boolean;
+  } = {}) {
+    const mission = creerMission();
+    const sousCreneau = creerSousCreneau(h(0, 10), h(0, 11));
+    const besoin = creerBesoin(mission.id, sousCreneau.id, {effectifMin: 2, effectifMax: 2, tailleGroupe: 2});
+    const groupe = creerGroupe({taille: 2});
+    const position = creerPositionGroupe(groupe.id, besoin.id);
+    const dejaLa = creerBenevole();
+    const souhaite = creerBenevole();
+    const autre = creerBenevole();
+    const placeDejaLa = creerPlace(groupe.id, 1, {benevoleId: dejaLa.id, verrouillee: true});
+    const placeAPourvoir = creerPlace(groupe.id, 2);
+
+    const souhaitsMissions = [];
+    if (options.prefSouhaite) { souhaitsMissions.push(creerSouhait(souhaite.id, mission.id, options.prefSouhaite)); }
+    if (options.prefAutre) { souhaitsMissions.push(creerSouhait(autre.id, mission.id, options.prefAutre)); }
+
+    const d = donnees({
+      benevoles: [dejaLa, souhaite, autre], missions: [mission], sousCreneaux: [sousCreneau], besoins: [besoin],
+      groupes: [groupe], positionsGroupe: [position], places: [placeDejaLa, placeAPourvoir],
+      disponibilites: [
+        ...disponibilitesIntervalle(dejaLa.id, h(0, 10), h(0, 11)),
+        ...(options.dispoSouhaite === false ? [] : disponibilitesIntervalle(souhaite.id, h(0, 10), h(0, 11))),
+        ...disponibilitesIntervalle(autre.id, h(0, 10), h(0, 11)),
+      ],
+      souhaitsMissions,
+      affinites: [creerAffinite(dejaLa.id, souhaite.id, 'Ensemble')],
+    });
+    return {d, placeAPourvoir, souhaite, autre};
+  }
+
+  it('affecte le bénévole en affinité « Ensemble » plutôt qu\'un autre à égalité sur le reste', () => {
+    const {d, placeAPourvoir, souhaite} = scenarioBinome();
+    const resultat = calculerAffectation(d);
+    const proposition = resultat.propositions.find((p) => p.placeId === placeAPourvoir.id);
+    expect(proposition).toMatchObject({benevoleIdApres: souhaite.id});
+  });
+
+  it("cède devant la disponibilité (§7.1, contrainte dure) : le binôme souhaité mais indisponible n'est jamais candidat", () => {
+    const {d, placeAPourvoir, autre} = scenarioBinome({dispoSouhaite: false});
+    const resultat = calculerAffectation(d);
+    const proposition = resultat.propositions.find((p) => p.placeId === placeAPourvoir.id);
+    expect(proposition).toMatchObject({benevoleIdApres: autre.id});
+  });
+
+  it("cède devant un souhait de mission plus fort (§7.2 objectif 3, poids supérieur à l'affinité)", () => {
+    const {d, placeAPourvoir, autre} = scenarioBinome({prefSouhaite: 'Réticent', prefAutre: 'Souhaite fortement'});
+    const resultat = calculerAffectation(d);
+    const proposition = resultat.propositions.find((p) => p.placeId === placeAPourvoir.id);
+    expect(proposition).toMatchObject({benevoleIdApres: autre.id});
   });
 });
 
