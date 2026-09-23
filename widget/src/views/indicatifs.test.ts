@@ -151,3 +151,76 @@ describe('planning complet : missions et besoin, mais zone volontairement vide',
     });
   });
 });
+
+describe('glisser un binôme entre deux besoins (retour Antoine 2026-09-23 : Alt = ajouter au lieu de déplacer)', () => {
+  function modele(): Modele {
+    return {
+      ...modeleVide(),
+      equipes: [{id: 1, Nom: 'Bars', Couleur: '#c00', Referent: null, Notes: ''}],
+      missions: [{
+        id: 1, Nom: 'Buvette', Description: '', Lieu: 1, Equipe: 1,
+        Priorite: 'Normale', Competences_requises: [],
+      }],
+      lieux: [{id: 1, Nom: 'Scène A', Description: ''}],
+      macroCreneaux: [{id: 1, Nom: 'Vendredi', Debut: 1_700_000_000, Fin: 1_700_030_000}],
+      sousCreneaux: [
+        {id: 1, Macro_creneau: 1, Mission: null, Libelle: '10h-11h', Debut: 1_700_000_000, Fin: 1_700_003_600},
+        {id: 2, Macro_creneau: 1, Mission: null, Libelle: '11h-12h', Debut: 1_700_003_600, Fin: 1_700_007_200},
+      ],
+    };
+  }
+
+  async function preparer(): Promise<{m: Magasin; groupeId: number}> {
+    const m = new Magasin(modele());
+    await m.creerBesoin(1, 1);
+    await m.creerBesoin(1, 2);
+    const groupeId = await m.creerGroupeSurBesoin(m.besoins[0]!.id);
+    montrerIndicatifs(container, m);
+    return {m, groupeId};
+  }
+
+  // jsdom ne fournit pas `DragEvent`/`DataTransfer` : un `MouseEvent` porte
+  // déjà tout ce que nos écouteurs lisent (`altKey`, `preventDefault`), donc
+  // sert de doublure fidèle sans dépendre d'une API absente de l'environnement
+  // de test.
+  function glisser(source: Element, cible: Element, altKey: boolean): void {
+    const options = {bubbles: true, cancelable: true, altKey};
+    source.dispatchEvent(new MouseEvent('dragstart', options));
+    cible.dispatchEvent(new MouseEvent('dragover', options));
+    cible.dispatchEvent(new MouseEvent('drop', options));
+    source.dispatchEvent(new MouseEvent('dragend', options));
+  }
+
+  it('sans Alt : déplace (retire la position d’origine)', async () => {
+    const {m, groupeId} = await preparer();
+    const cellules = container.querySelectorAll('.indicatif-cell');
+    glisser(cellules[0]!.querySelector('.groupe-chip')!, cellules[1]!, false);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(m.positionsGroupe.filter((p) => p.Groupe === groupeId)).toHaveLength(1);
+    const apres = container.querySelectorAll('.indicatif-cell');
+    expect(apres[0]!.querySelector('.groupe-chip')).toBeNull();
+    expect(apres[1]!.querySelector('.groupe-chip')).not.toBeNull();
+  });
+
+  it('Alt+glisser : ajoute une position sur la case cible sans retirer l’origine', async () => {
+    const {m, groupeId} = await preparer();
+    const cellules = container.querySelectorAll('.indicatif-cell');
+    glisser(cellules[0]!.querySelector('.groupe-chip')!, cellules[1]!, true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(m.positionsGroupe.filter((p) => p.Groupe === groupeId)).toHaveLength(2);
+    const apres = container.querySelectorAll('.indicatif-cell');
+    expect(apres[0]!.querySelector('.groupe-chip')).not.toBeNull();
+    expect(apres[1]!.querySelector('.groupe-chip')).not.toBeNull();
+  });
+
+  it('Alt+glisser déposé sur la case d’origine ne fait rien (comme sans Alt)', async () => {
+    const {m, groupeId} = await preparer();
+    const cellules = container.querySelectorAll('.indicatif-cell');
+    glisser(cellules[0]!.querySelector('.groupe-chip')!, cellules[0]!, true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(m.positionsGroupe.filter((p) => p.Groupe === groupeId)).toHaveLength(1);
+  });
+});
