@@ -140,10 +140,29 @@ export function montrerArtistes(container: HTMLElement, m: Magasin): () => void 
         }));
       return {
         id: idLigne,
+        // Bouton dédié sur la ligne, même geste que « + créneau » sur une
+        // ligne de mission (`grille.ts`) : le clic sur la piste (ci-dessous,
+        // `onClicPiste`) reste possible, mais un bouton visible ne dépend
+        // pas de trouver une zone de piste encore libre à cliquer (retour
+        // d'Antoine du 2026-09-23 16h59 : « la vue artiste ne permet
+        // toujours pas d'ajouter un artiste sur la même UX/UI que la vue
+        // missions »).
         libelle: h('span', null,
           h('span', {class: 'nom'}, groupe.nom),
           h('span', {class: 'lieu'},
             groupe.passages.length > 1 ? `${groupe.passages.length} passages` : groupe.passages[0]!.lieuNom),
+          h('button', {
+            class: 'btn btn--ghost btn--sm timeline__label__bouton-propre', type: 'button',
+            title: 'Ajouter un nouveau passage pour cet artiste',
+            onclick: () => {
+              const artisteReference = groupe.passages[0]!.artiste;
+              ouvrirModalCreationPassagePourArtiste(m, groupe.nom, {
+                lieu: artisteReference.Lieu,
+                debut: axe.debut,
+                fin: axe.debut + DUREE_PASSAGE_PAR_DEFAUT_SECONDES,
+              });
+            },
+          }, '+ passage'),
         ),
         blocs,
       };
