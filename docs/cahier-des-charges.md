@@ -1,12 +1,10 @@
 # PlanningPlus — Cahier des charges
 
-**Version :** v1.15 (§6.3 : sémantique des couleurs de la puce Indicatifs
-— pourvu exige les deux places, tranché définitivement par Antoine le
-2026-09-24 — v1.14 avait posé §7.1 : l'exclusivité « un indicatif par jour » est
-câblée (commit `7fc0b30`) ; §7.5 : bouton de réinitialisation complète et
-listing bénévoles limité aux dispos du jour, tous deux livrés le
-2026-09-23 par le fil Algorithme ; historique des versions précédentes
-dans `git log` sur ce fichier)
+**Version :** v1.16 (§7.5 : l'algorithme ne tourne plus que dans le contexte
+d'un seul jour, jamais le festival entier en une fois — décision Antoine,
+2026-09-24 4h38 ; écart connu signalé au fil Algorithme, le bouton
+« Lancer l'algorithme » n'est pas encore restreint au jour affiché ;
+historique des versions précédentes dans `git log` sur ce fichier)
 **Statut :** structure et règles validées (§6.3, §7.5) ; développement agile
 par incréments courts depuis le 2026-09-22 (§11.1) ; document tenu à jour au
 fil du code plutôt qu'en fin de sprint, sur consigne du coordinateur
@@ -695,11 +693,20 @@ provisoires en attendant le branchement du vrai moteur du fil Algorithme. Ce
 qui suit reste la référence sur ce que ce parcours doit couvrir,
 indépendamment de l'interface retenue.
 
-1. **Lancement de l'algorithme**, sur tout le planning ou sur un périmètre
-   choisi (une mission, un macro-créneau — §7.3). Il ne crée jamais de
-   `Groupe` ni de `Positions_groupe` : il remplit les `Places` déjà
-   positionnées (§6.3), en respectant les contraintes dures (§7.1) et en
-   pondérant selon les objectifs (§7.2).
+1. **Lancement de l'algorithme, toujours dans le contexte d'un seul jour**
+   (macro-créneau) : il ne balaie jamais le festival entier en une fois, les
+   affectations se gèrent jour par jour. *(Décision Antoine, 2026-09-24
+   4h38 — complète l'exclusivité par jour du §7.1 : cohérent, puisqu'un
+   indicatif ne peut de toute façon tenir qu'un seul jour à la fois. Annule
+   la formulation précédente, qui laissait entendre un lancement sur tout
+   le planning.)* Il ne crée jamais de `Groupe` ni de `Positions_groupe` :
+   il remplit les `Places` déjà positionnées (§6.3) pour le jour affiché, en
+   respectant les contraintes dures (§7.1) et en pondérant selon les
+   objectifs (§7.2). *(Écart connu au 2026-09-24 : le bouton « Lancer
+   l'algorithme » de la vue Affectation appelle aujourd'hui
+   `lancerAlgorithme(m)` sans restreindre le périmètre au jour affiché — il
+   couvre encore tout le festival en une fois. À corriger par le fil
+   Algorithme pour se conformer à cette décision.)*
 2. **Réinitialisation complète**, un geste distinct du lancement : vide et
    déverrouille chaque `Place` de tout le festival, corrections manuelles
    verrouillées comprises — y compris une place verrouillée restée vide,
