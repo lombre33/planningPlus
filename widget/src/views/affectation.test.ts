@@ -157,6 +157,41 @@ function construireModeleDeuxJours(): Modele {
   };
 }
 
+describe('montrerAffectation — point 4 de la nuit (2026-09-24, 4h34) : voir/désaffecter depuis le roster', () => {
+  it("affiche la mission du jour d'un bénévole affecté quand on clique sur sa carte, et le désaffecte au clic sur « Désaffecter »", async () => {
+    const modele = construireModeleUnBesoin();
+    modele.places = [{...modele.places[0]!, Benevole: 1, Origine: 'Manuel'}];
+    const m = new Magasin(modele);
+    const container = document.createElement('div');
+    montrerAffectation(container, m);
+
+    const roster = container.querySelector('.roster-card') as HTMLElement;
+    roster.click();
+    await tick();
+
+    expect(container.textContent).toContain('Affecté(e) : Accueil — ACC1');
+
+    const bouton = Array.from(container.querySelectorAll('button')).find((b) => b.textContent === 'Désaffecter') as HTMLButtonElement;
+    bouton.click();
+    await tick();
+
+    expect(m.places.find((p) => p.id === 1)?.Benevole).toBeNull();
+  });
+
+  it("affiche « non affecté(e) » pour un bénévole libre aujourd'hui, sans bouton Désaffecter", async () => {
+    const m = new Magasin(construireModeleUnBesoin());
+    const container = document.createElement('div');
+    montrerAffectation(container, m);
+
+    const roster = container.querySelector('.roster-card') as HTMLElement;
+    roster.click();
+    await tick();
+
+    expect(container.textContent).toContain("Non affecté(e) aujourd'hui.");
+    expect(Array.from(container.querySelectorAll('button')).some((b) => b.textContent === 'Désaffecter')).toBe(false);
+  });
+});
+
 describe("montrerAffectation — l'algorithme ne recalcule que le jour affiché (2026-09-24, confirmé par Antoine)", () => {
   it("remplit la place vide du jour affiché mais laisse intacte une place Manuelle non verrouillée d'un autre jour", async () => {
     const m = new Magasin(construireModeleDeuxJours());

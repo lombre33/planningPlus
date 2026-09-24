@@ -60,6 +60,15 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
   // le dernier geste manuel — remis à zéro à toute navigation qui n'est pas
   // ce geste (jour, case à cocher, algorithme, réinitialisation).
   let besoinsIdsGardesVisibles = new Set<Id>();
+  // Point 4 de la nuit (2026-09-24, 4h34) : « quand je clique sur un
+  // bénévole j'aimerais voir où il est affecté... et pouvoir le
+  // désaffecter ». Un seul roster peut être ouvert à la fois.
+  let benevoleIdOuvert: Id | null = null;
+
+  function basculerRosterOuvert(benevoleId: Id): void {
+    benevoleIdOuvert = benevoleIdOuvert === benevoleId ? null : benevoleId;
+    rafraichir();
+  }
 
   function messageDepuisDiff(base: string, diff: DiffAnomalies): {texte: string; ton: Ton} {
     if (diff.creees.length === 0 && diff.resolues.length === 0) { return {texte: base, ton: 'ok'}; }
@@ -412,7 +421,9 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
     );
   }
 
-  function rosterCard(ix: Index, benevole: Benevole): Node {
+  function rosterCard(
+    ix: Index, benevole: Benevole, placeCeJour: {place: Place; libelle: string} | undefined,
+  ): Node {
     // `ix.equipe.get(...)` peut renvoyer `undefined` si l'équipe du bénévole
     // ne correspond plus à aucune équipe existante (référence orpheline,
     // vue confirmée cassée sur le banc le 2026-09-23 : ça faisait planter
@@ -421,10 +432,14 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
     const equipe = ix.equipe.get(benevole.Equipe);
     const actif = benevole.Statut === 'Actif';
     const heures = heuresAffectees(m, ix, benevole.id);
-    return h('div', {
+    const ouvert = benevoleIdOuvert === benevole.id;
+    const carte = h('div', {
       class: `roster-card${actif ? '' : ' roster-card--absent'}`,
       draggable: actif ? 'true' : 'false',
-      title: actif ? 'Glissez sur une place pour affecter' : 'Absent : non affectable',
+      title: actif
+        ? "Glissez sur une place pour affecter, cliquez pour voir son affectation du jour"
+        : 'Absent : non affectable',
+      onclick: () => basculerRosterOuvert(benevole.id),
       ondragstart: actif ? (e: Event) => {
         const dt = (e as DragEvent).dataTransfer;
         dt?.setData(TYPE_BENEVOLE, String(benevole.id));
@@ -434,6 +449,26 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
       h('span', {class: 'dot', style: {background: equipe?.Couleur ?? 'var(--text-faint)'}}),
       h('span', {class: 'roster-card__nom'}, benevole.Nom),
       h('span', {class: 'roster-card__meta mono'}, `${formatHeures(heures)}/${benevole.Quota_heures_max} h`),
+    );
+    if (!ouvert) { return carte; }
+
+    return h('div', {class: 'roster-card-wrap', style: {display: 'flex', flexDirection: 'column'}},
+      carte,
+      h('div', {
+        class: 'roster-card__detail',
+        style: {
+          padding: '6px 10px', fontSize: '13px', display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between', gap: '8px', background: 'var(--bg-subtle, #f4f4f5)', borderRadius: '4px',
+        },
+      },
+        placeCeJour
+          ? h('span', null, `Affecté(e) : ${placeCeJour.libelle}`)
+          : h('span', {class: 'view__intro', style: {margin: '0'}}, "Non affecté(e) aujourd'hui."),
+        placeCeJour ? h('button', {
+          class: 'btn btn--sm btn--ghost', type: 'button',
+          onclick: (e: Event) => { e.stopPropagation(); void viderPlace(placeCeJour.place); },
+        }, 'Désaffecter') : null,
+      ),
     );
   }
 
@@ -476,6 +511,20 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
         .map((p) => p.Benevole),
     );
     const nonAffectesCeJour = new Set(m.benevoles.filter((b) => !benevolesAffectesCeJour.has(b.id)).map((b) => b.id));
+
+    // Point 4 de la nuit : place du jour affiché pour un bénévole donné (au
+    // plus une, l'exclusivité par jour du moteur en garantit une seule en
+    // temps normal — une correction manuelle pourrait en théorie en créer
+    // plusieurs, la première trouvée suffit pour ce qu'affiche le roster).
+    const placeCeJourParBenevole = new Map<Id, {place: Place; libelle: string}>();
+    for (const place of m.places) {
+      if (place.Benevole == null || placeCeJourParBenevole.has(place.Benevole)) { continue; }
+      const position = positionsDuGroupe(m, ix, place.Groupe).find(({sousCreneau}) => sousCreneauxDuJour.has(sousCreneau.id));
+      if (!position) { continue; }
+      const mission = ix.mission.get(position.besoin.Mission);
+      const groupe = ix.groupe.get(place.Groupe);
+      placeCeJourParBenevole.set(place.Benevole, {place, libelle: `${mission?.Nom ?? '?'} — ${groupe?.Code ?? '?'}`});
+    }
     const rosterFiltreEquipeRecherche = m.benevoles
       .filter((b) => equipeFiltre === 'toutes' || b.Equipe === equipeFiltre)
       .filter((b) => rechercheRoster.trim() === '' || b.Nom.toLowerCase().includes(rechercheRoster.trim().toLowerCase()))
@@ -507,7 +556,7 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
       h('div', {class: 'agenda__toolbar', style: {marginBottom: '12px'}},
         ...jours.map((j, i) => h('button', {
           class: `btn btn--sm${i === jourIndex ? ' btn--primary' : ''}`, type: 'button',
-          onclick: () => { jourIndex = i; besoinsIdsGardesVisibles = new Set(); rafraichir(); },
+          onclick: () => { jourIndex = i; besoinsIdsGardesVisibles = new Set(); benevoleIdOuvert = null; rafraichir(); },
         }, j.libelle.split(' ').slice(0, 1).join(' '))),
         h('label', {class: 'field', style: {flexDirection: 'row', alignItems: 'center', gap: '6px'}},
           h('input', {
@@ -554,7 +603,7 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
                 : rosterFiltreEquipeRecherche.length === 0
                   ? 'Aucun bénévole ne correspond à ce filtre.'
                   : `Aucun bénévole disponible ${jour ? jour.libelle.toLowerCase() : 'ce jour'} : le roster n'affiche que ceux qui ont déclaré au moins une disponibilité ce jour-là.`)
-              : roster.map((b) => rosterCard(ix, b)),
+              : roster.map((b) => rosterCard(ix, b, placeCeJourParBenevole.get(b.id))),
           ),
         ),
         h('div', {class: 'affectation__board'},
