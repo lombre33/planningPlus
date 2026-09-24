@@ -20,7 +20,7 @@ import type {Benevole, Besoin, Groupe, Id, Place} from '../domain/types';
 import {TYPE_BENEVOLE_DRAG as TYPE_BENEVOLE, TYPE_PLACE_DRAG as TYPE_PLACE} from '../logic/dnd-types';
 import {
   type Candidat, type Index, benevolesDisponiblesCeJour, couvertureBesoin, heuresAffectees, indexer,
-  positionsDuGroupe, quartsDuJour, regrouperParJour,
+  missionsCouvertesParGroupe, positionsDuGroupe, quartsDuJour, regrouperParJour,
 } from '../logic/derive';
 import {type DiffAnomalies, apercuAffectation, apercuEchange, verifierDepot} from '../logic/glisser-deposer';
 import {lancerAlgorithme, type ResumeLancement} from '../logic/moteur-pont';
@@ -236,16 +236,27 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
   }
 
   /**
-   * Désaffecter depuis le roster (point 4 de la nuit, 2026-09-24) : à la
-   * différence de `viderPlace` (le « vider » du tableau, qui verrouille
-   * volontairement une place laissée vide à la main — un choix voulu, voir
-   * `corrigerPlace` dans le moteur), ce geste vise à libérer le bénévole
-   * pour le réaffecter « facilement » ailleurs (mot d'Antoine). La place ne
-   * doit donc pas rester verrouillée-vide : ni un glisser-déposer, ni un
-   * nouveau lancement de l'algorithme ne pourraient plus jamais la
-   * reprendre — même piège que celui qu'évite déjà `executerReinitialisation`
-   * en déverrouillant, signalé par le coordinateur avant que ça atterrisse.
+   * Vide une place puis la déverrouille aussitôt — à la différence de
+   * `viderPlace` (le « vider » du tableau, qui verrouille volontairement une
+   * place laissée vide à la main, un choix voulu, voir `corrigerPlace` dans
+   * le moteur), tout geste du roster (point 4 de la nuit, 2026-09-24 : voir/
+   * désaffecter/réaffecter) vise à libérer le bénévole pour le réaffecter
+   * « facilement » ailleurs (mot d'Antoine). La place ne doit donc jamais
+   * rester verrouillée-vide : ni un glisser-déposer, ni un nouveau lancement
+   * de l'algorithme ne pourraient plus la reprendre — même piège que celui
+   * qu'évite déjà `executerReinitialisation` en déverrouillant, signalé par
+   * le coordinateur avant que ça atterrisse. Une seule fonction pour ce
+   * comportement : `desaffecterDepuisRoster` et `changerIndicatifDepuisRoster`
+   * (choix « Aucun » du dropdown) s'appuient toutes les deux dessus plutôt
+   * que de le répéter chacune à sa façon.
    */
+  async function libererPlaceEtDeverrouiller(place: Place): Promise<{ok: true} | {ok: false; raison: string}> {
+    const resultat = await m.assignerPlace(place.id, null);
+    if (!resultat.ok) { return resultat; }
+    await m.basculerVerrouillage(place.id);
+    return {ok: true};
+  }
+
   async function desaffecterDepuisRoster(place: Place): Promise<void> {
     if (place.Verrouillee) {
       dernierMessage = {texte: 'Place verrouillée : déverrouillez-la avant de la modifier.', ton: 'danger'};
@@ -253,10 +264,48 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
       return;
     }
     const diff = apercuAffectation(m, place.id, null);
-    const resultat = await m.assignerPlace(place.id, null);
+    const resultat = await libererPlaceEtDeverrouiller(place);
     if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; rafraichir(); return; }
-    await m.basculerVerrouillage(place.id);
     dernierMessage = messageDepuisDiff('Désaffecté(e), place libre pour un glisser-déposer ou un nouveau lancement.', diff);
+    rafraichir();
+  }
+
+  /**
+   * Colonne indicatif du roster, demandée par Antoine en plus du point 4
+   * (2026-09-24 5h02) : choisir « Aucun » désaffecte (même chemin que
+   * `desaffecterDepuisRoster` ci-dessus, un seul comportement pour les
+   * deux — demandé explicitement par le coordinateur) ; choisir un autre
+   * indicatif du jour affiché y cherche une place encore ouverte (vide, non
+   * verrouillée). Un indicatif déjà complet reste dans la liste (pour rester
+   * visible) mais refuse avec un message clair plutôt qu'échouer en
+   * silence ou évincer quelqu'un d'autre à sa place.
+   */
+  async function changerIndicatifDepuisRoster(
+    benevole: Benevole, placeActuelle: Place | undefined, nouveauGroupeId: Id | null,
+  ): Promise<void> {
+    if (placeActuelle?.Verrouillee) {
+      dernierMessage = {texte: 'Place verrouillée : déverrouillez-la avant de la modifier.', ton: 'danger'};
+      rafraichir();
+      return;
+    }
+    if (nouveauGroupeId == null) {
+      if (placeActuelle) { await desaffecterDepuisRoster(placeActuelle); }
+      return;
+    }
+    const placeCible = m.places.find((p) => p.Groupe === nouveauGroupeId && p.Benevole == null && !p.Verrouillee);
+    if (!placeCible) {
+      dernierMessage = {texte: 'Indicatif complet : libérez-y une place avant de le choisir.', ton: 'danger'};
+      rafraichir();
+      return;
+    }
+    if (placeActuelle) {
+      const resultatLiberation = await libererPlaceEtDeverrouiller(placeActuelle);
+      if (!resultatLiberation.ok) { dernierMessage = {texte: resultatLiberation.raison, ton: 'danger'}; rafraichir(); return; }
+    }
+    const diff = apercuAffectation(m, placeCible.id, benevole.id);
+    const resultat = await m.assignerPlace(placeCible.id, benevole.id);
+    if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; rafraichir(); return; }
+    dernierMessage = messageDepuisDiff(`${benevole.Nom} réaffecté(e).`, diff);
     rafraichir();
   }
 
@@ -448,7 +497,7 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
 
   function rosterCard(
     ix: Index, benevole: Benevole, placeCeJour: {place: Place; libelle: string} | undefined,
-    groupeIdsOuvertsCeJour: readonly Id[],
+    groupeIdsOuvertsCeJour: readonly Id[], groupesDuJourTries: readonly {id: Id; code: string; libelle: string}[],
   ): Node {
     // `ix.equipe.get(...)` peut renvoyer `undefined` si l'équipe du bénévole
     // ne correspond plus à aucune équipe existante (référence orpheline,
@@ -475,6 +524,27 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
       h('span', {class: 'dot', style: {background: equipe?.Couleur ?? 'var(--text-faint)'}}),
       h('span', {class: 'roster-card__nom'}, benevole.Nom),
       h('span', {class: 'roster-card__meta mono'}, `${formatHeures(heures)}/${benevole.Quota_heures_max} h`),
+      // Colonne indicatif (demande d'Antoine, 2026-09-24 5h02, en plus du
+      // clic-pour-voir ci-dessus) : « Aucun » en tête, puis les indicatifs
+      // du jour affiché par ordre alphabétique — stopPropagation partout
+      // pour ne pas aussi basculer le panneau du clic sur la carte, et sur
+      // mousedown en plus de click : une carte `draggable` peut sinon voler
+      // l'interaction avant qu'un <select> imbriqué ne la reçoive.
+      h('select', {
+        class: 'roster-card__indicatif',
+        title: 'Changer son indicatif du jour affiché',
+        onclick: (e: Event) => e.stopPropagation(),
+        onmousedown: (e: Event) => e.stopPropagation(),
+        onchange: (e: Event) => {
+          const valeur = (e.target as HTMLSelectElement).value;
+          void changerIndicatifDepuisRoster(benevole, placeCeJour?.place, valeur === '' ? null : Number(valeur));
+        },
+      },
+        h('option', {value: '', selected: placeCeJour == null}, 'Aucun'),
+        ...groupesDuJourTries.map((g) => h('option', {
+          value: String(g.id), selected: placeCeJour?.place.Groupe === g.id,
+        }, g.libelle)),
+      ),
     );
     if (!ouvert) { return carte; }
 
@@ -562,6 +632,24 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
         .filter((p) => positionsDuGroupe(m, ix, p.Groupe).some(({sousCreneau}) => sousCreneauxDuJour.has(sousCreneau.id)))
         .map((p) => p.Groupe),
     )];
+
+    // Colonne indicatif du roster (2026-09-24 5h02) : tous les indicatifs du
+    // jour affiché, complets ou non (voir changerIndicatifDepuisRoster pour
+    // ce qui se passe si l'un d'eux est complet), triés par code.
+    const groupeIdsDuJour = [...new Set(
+      m.places
+        .filter((p) => positionsDuGroupe(m, ix, p.Groupe).some(({sousCreneau}) => sousCreneauxDuJour.has(sousCreneau.id)))
+        .map((p) => p.Groupe),
+    )];
+    const groupesDuJourTries = groupeIdsDuJour
+      .map((id) => ix.groupe.get(id))
+      .filter((g): g is Groupe => g != null)
+      .map((g) => {
+        const missionId = missionsCouvertesParGroupe(m, ix, g.id)[0];
+        const missionNom = missionId != null ? ix.mission.get(missionId)?.Nom : undefined;
+        return {id: g.id, code: g.Code, libelle: `${g.Code} — ${missionNom ?? '?'}`};
+      })
+      .sort((a, b) => a.code.localeCompare(b.code, 'fr'));
     const rosterFiltreEquipeRecherche = m.benevoles
       .filter((b) => equipeFiltre === 'toutes' || b.Equipe === equipeFiltre)
       .filter((b) => rechercheRoster.trim() === '' || b.Nom.toLowerCase().includes(rechercheRoster.trim().toLowerCase()))
@@ -640,7 +728,9 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
                 : rosterFiltreEquipeRecherche.length === 0
                   ? 'Aucun bénévole ne correspond à ce filtre.'
                   : `Aucun bénévole disponible ${jour ? jour.libelle.toLowerCase() : 'ce jour'} : le roster n'affiche que ceux qui ont déclaré au moins une disponibilité ce jour-là.`)
-              : roster.map((b) => rosterCard(ix, b, placeCeJourParBenevole.get(b.id), groupeIdsOuvertsCeJour)),
+              : roster.map((b) => rosterCard(
+                ix, b, placeCeJourParBenevole.get(b.id), groupeIdsOuvertsCeJour, groupesDuJourTries,
+              )),
           ),
         ),
         h('div', {class: 'affectation__board'},

@@ -157,6 +157,112 @@ function construireModeleDeuxJours(): Modele {
   };
 }
 
+function construireModeleTroisIndicatifs(): Modele {
+  return {
+    equipes: [{id: 1, Nom: 'Bar', Couleur: '#c00', Referent: null, Notes: ''}],
+    lieux: [],
+    benevoles: [
+      {id: 1, Nom: 'Alix', Contact: '', Equipe: 1, Competences: [], Quota_heures_min: 0, Quota_heures_max: 40, Statut: 'Actif', Notes: ''},
+      {id: 2, Nom: 'Bao', Contact: '', Equipe: 1, Competences: [], Quota_heures_min: 0, Quota_heures_max: 40, Statut: 'Actif', Notes: ''},
+    ],
+    missions: [
+      {id: 1, Nom: 'Accueil', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []},
+      {id: 2, Nom: 'Bar', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []},
+      {id: 3, Nom: 'Entrée', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []},
+    ],
+    artistes: [],
+    macroCreneaux: [{id: 1, Nom: 'Samedi', Debut: 0, Fin: 900}],
+    sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: 'Cible', Debut: 0, Fin: 900}],
+    besoins: [
+      {id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 1, Taille_groupe: 1},
+      {id: 2, Mission: 2, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 1, Taille_groupe: 1},
+      {id: 3, Mission: 3, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 1, Taille_groupe: 1},
+    ],
+    groupes: [
+      {id: 1, Code: 'ACC1', Taille: 1, Equipe: 1, Notes: ''},
+      {id: 2, Code: 'BAR1', Taille: 1, Equipe: 1, Notes: ''},
+      {id: 3, Code: 'ENT1', Taille: 1, Equipe: 1, Notes: ''},
+    ],
+    positionsGroupe: [{id: 1, Groupe: 1, Besoin: 1}, {id: 2, Groupe: 2, Besoin: 2}, {id: 3, Groupe: 3, Besoin: 3}],
+    places: [
+      {id: 1, Groupe: 1, Rang: 1, Benevole: 1, Origine: 'Manuel', Verrouillee: false, Score: 0}, // Alix sur ACC1
+      {id: 2, Groupe: 2, Rang: 1, Benevole: 2, Origine: 'Manuel', Verrouillee: false, Score: 0}, // Bao sur BAR1 (complet)
+      {id: 3, Groupe: 3, Rang: 1, Benevole: null, Origine: 'Algorithme', Verrouillee: false, Score: 0}, // ENT1 ouvert
+    ],
+    disponibilites: [
+      {Benevole: 1, Quart_heure: 0, Statut: 'Disponible', Artiste: null},
+      {Benevole: 2, Quart_heure: 0, Statut: 'Disponible', Artiste: null},
+    ],
+    souhaitsMissions: [],
+    affinites: [],
+  };
+}
+
+describe('montrerAffectation — colonne indicatif du roster (2026-09-24 5h02, en plus du point 4)', () => {
+  function selectAlix(container: HTMLElement): HTMLSelectElement {
+    const carte = Array.from(container.querySelectorAll('.roster-card')).find((c) => c.textContent?.includes('Alix'))!;
+    return carte.querySelector('select') as HTMLSelectElement;
+  }
+
+  it('liste Aucun puis les indicatifs du jour par ordre alphabétique, indicatif courant présélectionné', () => {
+    const m = new Magasin(construireModeleTroisIndicatifs());
+    const container = document.createElement('div');
+    montrerAffectation(container, m);
+
+    const select = selectAlix(container);
+    const options = Array.from(select.options).map((o) => o.textContent);
+    expect(options).toEqual(['Aucun', 'ACC1 — Accueil', 'BAR1 — Bar', 'ENT1 — Entrée']);
+    expect(select.value).toBe('1'); // ACC1, l'indicatif actuel d'Alix
+  });
+
+  it('« Aucun » désaffecte et déverrouille (même comportement que le bouton Désaffecter)', async () => {
+    const m = new Magasin(construireModeleTroisIndicatifs());
+    const container = document.createElement('div');
+    montrerAffectation(container, m);
+
+    const select = selectAlix(container);
+    select.value = '';
+    select.dispatchEvent(new Event('change'));
+    await tick();
+
+    const placeAcc1 = m.places.find((p) => p.id === 1);
+    expect(placeAcc1?.Benevole).toBeNull();
+    expect(placeAcc1?.Verrouillee).toBe(false);
+  });
+
+  it('un indicatif complet refuse avec un message clair, sans évincer son occupant', async () => {
+    const m = new Magasin(construireModeleTroisIndicatifs());
+    const container = document.createElement('div');
+    montrerAffectation(container, m);
+
+    const select = selectAlix(container);
+    select.value = '2'; // BAR1, déjà pris par Bao
+    select.dispatchEvent(new Event('change'));
+    await tick();
+
+    expect(container.textContent).toContain('Indicatif complet');
+    expect(m.places.find((p) => p.id === 1)?.Benevole).toBe(1); // Alix toujours sur ACC1
+    expect(m.places.find((p) => p.id === 2)?.Benevole).toBe(2); // Bao pas évincée
+  });
+
+  it('un indicatif ouvert réaffecte : libère et déverrouille l\'ancienne place, occupe la nouvelle', async () => {
+    const m = new Magasin(construireModeleTroisIndicatifs());
+    const container = document.createElement('div');
+    montrerAffectation(container, m);
+
+    const select = selectAlix(container);
+    select.value = '3'; // ENT1, ouvert
+    select.dispatchEvent(new Event('change'));
+    await tick();
+
+    const placeAcc1 = m.places.find((p) => p.id === 1);
+    const placeEnt1 = m.places.find((p) => p.id === 3);
+    expect(placeAcc1?.Benevole).toBeNull();
+    expect(placeAcc1?.Verrouillee).toBe(false);
+    expect(placeEnt1?.Benevole).toBe(1);
+  });
+});
+
 describe('montrerAffectation — point 4 de la nuit (2026-09-24, 4h34) : voir/désaffecter depuis le roster', () => {
   it("affiche la mission du jour d'un bénévole affecté quand on clique sur sa carte, et le désaffecte au clic sur « Désaffecter »", async () => {
     const modele = construireModeleUnBesoin();

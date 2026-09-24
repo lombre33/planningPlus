@@ -87,6 +87,30 @@ export function benevolesDisponiblesCeJour(m: Magasin, quarts: Set<number>): Set
   return disponibles;
 }
 
+/**
+ * Index (bénévole, quart) -> statut, pour un test de vraie disponibilité
+ * répété sur toute une grille (feuille imprimable, 2026-09-24) sans relire
+ * `m.disponibilites` en boucle à chaque cellule. À construire une fois par
+ * rendu, à passer à `estVraimentDisponibleAuQuart`.
+ */
+export function indexerDisponibilites(m: Magasin): Map<string, StatutDisponibilite> {
+  const index = new Map<string, StatutDisponibilite>();
+  for (const d of m.disponibilites) { index.set(`${d.Benevole}:${d.Quart_heure}`, d.Statut); }
+  return index;
+}
+
+/**
+ * Vraie disponibilité à UN quart précis, même vérité que
+ * `benevolesDisponiblesCeJour` (un souhait « Artiste » n'en est pas une) et
+ * que le moteur (`moteur/eligibilite.ts`, `evaluerEligibilite` : une absence
+ * d'entrée vaut « Indisponible », jamais « Disponible » par défaut).
+ */
+export function estVraimentDisponibleAuQuart(
+  index: Map<string, StatutDisponibilite>, benevoleId: Id, quartHeure: number,
+): boolean {
+  return index.get(`${benevoleId}:${quartHeure}`) === 'Disponible';
+}
+
 // --- Créneaux et couverture ----------------------------------------------
 
 export function quartsDuSousCreneau(sc: SousCreneau): number[] {
