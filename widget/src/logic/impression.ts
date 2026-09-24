@@ -12,6 +12,8 @@ import type {Disponibilite, Epoch, Id} from '../domain/types';
 import {
   type Index, placesDuGroupe, positionsDuGroupe, quartsDuSousCreneau,
 } from './derive';
+import {peutVoirArtiste, quartsDIntervalle} from '../moteur';
+import {PAS_SECONDES} from '../temps';
 import type {Magasin} from '../store';
 
 export interface AffectationQuart {
@@ -136,6 +138,47 @@ export function affectationsQuartParMission(
       // qu'écraser, pour ne jamais faire disparaître une affectation réelle.
       const existant = parQuart.get(q);
       parQuart.set(q, {entrees: existant ? [...existant.entrees, ...entrees] : entrees});
+    }
+  }
+  return resultat;
+}
+
+/**
+ * Pour chaque bénévole, les quarts d'heure où il pourrait aller voir un
+ * artiste qu'il a lui-même déclaré vouloir voir (`Disponibilite.Statut ===
+ * 'Artiste'`, même lecture que le panneau « Artistes à voir » d'Indicatifs
+ * — `souhaitePar`, `views/indicatifs.ts` — mais ici par bénévole et non par
+ * binôme), en réutilisant tel quel `peutVoirArtiste` (`moteur/temps.ts`,
+ * propriété du fil Algorithme, jamais réécrit ici) : au moins
+ * `SEUIL_MINUTES_VOIR_ARTISTE` minutes libres pendant son passage, ou le
+ * passage entier s'il est plus court. Seuls les quarts effectivement
+ * libres du passage sont retenus (un quart déjà occupé par une mission
+ * reste tel quel, même si le passage est par ailleurs vu) ; la valeur est
+ * le nom de l'artiste, à afficher dans la cellule quand la place le permet.
+ */
+export function creneauxVoirArtisteParBenevole(
+  m: Magasin, ix: Index, quartsDuJour: ReadonlySet<Epoch>,
+  affectations: Map<Id, Map<Epoch, AffectationQuart>>,
+): Map<Id, Map<Epoch, string>> {
+  const resultat = new Map<Id, Map<Epoch, string>>();
+  for (const benevole of m.benevoles) {
+    const artistesSouhaites = new Set(
+      m.disponibilites
+        .filter((d) => d.Benevole === benevole.id && d.Statut === 'Artiste' && d.Artiste != null)
+        .map((d) => d.Artiste!),
+    );
+    if (artistesSouhaites.size === 0) { continue; }
+    const occupes = new Set(affectations.get(benevole.id)?.keys() ?? []);
+    for (const artisteId of artistesSouhaites) {
+      const artiste = ix.artiste.get(artisteId);
+      if (!artiste) { continue; }
+      if (!peutVoirArtiste(artiste.Debut, artiste.Fin, occupes, PAS_SECONDES)) { continue; }
+      for (const quart of quartsDIntervalle(artiste.Debut, artiste.Fin, PAS_SECONDES)) {
+        if (!quartsDuJour.has(quart) || occupes.has(quart)) { continue; }
+        let parQuart = resultat.get(benevole.id);
+        if (!parQuart) { parQuart = new Map(); resultat.set(benevole.id, parQuart); }
+        if (!parQuart.has(quart)) { parQuart.set(quart, artiste.Nom); }
+      }
     }
   }
   return resultat;

@@ -12,11 +12,12 @@ import type {Benevole, Disponibilite, Epoch, Id} from '../domain/types';
 import {type Index, indexer, regrouperParJour} from '../logic/derive';
 import {type BlocMacro, blocsDuJour, indexerDisponibilitesParBenevole} from '../logic/dispos-terrain';
 import {
-  type AffectationQuart, affectationsQuartParBenevole, benevolesDisponiblesCeJour, indicatifDuJour, segmenterQuarts,
+  type AffectationQuart, affectationsQuartParBenevole, benevolesDisponiblesCeJour, creneauxVoirArtisteParBenevole,
+  indicatifDuJour, segmenterQuarts,
 } from '../logic/impression';
 import type {Magasin} from '../store';
 import {
-  ajusterTexteBloc, cellulesEnTeteQuarts, imprimer, LARGEUR_QUART_ECRAN_PX, largeurQuartImpressionPx,
+  ajusterTexteBlocAvecTroncature, cellulesEnTeteQuarts, imprimer, LARGEUR_QUART_ECRAN_PX, largeurQuartImpressionPx,
   PADDING_HORIZONTAL_BLOC_PX,
 } from '../ui/impression';
 import {h, vider} from '../ui/dom';
@@ -26,11 +27,14 @@ export const LARGEUR_COLONNE_INDICATIF_PX = 50;
 
 interface ContenuQuart {
   missionNom: string | null;
+  artisteNom: string | null;
   disponible: boolean;
 }
 
 function cleContenu(c: ContenuQuart): string {
-  return c.missionNom != null ? `A:${c.missionNom}` : (c.disponible ? 'L' : 'G');
+  if (c.missionNom != null) { return `A:${c.missionNom}`; }
+  if (c.artisteNom != null) { return `V:${c.artisteNom}`; }
+  return c.disponible ? 'L' : 'G';
 }
 
 /** Les colonnes en pourcentage du total visé (`totalPx`), jamais en valeur
@@ -59,6 +63,7 @@ function construireColgroup(nbQuartsTotal: number, pxParQuart: number, totalPx: 
 function construireLigneBenevole(
   benevole: Benevole, equipeCouleur: string, indicatif: string | null,
   blocs: readonly BlocMacro[], affectationsBenevole: Map<Epoch, AffectationQuart> | undefined,
+  creneauxArtisteBenevole: Map<Epoch, string> | undefined,
   disponibleAuQuart: (q: Epoch) => boolean, pxParQuart: number,
 ): Node {
   const cellules: Node[] = [
@@ -72,19 +77,24 @@ function construireLigneBenevole(
   blocs.forEach((bloc, iBloc) => {
     const segments = segmenterQuarts<ContenuQuart>(
       bloc.quarts,
-      (q) => ({missionNom: affectationsBenevole?.get(q)?.missionNom ?? null, disponible: disponibleAuQuart(q)}),
+      (q) => ({
+        missionNom: affectationsBenevole?.get(q)?.missionNom ?? null,
+        artisteNom: creneauxArtisteBenevole?.get(q) ?? null,
+        disponible: disponibleAuQuart(q),
+      }),
       cleContenu,
     );
     segments.forEach((segment, iSegment) => {
-      const {missionNom, disponible} = segment.valeur;
-      const classeEtat = missionNom != null ? 'assignee' : (disponible ? 'libre' : 'indisponible');
+      const {missionNom, artisteNom, disponible} = segment.valeur;
+      const classeEtat = missionNom != null ? 'assignee' : artisteNom != null ? 'artiste' : (disponible ? 'libre' : 'indisponible');
+      const texteACaler = missionNom ?? artisteNom;
       const limiteMacro = iSegment === 0 && iBloc > 0;
       const largeurDisponible = Math.max(0, segment.quarts.length * pxParQuart - PADDING_HORIZONTAL_BLOC_PX);
-      const ajuste = missionNom != null ? ajusterTexteBloc([missionNom], largeurDisponible) : null;
+      const ajuste = texteACaler != null ? ajusterTexteBlocAvecTroncature(texteACaler, largeurDisponible) : null;
       cellules.push(h('td', {
         class: `impression-bloc impression-bloc--${classeEtat}${limiteMacro ? ' impression-bloc--limite-macro' : ''}`,
         colspan: segment.quarts.length,
-        title: missionNom ?? undefined,
+        title: texteACaler ?? undefined,
       },
         ajuste
           ? h('span', {class: 'impression-bloc__texte', style: {fontSize: `${ajuste.taillePolicePx}px`}}, ajuste.texte)
@@ -98,7 +108,7 @@ function construireLigneBenevole(
 
 function construireTable(
   ix: Index, benevoles: readonly Benevole[], blocs: readonly BlocMacro[],
-  affectations: Map<Id, Map<Epoch, AffectationQuart>>,
+  affectations: Map<Id, Map<Epoch, AffectationQuart>>, creneauxArtiste: Map<Id, Map<Epoch, string>>,
   indexDispos: Map<Id, Map<Epoch, Disponibilite>>, pxParQuart: number,
 ): HTMLTableElement {
   const nbQuartsTotal = blocs.reduce((n, b) => n + b.quarts.length, 0);
@@ -117,6 +127,7 @@ function construireTable(
       const dispoBenevole = indexDispos.get(b.id);
       return construireLigneBenevole(
         b, equipeCouleur, indicatifDuJour(affectationsBenevole), blocs, affectationsBenevole,
+        creneauxArtiste.get(b.id),
         (q) => {
           const d = dispoBenevole?.get(q);
           return d !== undefined && d.Statut !== 'Indisponible';
@@ -157,6 +168,7 @@ export function montrerRosterImprimable(container: HTMLElement, m: Magasin): () 
     }
 
     const affectations = affectationsQuartParBenevole(m, ix, new Set(quartsDuJour));
+    const creneauxArtiste = creneauxVoirArtisteParBenevole(m, ix, new Set(quartsDuJour), affectations);
 
     const barre = h('div', {class: 'impression-barre'},
       h('p', {class: 'view__intro', style: {margin: '0'}},
@@ -166,7 +178,7 @@ export function montrerRosterImprimable(container: HTMLElement, m: Magasin): () 
         class: 'btn btn--primary btn--sm', type: 'button',
         onclick: () => {
           const pxImpression = largeurQuartImpressionPx(quartsDuJour.length, LARGEUR_COLONNE_NOM_PX + LARGEUR_COLONNE_INDICATIF_PX);
-          const table = construireTable(ix, benevoles, blocs, affectations, indexDispos, pxImpression);
+          const table = construireTable(ix, benevoles, blocs, affectations, creneauxArtiste, indexDispos, pxImpression);
           imprimer(
             [h('h2', null, `Roster bénévoles — ${jour.libelle}`), table],
             'impression-roster',
@@ -175,7 +187,7 @@ export function montrerRosterImprimable(container: HTMLElement, m: Magasin): () 
       }, 'Imprimer ce roster'),
     );
 
-    const table = construireTable(ix, benevoles, blocs, affectations, indexDispos, LARGEUR_QUART_ECRAN_PX);
+    const table = construireTable(ix, benevoles, blocs, affectations, creneauxArtiste, indexDispos, LARGEUR_QUART_ECRAN_PX);
 
     container.append(barre, h('div', {class: 'impression-scroll'}, table));
   }
