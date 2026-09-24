@@ -16,7 +16,7 @@
  * bénévole, la case ne les touche pas.
  */
 
-import type {Benevole, Disponibilite, Epoch, Id, StatutDisponibilite} from '../domain/types';
+import type {Benevole, Disponibilite, Epoch, Groupe, Id, StatutDisponibilite} from '../domain/types';
 import {
   type Index, benevolesDisponiblesCeJour, estVraimentDisponibleAuQuart, indexer, indexerDisponibilites,
   regrouperParJour,
@@ -26,6 +26,7 @@ import {
   type AffectationQuart, affectationsQuartParBenevole, creneauxConflitArtisteParBenevole,
   creneauxVoirArtisteParBenevole, indicatifDuJour, segmenterQuarts,
 } from '../logic/impression';
+import {nomsCompletsDepuisSource} from '../logic/noms-complets';
 import type {Magasin} from '../store';
 import {
   ajusterTexteBlocAvecTroncature, cellulesEnTeteQuarts, imprimer, LARGEUR_QUART_ECRAN_PX, largeurQuartImpressionPx,
@@ -35,6 +36,7 @@ import {h, vider} from '../ui/dom';
 
 export const LARGEUR_COLONNE_NOM_PX = 150;
 export const LARGEUR_COLONNE_INDICATIF_PX = 50;
+export const LARGEUR_COLONNE_EQUIPE_PX = 100;
 
 interface ContenuQuart {
   missionNom: string | null;
@@ -67,6 +69,7 @@ function construireColgroup(nbQuartsTotal: number, pxParQuart: number, totalPx: 
   const cols: Node[] = [
     h('col', {style: {width: pct(LARGEUR_COLONNE_NOM_PX)}}),
     h('col', {style: {width: pct(LARGEUR_COLONNE_INDICATIF_PX)}}),
+    h('col', {style: {width: pct(LARGEUR_COLONNE_EQUIPE_PX)}}),
   ];
   for (let i = 0; i < nbQuartsTotal; i++) { cols.push(h('col', {style: {width: pct(pxParQuart)}})); }
   return h('colgroup', null, ...cols);
@@ -76,9 +79,12 @@ function construireColgroup(nbQuartsTotal: number, pxParQuart: number, totalPx: 
  *  contigus de même contenu (même mission affectée, ou libre/indisponible),
  *  jamais fusionnés d'un bloc à l'autre — même limite qu'ailleurs (§6.2).
  *  `pxParQuart` choisit la taille de police visée (écran ou impression, voir
- *  `ui/impression.ts`). */
+ *  `ui/impression.ts`). `nomAffiche` et `nomEquipeIndicatif` sont déjà
+ *  résolus par l'appelant (noms complets, équipe de l'indicatif tenu) —
+ *  cette fonction ne fait que les poser, jamais de jointure ici. */
 function construireLigneBenevole(
-  benevole: Benevole, equipeCouleur: string, indicatif: string | null,
+  nomAffiche: string, equipeCouleur: string, indicatif: string | null,
+  nomEquipeIndicatif: string,
   blocs: readonly BlocMacro[], affectationsBenevole: Map<Epoch, AffectationQuart> | undefined,
   creneauxArtisteBenevole: Map<Epoch, string> | undefined,
   conflitArtisteBenevole: Map<Epoch, string> | undefined,
@@ -86,11 +92,12 @@ function construireLigneBenevole(
   afficherConflits: boolean, pxParQuart: number,
 ): Node {
   const cellules: Node[] = [
-    h('th', {class: 'impression-table__entite', scope: 'row', title: benevole.Nom},
+    h('th', {class: 'impression-table__entite', scope: 'row', title: nomAffiche},
       h('span', {class: 'dot', style: {background: equipeCouleur, marginRight: '6px'}}),
-      benevole.Nom,
+      nomAffiche,
     ),
     h('td', {class: 'impression-table__indicatif'}, indicatif ?? '—'),
+    h('td', {class: 'impression-table__equipe', title: nomEquipeIndicatif}, nomEquipeIndicatif),
   ];
 
   blocs.forEach((bloc, iBloc) => {
@@ -140,19 +147,22 @@ function construireLigneBenevole(
 }
 
 function construireTable(
-  ix: Index, benevoles: readonly Benevole[], blocs: readonly BlocMacro[],
+  ix: Index, benevoles: readonly Benevole[], nomsComplets: ReadonlyMap<Id, string>, groupes: readonly Groupe[],
+  blocs: readonly BlocMacro[],
   affectations: Map<Id, Map<Epoch, AffectationQuart>>, creneauxArtiste: Map<Id, Map<Epoch, string>>,
   conflitArtiste: Map<Id, Map<Epoch, string>>,
   indexDispos: Map<Id, Map<Epoch, Disponibilite>>, indexDispoReelle: Map<string, StatutDisponibilite>,
   afficherConflits: boolean, pxParQuart: number,
 ): HTMLTableElement {
   const nbQuartsTotal = blocs.reduce((n, b) => n + b.quarts.length, 0);
-  const totalPx = LARGEUR_COLONNE_NOM_PX + LARGEUR_COLONNE_INDICATIF_PX + nbQuartsTotal * pxParQuart;
+  const totalPx = LARGEUR_COLONNE_NOM_PX + LARGEUR_COLONNE_INDICATIF_PX + LARGEUR_COLONNE_EQUIPE_PX
+    + nbQuartsTotal * pxParQuart;
   const table = h('table', {class: 'impression-table', style: {width: `${totalPx}px`}},
     construireColgroup(nbQuartsTotal, pxParQuart, totalPx),
     h('thead', null, h('tr', null,
       h('th', {class: 'impression-table__coin', scope: 'col'}, 'Bénévole'),
       h('th', {class: 'impression-table__entete', scope: 'col'}, 'Indicatif'),
+      h('th', {class: 'impression-table__entete', scope: 'col'}, 'Équipe'),
       ...cellulesEnTeteQuarts(blocs),
     )),
     h('tbody', null, ...benevoles.map((b) => {
@@ -160,8 +170,14 @@ function construireTable(
       const equipeCouleur = ix.equipe.get(b.Equipe)?.Couleur ?? 'var(--text-faint)';
       const affectationsBenevole = affectations.get(b.id);
       const dispoBenevole = indexDispos.get(b.id);
+      const indicatif = indicatifDuJour(affectationsBenevole);
+      // Équipe associée à l'indicatif tenu (retour Antoine 2026-09-24), pas forcément la même
+      // que l'équipe d'appartenance du bénévole (déjà montrée par le point de couleur) : un
+      // code d'indicatif est unique sur tout le document (nomenclature A1→Z1, §22/09).
+      const groupeIndicatif = indicatif != null ? groupes.find((g) => g.Code === indicatif) : undefined;
+      const nomEquipeIndicatif = groupeIndicatif ? ix.equipe.get(groupeIndicatif.Equipe)?.Nom ?? '—' : '—';
       return construireLigneBenevole(
-        b, equipeCouleur, indicatifDuJour(affectationsBenevole), blocs, affectationsBenevole,
+        nomsComplets.get(b.id) ?? b.Nom, equipeCouleur, indicatif, nomEquipeIndicatif, blocs, affectationsBenevole,
         creneauxArtiste.get(b.id), conflitArtiste.get(b.id),
         (q) => {
           const d = dispoBenevole?.get(q);
@@ -179,6 +195,15 @@ export function montrerRosterImprimable(container: HTMLElement, m: Magasin): () 
   // Mode diagnostic d'Antoine (case décochée par défaut, retour 2026-09-24) : local à
   // cette vue, jamais dans `Magasin` — gouverne le rouge à l'écran ET à l'impression.
   let afficherConflits = false;
+  // Noms complets lus depuis la table externe d'Antoine (§ demande du 2026-09-24 : il refuse
+  // de relancer l'import, lecture seule à l'affichage) — mêmes règles que la vue équipes.
+  let nomsComplets: ReadonlyMap<Id, string> = new Map();
+  let vueActive = true;
+  nomsCompletsDepuisSource(m).then((trouves) => {
+    if (!vueActive || trouves.size === 0) { return; }
+    nomsComplets = trouves;
+    rafraichir();
+  }).catch(() => { /* jamais bloquant : la vue garde Benevole.Nom */ });
 
   function rafraichir(): void {
     const ix = indexer(m);
@@ -204,9 +229,10 @@ export function montrerRosterImprimable(container: HTMLElement, m: Magasin): () 
     // Même source, mais au quart d'heure précis (logic/derive.ts) : sert à signaler en
     // rouge un créneau affecté qui dépasse la disponibilité réellement déclarée.
     const indexDispoReelle = indexerDisponibilites(m);
+    const nomAffiche = (b: Benevole) => nomsComplets.get(b.id) ?? b.Nom;
     const benevoles = m.benevoles
       .filter((b) => idsDisponibles.has(b.id))
-      .sort((a, b) => a.Nom.localeCompare(b.Nom, 'fr'));
+      .sort((a, b) => nomAffiche(a).localeCompare(nomAffiche(b), 'fr'));
 
     if (benevoles.length === 0) {
       container.append(h('p', {class: 'empty'},
@@ -239,10 +265,12 @@ export function montrerRosterImprimable(container: HTMLElement, m: Magasin): () 
       h('button', {
         class: 'btn btn--primary btn--sm', type: 'button',
         onclick: () => {
-          const pxImpression = largeurQuartImpressionPx(quartsDuJour.length, LARGEUR_COLONNE_NOM_PX + LARGEUR_COLONNE_INDICATIF_PX);
+          const pxImpression = largeurQuartImpressionPx(
+            quartsDuJour.length, LARGEUR_COLONNE_NOM_PX + LARGEUR_COLONNE_INDICATIF_PX + LARGEUR_COLONNE_EQUIPE_PX,
+          );
           const table = construireTable(
-            ix, benevoles, blocs, affectations, creneauxArtiste, conflitArtiste, indexDispos, indexDispoReelle,
-            afficherConflits, pxImpression,
+            ix, benevoles, nomsComplets, m.groupes, blocs, affectations, creneauxArtiste, conflitArtiste,
+            indexDispos, indexDispoReelle, afficherConflits, pxImpression,
           );
           imprimer(
             [h('h2', null, `Roster bénévoles — ${jour.libelle}`), table],
@@ -253,8 +281,8 @@ export function montrerRosterImprimable(container: HTMLElement, m: Magasin): () 
     );
 
     const table = construireTable(
-      ix, benevoles, blocs, affectations, creneauxArtiste, conflitArtiste, indexDispos, indexDispoReelle,
-      afficherConflits, LARGEUR_QUART_ECRAN_PX,
+      ix, benevoles, nomsComplets, m.groupes, blocs, affectations, creneauxArtiste, conflitArtiste,
+      indexDispos, indexDispoReelle, afficherConflits, LARGEUR_QUART_ECRAN_PX,
     );
 
     container.append(barre, h('div', {class: 'impression-scroll'}, table));
@@ -262,5 +290,5 @@ export function montrerRosterImprimable(container: HTMLElement, m: Magasin): () 
 
   const desabonner = m.subscribe(rafraichir);
   rafraichir();
-  return desabonner;
+  return () => { vueActive = false; desabonner(); };
 }

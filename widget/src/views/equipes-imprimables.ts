@@ -62,6 +62,7 @@ import {type BlocMacro, blocsDuJour} from '../logic/dispos-terrain';
 import {
   type AffectationMissionQuart, affectationsQuartParMission, segmenterQuarts,
 } from '../logic/impression';
+import {nomsCompletsDepuisSource} from '../logic/noms-complets';
 import type {Magasin} from '../store';
 import {
   ajusterTexteBloc, ajusterTexteBlocAvecTroncature, cellulesEnTeteQuarts, imprimer, largeurQuartImpressionPx,
@@ -186,6 +187,17 @@ export function montrerEquipesImprimables(container: HTMLElement, m: Magasin): (
   // `null` veut dire « toutes les équipes ». Survit aux rafraîchissements déclenchés par
   // `m.subscribe`, remis à `null` si l'équipe sélectionnée n'a plus de mission ce jour-là.
   let equipeFiltreeId: Id | null = null;
+  // Noms complets lus depuis la table externe d'Antoine (§ demande du 2026-09-24 : il refuse
+  // de relancer l'import, lecture seule à l'affichage) — chargés une fois au montage, jamais
+  // bloquants : la vue s'affiche avec `Benevole.Nom` en attendant, puis se rafraîchit d'elle-même
+  // si des noms complets sont trouvés.
+  let nomsComplets: ReadonlyMap<Id, string> = new Map();
+  let vueActive = true;
+  nomsCompletsDepuisSource(m).then((trouves) => {
+    if (!vueActive || trouves.size === 0) { return; }
+    nomsComplets = trouves;
+    rafraichir();
+  }).catch(() => { /* jamais bloquant : la vue garde Benevole.Nom */ });
 
   function rafraichir(): void {
     const ix = indexer(m);
@@ -209,7 +221,7 @@ export function montrerEquipesImprimables(container: HTMLElement, m: Magasin): (
 
     const sousCreneauxDuJour = m.sousCreneaux.filter((sc) => jour.macros.some((ma) => ma.id === sc.Macro_creneau));
     const quartsDuJour = new Set(blocs.flatMap((b) => b.quarts));
-    const affectationsParMission = affectationsQuartParMission(m, ix, quartsDuJour);
+    const affectationsParMission = affectationsQuartParMission(m, ix, quartsDuJour, nomsComplets);
 
     // Une seule largeur de quart d'heure, calculée pour que la journée ENTIÈRE tienne sur la
     // largeur d'une page A4 paysage — utilisée à l'identique à l'écran et à l'impression
@@ -284,5 +296,5 @@ export function montrerEquipesImprimables(container: HTMLElement, m: Magasin): (
 
   const desabonner = m.subscribe(rafraichir);
   rafraichir();
-  return desabonner;
+  return () => { vueActive = false; desabonner(); };
 }

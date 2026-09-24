@@ -6,7 +6,8 @@
  */
 import {describe, expect, it} from 'vitest';
 import type {Modele} from '../domain/types';
-import {Magasin} from '../store';
+import {CLE_TABLE_BENEVOLES} from '../logic/parametres-benevoles';
+import {type EcritureGrist, Magasin} from '../store';
 import {montrerRosterImprimable} from './roster-imprimable';
 
 function modeleVide(): Modele {
@@ -15,6 +16,24 @@ function modeleVide(): Modele {
     macroCreneaux: [], sousCreneaux: [], besoins: [], groupes: [],
     positionsGroupe: [], places: [], disponibilites: [], souhaitsMissions: [], affinites: [],
   };
+}
+
+const ecritureMuette: EcritureGrist = {
+  creerEquipe: async () => 1, creerMission: async () => 1, creerMacroCreneau: async () => 1,
+  modifierMacroCreneau: async () => {}, supprimerMacroCreneau: async () => {}, creerArtiste: async () => 1,
+  modifierArtiste: async () => {}, remplacerSousCreneaux: async () => [], modifierSousCreneaux: async () => {},
+  repointerBesoins: async () => {}, creerBesoin: async () => 1, creerGroupe: async () => 1,
+  positionnerGroupe: async () => {}, definirPlaces: async () => {}, deplacerPosition: async () => {},
+  ajouterPosition: async () => 1, modifierPlaces: async () => {}, supprimerPosition: async () => {},
+  definirAbsence: async () => {}, valeursColonneBrute: async () => new Map(), colonnesTable: async () => [],
+  tablesDocument: async () => [], definirParametre: async () => {}, remplacerDisponibilites: async () => {},
+  peuplerBenevoles: async () => ({benevoles: [], crees: 0, actualises: 0}), creerAffinites: async () => [],
+};
+
+/** Attend un tour de micro-tâches : `nomsCompletsDepuisSource` est async,
+ *  résolue avant un premier redessin déclenché par son `.then()`. */
+function tick(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 const DEBUT = 1_800_000_000;
@@ -74,9 +93,96 @@ describe('montrerRosterImprimable avec un bénévole partiellement disponible et
 
     expect(container.textContent).toContain('Marie');
     expect(container.querySelector('.impression-table__indicatif')?.textContent).toBe('A1');
+    expect(container.querySelector('.impression-table__equipe')?.textContent).toBe('Bénévoles');
     expect(container.textContent).toContain('Accueil');
     expect(container.querySelectorAll('tbody tr').length).toBe(1);
   });
+});
+
+describe(
+  "montrerRosterImprimable, colonne « Équipe » (retour Antoine 2026-09-24)",
+  () => {
+    it("affiche l'équipe associée à l'indicatif tenu, pas forcément celle du bénévole lui-même", () => {
+      const m = new Magasin({
+        ...modeleVide(),
+        equipes: [
+          {id: 1, Nom: 'Bénévoles', Couleur: '#000', Referent: null, Notes: ''},
+          {id: 2, Nom: 'Bar', Couleur: '#111', Referent: null, Notes: ''},
+        ],
+        benevoles: [
+          {id: 1, Nom: 'Marie', Contact: '', Equipe: 1, Competences: [], Quota_heures_min: 0, Quota_heures_max: 99, Statut: 'Actif', Notes: ''},
+        ],
+        missions: [{id: 1, Nom: 'Comptoir', Description: '', Lieu: 0, Equipe: 2, Priorite: 'Normale', Competences_requises: []}],
+        macroCreneaux: [{id: 1, Nom: 'Samedi', Debut: DEBUT, Fin: FIN}],
+        sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: 'Bloc', Debut: DEBUT, Fin: DEBUT + 3600}],
+        besoins: [{id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 1, Taille_groupe: 1}],
+        // L'indicatif A1 appartient à l'équipe Bar (2), Marie elle-même est de l'équipe Bénévoles (1).
+        groupes: [{id: 1, Code: 'A1', Taille: 1, Equipe: 2, Notes: ''}],
+        positionsGroupe: [{id: 1, Groupe: 1, Besoin: 1}],
+        places: [{id: 1, Groupe: 1, Rang: 1, Benevole: 1, Origine: 'Manuel', Verrouillee: false, Score: 0}],
+        disponibilites: [{Benevole: 1, Quart_heure: DEBUT, Statut: 'Disponible', Artiste: null}],
+      });
+      const container = document.createElement('div');
+      montrerRosterImprimable(container, m);
+
+      expect(container.querySelector('.impression-table__equipe')?.textContent).toBe('Bar');
+    });
+
+    it("affiche un tiret sans planter quand le bénévole ne tient aucun indicatif ce jour-là", () => {
+      const m = new Magasin({
+        ...modeleVide(),
+        equipes: [{id: 1, Nom: 'Bénévoles', Couleur: '#000', Referent: null, Notes: ''}],
+        benevoles: [
+          {id: 1, Nom: 'Marie', Contact: '', Equipe: 1, Competences: [], Quota_heures_min: 0, Quota_heures_max: 99, Statut: 'Actif', Notes: ''},
+        ],
+        macroCreneaux: [{id: 1, Nom: 'Samedi', Debut: DEBUT, Fin: FIN}],
+        disponibilites: [{Benevole: 1, Quart_heure: DEBUT, Statut: 'Disponible', Artiste: null}],
+      });
+      const container = document.createElement('div');
+      montrerRosterImprimable(container, m);
+
+      expect(container.querySelector('.impression-table__indicatif')?.textContent).toBe('—');
+      expect(container.querySelector('.impression-table__equipe')?.textContent).toBe('—');
+    });
+  },
+);
+
+describe('montrerRosterImprimable, noms complets (retour Antoine 2026-09-24)', () => {
+  it(
+    "affiche le nom complet lu dans la table externe d'Antoine (Id_source) une fois chargé, "
+    + 'sans bloquer le premier rendu ni changer le tri alphabétique initial',
+    async () => {
+      const m = new Magasin(
+        {
+          ...modeleVide(),
+          equipes: [{id: 1, Nom: 'Bénévoles', Couleur: '#000', Referent: null, Notes: ''}],
+          benevoles: [
+            {
+              id: 1, Nom: 'Marie', Contact: '', Equipe: 1, Competences: [], Quota_heures_min: 0,
+              Quota_heures_max: 99, Statut: 'Actif', Notes: '', Id_source: 42,
+            },
+          ],
+          macroCreneaux: [{id: 1, Nom: 'Samedi', Debut: DEBUT, Fin: FIN}],
+          disponibilites: [{Benevole: 1, Quart_heure: DEBUT, Statut: 'Disponible', Artiste: null}],
+        },
+        [{cle: CLE_TABLE_BENEVOLES, valeur: 'INFOS_BENEVOLES'}],
+      );
+      m.brancherEcriture({
+        ...ecritureMuette,
+        colonnesTable: async () => [{colId: 'Nom_prenom', label: 'Nom_prenom', type: 'Text'}],
+        valeursColonneBrute: async () => new Map([[42, 'Marie Dupont']]),
+      });
+      const container = document.createElement('div');
+      montrerRosterImprimable(container, m);
+
+      expect(container.textContent).toContain('Marie');
+      expect(container.textContent).not.toContain('Marie Dupont');
+
+      await tick();
+
+      expect(container.textContent).toContain('Marie Dupont');
+    },
+  );
 });
 
 describe('montrerRosterImprimable avec un créneau trop court pour le nom complet', () => {

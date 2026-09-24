@@ -93,9 +93,16 @@ export interface AffectationMissionQuart {
  * seulement la première. Un besoin sans AUCUN indicatif positionné n'apparaît
  * pas (rien à afficher) — mais un indicatif positionné et vide apparaît bel
  * et bien, avec son seul code.
+ *
+ * `nomsComplets` (optionnel, `logic/noms-complets.ts`) substitue le nom
+ * complet d'un bénévole au `Nom` du modèle quand on le connaît — jointure
+ * par identifiant, jamais par chaîne de caractères, pour ne jamais confondre
+ * deux bénévoles qui partageraient le même `Nom` (demande d'Antoine du
+ * 2026-09-24, § noms complets).
  */
 export function affectationsQuartParMission(
   m: Magasin, ix: Index, quartsDuJour: ReadonlySet<Epoch>,
+  nomsComplets?: ReadonlyMap<Id, string>,
 ): Map<Id, Map<Epoch, AffectationMissionQuart>> {
   const resultat = new Map<Id, Map<Epoch, AffectationMissionQuart>>();
   for (const besoin of m.besoins) {
@@ -114,7 +121,7 @@ export function affectationsQuartParMission(
         if (place.Benevole == null) { continue; }
         const benevole = ix.benevole.get(place.Benevole);
         if (!benevole) { continue; }
-        benevoleNoms.push(benevole.Nom);
+        benevoleNoms.push(nomsComplets?.get(benevole.id) ?? benevole.Nom);
       }
       entrees.push({groupeCode: groupe.Code, benevoleNoms});
     }

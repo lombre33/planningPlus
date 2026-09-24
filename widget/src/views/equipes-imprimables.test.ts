@@ -5,7 +5,8 @@
  */
 import {describe, expect, it} from 'vitest';
 import type {Modele} from '../domain/types';
-import {Magasin} from '../store';
+import {CLE_TABLE_BENEVOLES} from '../logic/parametres-benevoles';
+import {type EcritureGrist, Magasin} from '../store';
 import {montrerEquipesImprimables} from './equipes-imprimables';
 
 function modeleVide(): Modele {
@@ -14,6 +15,24 @@ function modeleVide(): Modele {
     macroCreneaux: [], sousCreneaux: [], besoins: [], groupes: [],
     positionsGroupe: [], places: [], disponibilites: [], souhaitsMissions: [], affinites: [],
   };
+}
+
+const ecritureMuette: EcritureGrist = {
+  creerEquipe: async () => 1, creerMission: async () => 1, creerMacroCreneau: async () => 1,
+  modifierMacroCreneau: async () => {}, supprimerMacroCreneau: async () => {}, creerArtiste: async () => 1,
+  modifierArtiste: async () => {}, remplacerSousCreneaux: async () => [], modifierSousCreneaux: async () => {},
+  repointerBesoins: async () => {}, creerBesoin: async () => 1, creerGroupe: async () => 1,
+  positionnerGroupe: async () => {}, definirPlaces: async () => {}, deplacerPosition: async () => {},
+  ajouterPosition: async () => 1, modifierPlaces: async () => {}, supprimerPosition: async () => {},
+  definirAbsence: async () => {}, valeursColonneBrute: async () => new Map(), colonnesTable: async () => [],
+  tablesDocument: async () => [], definirParametre: async () => {}, remplacerDisponibilites: async () => {},
+  peuplerBenevoles: async () => ({benevoles: [], crees: 0, actualises: 0}), creerAffinites: async () => [],
+};
+
+/** Attend un tour de micro-tâches : `nomsCompletsDepuisSource` est async,
+ *  résolue avant un premier redessin déclenché par son `.then()`. */
+function tick(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 const DEBUT = 1_800_000_000;
@@ -66,6 +85,47 @@ describe('montrerEquipesImprimables avec une mission pourvue', () => {
     const celluleAssignee = container.querySelector('.impression-bloc--assignee');
     expect(celluleAssignee?.getAttribute('title')).toContain('Marie (A1)');
   });
+
+  it(
+    "affiche le nom complet lu dans la table externe d'Antoine (Id_source) une fois chargé, "
+    + 'sans bloquer le premier rendu (retour Antoine 2026-09-24 : refuse de relancer son import)',
+    async () => {
+      const m = new Magasin(
+        {
+          ...modeleVide(),
+          equipes: [{id: 1, Nom: 'Bar', Couleur: '#000', Referent: null, Notes: ''}],
+          benevoles: [
+            {
+              id: 1, Nom: 'Marie', Contact: '', Equipe: 1, Competences: [], Quota_heures_min: 0,
+              Quota_heures_max: 99, Statut: 'Actif', Notes: '', Id_source: 42,
+            },
+          ],
+          missions: [{id: 1, Nom: 'Comptoir', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []}],
+          macroCreneaux: [{id: 1, Nom: 'Samedi', Debut: DEBUT, Fin: FIN}],
+          sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: 'Bloc', Debut: DEBUT, Fin: DEBUT + 3600}],
+          besoins: [{id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 1, Taille_groupe: 1}],
+          groupes: [{id: 1, Code: 'A1', Taille: 1, Equipe: 1, Notes: ''}],
+          positionsGroupe: [{id: 1, Groupe: 1, Besoin: 1}],
+          places: [{id: 1, Groupe: 1, Rang: 1, Benevole: 1, Origine: 'Manuel', Verrouillee: false, Score: 0}],
+        },
+        [{cle: CLE_TABLE_BENEVOLES, valeur: 'INFOS_BENEVOLES'}],
+      );
+      m.brancherEcriture({
+        ...ecritureMuette,
+        colonnesTable: async () => [{colId: 'Nom_prenom', label: 'Nom_prenom', type: 'Text'}],
+        valeursColonneBrute: async () => new Map([[42, 'Marie Dupont']]),
+      });
+      const container = document.createElement('div');
+      montrerEquipesImprimables(container, m);
+
+      // Premier rendu : jamais bloqué par la lecture async, garde `Nom` en attendant.
+      expect(container.querySelector('.impression-bloc--assignee')?.getAttribute('title')).toContain('Marie (A1)');
+
+      await tick();
+
+      expect(container.querySelector('.impression-bloc--assignee')?.getAttribute('title')).toContain('Marie Dupont (A1)');
+    },
+  );
 });
 
 describe('montrerEquipesImprimables avec plusieurs équipes', () => {
