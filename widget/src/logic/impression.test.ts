@@ -113,6 +113,26 @@ describe('affectationsQuartParMission', () => {
     expect(entrees?.[0]?.benevoleNoms).toEqual([]);
   });
 
+  it('signale un bénévole introuvable plutôt que de faire disparaître silencieusement l’occupation de la place (référence cassée)', () => {
+    const m = new Magasin({
+      ...modeleVide(),
+      equipes: [{id: 1, Nom: 'Bénévoles', Couleur: '#000', Referent: null, Notes: ''}],
+      benevoles: [], // aucun bénévole indexé : place.Benevole pointe vers un id disparu
+      missions: [{id: 1, Nom: 'Accueil', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []}],
+      sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: 'Bloc', Debut: Q0, Fin: Q2}],
+      besoins: [{id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 1, Taille_groupe: 1}],
+      groupes: [{id: 1, Code: 'A1', Taille: 1, Equipe: 1, Notes: ''}],
+      positionsGroupe: [{id: 1, Groupe: 1, Besoin: 1}],
+      places: [{id: 1, Groupe: 1, Rang: 1, Benevole: 999, Origine: 'Manuel', Verrouillee: false, Score: 0}],
+    });
+    const ix = indexer(m);
+    const affectations = affectationsQuartParMission(m, ix, new Set([Q0, Q1]));
+    const entrees = affectations.get(1)?.get(Q0)?.entrees;
+    // Jamais un tableau vide (ce qui ferait croire l'indicatif libre) : la place est
+    // bien pourvue, seul le bénévole référencé n'existe plus.
+    expect(entrees?.[0]?.benevoleNoms).toEqual(['Bénévole introuvable']);
+  });
+
   it('garde un indicatif par binôme quand plusieurs couvrent le même besoin (retour Antoine 2026-09-24)', () => {
     const m = new Magasin({
       ...modeleVide(),
