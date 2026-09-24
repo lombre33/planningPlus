@@ -134,26 +134,16 @@ describe('montrerEquipesImprimables à l’écran avec un créneau trop court m�
       equipes: [{id: 1, Nom: 'Bar', Couleur: '#000', Referent: null, Notes: ''}],
       benevoles: [
         {id: 1, Nom: 'Marie', Contact: '', Equipe: 1, Competences: [], Quota_heures_min: 0, Quota_heures_max: 99, Statut: 'Actif', Notes: ''},
-        {id: 2, Nom: 'Karim', Contact: '', Equipe: 1, Competences: [], Quota_heures_min: 0, Quota_heures_max: 99, Statut: 'Actif', Notes: ''},
       ],
       missions: [{id: 1, Nom: 'Bar central', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []}],
       macroCreneaux: [{id: 1, Nom: 'Samedi', Debut: DEBUT, Fin: FIN}],
-      // Un seul quart d'heure, deux bénévoles dessus avec des codes d'indicatif longs :
-      // même le candidat le plus court (les codes seuls) ne tient pas au plancher écran.
+      // Un seul quart d'heure, un code d'indicatif assez long pour que même le
+      // candidat de secours (le code seul, sans le nom) ne tienne pas au plancher écran.
       sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: 'Bloc', Debut: DEBUT, Fin: DEBUT + 900}],
-      besoins: [{id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 2, Taille_groupe: 1}],
-      groupes: [
-        {id: 1, Code: 'ZZZZZ1', Taille: 1, Equipe: 1, Notes: ''},
-        {id: 2, Code: 'ZZZZZ2', Taille: 1, Equipe: 1, Notes: ''},
-      ],
-      positionsGroupe: [
-        {id: 1, Groupe: 1, Besoin: 1},
-        {id: 2, Groupe: 2, Besoin: 1},
-      ],
-      places: [
-        {id: 1, Groupe: 1, Rang: 1, Benevole: 1, Origine: 'Manuel', Verrouillee: false, Score: 0},
-        {id: 2, Groupe: 2, Rang: 1, Benevole: 2, Origine: 'Manuel', Verrouillee: false, Score: 0},
-      ],
+      besoins: [{id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 1, Taille_groupe: 1}],
+      groupes: [{id: 1, Code: 'ZZZZZZZZZZ1', Taille: 1, Equipe: 1, Notes: ''}],
+      positionsGroupe: [{id: 1, Groupe: 1, Besoin: 1}],
+      places: [{id: 1, Groupe: 1, Rang: 1, Benevole: 1, Origine: 'Manuel', Verrouillee: false, Score: 0}],
     });
     const container = document.createElement('div');
     montrerEquipesImprimables(container, m);
@@ -166,5 +156,77 @@ describe('montrerEquipesImprimables à l’écran avec un créneau trop court m�
     // Jamais en dessous du plancher écran (8px), contrairement à l'impression qui peut
     // descendre à 6px.
     expect(texte?.style.fontSize).toBe('8px');
+  });
+});
+
+describe('montrerEquipesImprimables avec plusieurs binômes sur la même mission au même quart', () => {
+  it('affiche une ligne par indicatif, jamais fondues en une seule (retour Antoine 2026-09-24)', () => {
+    const m = new Magasin({
+      ...modeleVide(),
+      equipes: [{id: 1, Nom: 'Bar', Couleur: '#000', Referent: null, Notes: ''}],
+      benevoles: [
+        {id: 1, Nom: 'Marie', Contact: '', Equipe: 1, Competences: [], Quota_heures_min: 0, Quota_heures_max: 99, Statut: 'Actif', Notes: ''},
+      ],
+      missions: [{id: 1, Nom: 'Bar central', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []}],
+      macroCreneaux: [{id: 1, Nom: 'Samedi', Debut: DEBUT, Fin: FIN}],
+      // Assez large (4 quarts) pour que « Marie (A1) » tienne à l'écran sans tomber
+      // sur le repli code-seul, qui n'est pas ce que ce test veut observer.
+      sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: 'Bloc', Debut: DEBUT, Fin: DEBUT + 3600}],
+      // Trois binômes positionnés sur le même besoin : un seul pourvu, deux encore vides.
+      besoins: [{id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 6, Taille_groupe: 2}],
+      groupes: [
+        {id: 1, Code: 'A1', Taille: 2, Equipe: 1, Notes: ''},
+        {id: 2, Code: 'A2', Taille: 2, Equipe: 1, Notes: ''},
+        {id: 3, Code: 'A3', Taille: 2, Equipe: 1, Notes: ''},
+      ],
+      positionsGroupe: [
+        {id: 1, Groupe: 1, Besoin: 1},
+        {id: 2, Groupe: 2, Besoin: 1},
+        {id: 3, Groupe: 3, Besoin: 1},
+      ],
+      places: [
+        {id: 1, Groupe: 1, Rang: 1, Benevole: 1, Origine: 'Manuel', Verrouillee: false, Score: 0},
+        {id: 2, Groupe: 1, Rang: 2, Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0},
+        {id: 3, Groupe: 2, Rang: 1, Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0},
+        {id: 4, Groupe: 2, Rang: 2, Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0},
+        {id: 5, Groupe: 3, Rang: 1, Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0},
+        {id: 6, Groupe: 3, Rang: 2, Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0},
+      ],
+    });
+    const container = document.createElement('div');
+    montrerEquipesImprimables(container, m);
+
+    const bloc = container.querySelector('.impression-bloc--assignee');
+    expect(bloc).not.toBeNull();
+    const lignes = Array.from(bloc?.querySelectorAll<HTMLElement>('.impression-bloc__texte') ?? []).map((l) => l.textContent);
+    expect(lignes).toHaveLength(3);
+    expect(lignes.some((l) => l?.includes('Marie') && l?.includes('A1'))).toBe(true);
+    // Les indicatifs vides s'affichent quand même, par leur seul code.
+    expect(lignes).toContain('A2');
+    expect(lignes).toContain('A3');
+  });
+
+  it('affiche l’indicatif seul, sans bénévole, en style « libre » (retour Antoine 2026-09-24)', () => {
+    const m = new Magasin({
+      ...modeleVide(),
+      equipes: [{id: 1, Nom: 'Bar', Couleur: '#000', Referent: null, Notes: ''}],
+      missions: [{id: 1, Nom: 'Bar central', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []}],
+      macroCreneaux: [{id: 1, Nom: 'Samedi', Debut: DEBUT, Fin: FIN}],
+      sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: 'Bloc', Debut: DEBUT, Fin: DEBUT + 900}],
+      besoins: [{id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 2, Taille_groupe: 2}],
+      groupes: [{id: 1, Code: 'A1', Taille: 2, Equipe: 1, Notes: ''}],
+      positionsGroupe: [{id: 1, Groupe: 1, Besoin: 1}],
+      places: [
+        {id: 1, Groupe: 1, Rang: 1, Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0},
+        {id: 2, Groupe: 1, Rang: 2, Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0},
+      ],
+    });
+    const container = document.createElement('div');
+    montrerEquipesImprimables(container, m);
+
+    expect(container.querySelector('.impression-bloc--assignee')).toBeNull();
+    const bloc = container.querySelector('.impression-bloc--libre');
+    expect(bloc?.querySelector('.impression-bloc__texte')?.textContent).toBe('A1');
+    expect(bloc?.getAttribute('title')).toBe('A1');
   });
 });

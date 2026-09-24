@@ -140,6 +140,12 @@ table.impression-table th, table.impression-table td {
   text-overflow: clip;
 }
 
+/* Plusieurs indicatifs dans le même bloc (retour Antoine 2026-09-24) : une
+   ligne chacun, léger espacement pour les distinguer sans les confondre. */
+.impression-bloc__texte + .impression-bloc__texte {
+  margin-top: 2px;
+}
+
 .impression-equipes__equipe {
   margin-bottom: 24px;
 }
@@ -172,6 +178,15 @@ table.impression-table th, table.impression-table td {
   table.impression-table th, table.impression-table td {
     border-bottom: 1px solid #ccc;
     padding: 1px 2px;
+  }
+
+  /* Une ligne de mission peut désormais tenir sur plusieurs lignes de texte
+     (un indicatif par ligne, retour Antoine 2026-09-24) : jamais coupée par
+     un saut de page au milieu d'un binôme, plutôt que de laisser le
+     navigateur trancher où bon lui semble. */
+  table.impression-table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 
   .impression-table__coin, .impression-table__entite, .impression-table__entete {

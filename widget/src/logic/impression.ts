@@ -67,9 +67,17 @@ export function indicatifDuJour(
 }
 
 
+/**
+ * Une entrée par indicatif (groupe) positionné sur le besoin — jamais une
+ * par bénévole : un binôme aux deux places pourvues est UNE entrée avec deux
+ * noms, pas deux entrées. `benevoleNoms` vide veut dire « indicatif posé, mais
+ * personne dessus pour l'instant » — un cas désormais représenté plutôt
+ * qu'omis (retour d'Antoine, 2026-09-24 : « affiche toujours l'indicatif même
+ * si aucun bénévole n'est affecté dessus »).
+ */
 export interface EntreeAffectationMission {
-  benevoleNom: string;
   groupeCode: string;
+  benevoleNoms: string[];
 }
 
 export interface AffectationMissionQuart {
@@ -77,14 +85,14 @@ export interface AffectationMissionQuart {
 }
 
 /**
- * Pour chaque mission ayant au moins un besoin pourvu ce jour-là, qui la
- * tient à chaque quart d'heure (nom du bénévole + indicatif). Plusieurs
- * indicatifs — ou plusieurs bénévoles d'un même indicatif — peuvent couvrir
- * le même besoin à la fois (`Taille_groupe`/`Effectif_min` > 1, ou plusieurs
- * groupes positionnés dessus) : toutes les entrées sont conservées, pas
- * seulement la première. Un besoin sans aucune place pourvue n'apparaît pas
- * (rien à afficher) — une case vide se lit comme « non couverte », pas comme
- * une absence de calcul.
+ * Pour chaque mission ayant au moins un indicatif positionné ce jour-là, ce
+ * qui tient chaque quart d'heure (une entrée par indicatif, avec les noms de
+ * ses occupants actuels, vide si aucun). Plusieurs indicatifs peuvent couvrir
+ * le même besoin à la fois (plusieurs groupes positionnés dessus, ex. 3
+ * binômes sur une même mission) : toutes les entrées sont conservées, pas
+ * seulement la première. Un besoin sans AUCUN indicatif positionné n'apparaît
+ * pas (rien à afficher) — mais un indicatif positionné et vide apparaît bel
+ * et bien, avec son seul code.
  */
 export function affectationsQuartParMission(
   m: Magasin, ix: Index, quartsDuJour: ReadonlySet<Epoch>,
@@ -101,12 +109,14 @@ export function affectationsQuartParMission(
       if (position.Besoin !== besoin.id) { continue; }
       const groupe = ix.groupe.get(position.Groupe);
       if (!groupe) { continue; }
+      const benevoleNoms: string[] = [];
       for (const place of placesDuGroupe(m, groupe.id)) {
         if (place.Benevole == null) { continue; }
         const benevole = ix.benevole.get(place.Benevole);
         if (!benevole) { continue; }
-        entrees.push({benevoleNom: benevole.Nom, groupeCode: groupe.Code});
+        benevoleNoms.push(benevole.Nom);
       }
+      entrees.push({groupeCode: groupe.Code, benevoleNoms});
     }
     if (entrees.length === 0) { continue; }
 

@@ -17,6 +17,19 @@
  * l'impression, avec sa propre largeur de quart d'heure et son propre
  * plancher de police — l'écran affichait jusqu'ici la mise en page pensée
  * pour une page A4 paysage, ce qui la rendait minuscule sur un moniteur.
+ *
+ * Retour d'Antoine du 2026-09-24, second passage (« c'est mieux, mais ce
+ * n'est pas encore ça ») : deux changements supplémentaires, inconditionnels
+ * (jamais gouvernés par le filtre équipe ni par un réglage à cocher).
+ * D'abord, une entrée par indicatif positionné sur le besoin, jamais fondue
+ * dans une seule ligne texte comme avant — quand plusieurs binômes couvrent
+ * la même mission au même quart, chacun sa propre ligne dans la cellule, et
+ * la ligne du tableau grandit en hauteur pour toutes les contenir (aucune
+ * hauteur fixée sur `.impression-bloc`, donc la rangée HTML s'adapte
+ * naturellement au nombre de lignes du bloc le plus chargé de la rangée).
+ * Ensuite, l'indicatif d'un binôme s'affiche même sans personne dessus —
+ * seul son nom disparaît, jamais son code — pour qu'un plan de construction
+ * en cours reste lisible avant d'être entièrement pourvu.
  */
 
 import type {Epoch, Equipe, Id, Mission} from '../domain/types';
@@ -59,11 +72,11 @@ interface ContenuQuart {
 
 function contenuQuart(parQuart: Map<Epoch, AffectationMissionQuart> | undefined, q: Epoch): ContenuQuart {
   const entrees = parQuart?.get(q)?.entrees ?? [];
-  // Le regroupement se fait sur l'ensemble exact des personnes présentes :
-  // un changement de personne en cours de créneau ouvre un nouveau segment,
-  // jamais fusionné avec le précédent même si le nombre de personnes reste
-  // le même.
-  const cle = entrees.map((e) => `${e.benevoleNom}#${e.groupeCode}`).sort().join('|');
+  // Le regroupement se fait sur l'ensemble exact des indicatifs et de leurs
+  // occupants : un changement de personne (ou un indicatif qui se vide ou se
+  // pourvoit) en cours de créneau ouvre un nouveau segment, jamais fusionné
+  // avec le précédent même si le nombre d'entrées reste le même.
+  const cle = entrees.map((e) => `${e.groupeCode}#${e.benevoleNoms.slice().sort().join(',')}`).sort().join('|');
   return {cle, entrees};
 }
 
@@ -100,30 +113,36 @@ function construireLigneMission(
       const {entrees} = segment.valeur;
       const limiteMacro = iSegment === 0 && iBloc > 0;
       const largeurDisponible = Math.max(0, segment.quarts.length * pxParQuart - PADDING_HORIZONTAL_BLOC_PX);
-      const candidats = entrees.length > 0 ? [
-        entrees.map((e) => `${e.benevoleNom} (${e.groupeCode})`).join(', '),
-        entrees.map((e) => e.benevoleNom).join(', '),
-        entrees.map((e) => e.groupeCode).join(', '),
-      ] : [];
-      let ajuste = candidats.length > 0
-        ? ajusterTexteBloc(candidats, largeurDisponible, pourEcran ? TAILLES_POLICE_ECRAN_PX : undefined)
-        : null;
-      if (!ajuste && pourEcran && candidats.length > 0) {
-        // Même le plancher écran ne suffit pas pour le plus court candidat (le code
-        // d'indicatif) : tronque en ellipse plutôt que de laisser le bloc sans texte.
-        ajuste = ajusterTexteBlocAvecTroncature(
-          candidats[candidats.length - 1]!, largeurDisponible, TAILLES_POLICE_ECRAN_PX,
-        );
-      }
-      const titre = entrees.length > 0 ? entrees.map((e) => `${e.benevoleNom} (${e.groupeCode})`).join(', ') : undefined;
+      const taillesPx = pourEcran ? TAILLES_POLICE_ECRAN_PX : undefined;
+      // Une entrée (indicatif) = une ligne, jamais fondues en une seule (retour
+      // Antoine 2026-09-24) : le code reste toujours le candidat de secours, pour
+      // qu'il ne disparaisse jamais même si le nom ne tient pas.
+      const lignes = entrees.map((entree) => {
+        const candidats = entree.benevoleNoms.length > 0
+          ? [`${entree.benevoleNoms.join(', ')} (${entree.groupeCode})`, entree.groupeCode]
+          : [entree.groupeCode];
+        let ajuste = ajusterTexteBloc(candidats, largeurDisponible, taillesPx);
+        if (!ajuste && pourEcran) {
+          // Même le plancher écran ne suffit pas pour le code seul : tronque en
+          // ellipse plutôt que de laisser cette ligne du bloc sans texte.
+          ajuste = ajusterTexteBlocAvecTroncature(entree.groupeCode, largeurDisponible, TAILLES_POLICE_ECRAN_PX);
+        }
+        return ajuste;
+      });
+      const aBenevole = entrees.some((e) => e.benevoleNoms.length > 0);
+      const titre = entrees.length > 0
+        ? entrees.map((e) => (e.benevoleNoms.length > 0 ? `${e.benevoleNoms.join(', ')} (${e.groupeCode})` : e.groupeCode)).join(' · ')
+        : undefined;
       cellules.push(h('td', {
-        class: `impression-bloc impression-bloc--${entrees.length > 0 ? 'assignee' : 'libre'}${limiteMacro ? ' impression-bloc--limite-macro' : ''}`,
+        class: `impression-bloc impression-bloc--${aBenevole ? 'assignee' : 'libre'}${limiteMacro ? ' impression-bloc--limite-macro' : ''}`,
         colspan: segment.quarts.length,
         title: titre,
       },
-        ajuste
-          ? h('span', {class: 'impression-bloc__texte', style: {fontSize: `${ajuste.taillePolicePx}px`}}, ajuste.texte)
-          : null,
+        ...lignes.map((ajuste) => (
+          ajuste
+            ? h('span', {class: 'impression-bloc__texte', style: {fontSize: `${ajuste.taillePolicePx}px`}}, ajuste.texte)
+            : null
+        )),
       ));
     });
   });
