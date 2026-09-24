@@ -7,8 +7,8 @@ import type {Disponibilite, Id, Modele} from '../domain/types';
 import {Magasin} from '../store';
 import {indexer} from './derive';
 import {
-  affectationsQuartParBenevole, affectationsQuartParMission, benevolesDisponiblesCeJour, indicatifDuJour,
-  segmenterQuarts,
+  affectationsQuartParBenevole, affectationsQuartParMission, benevolesDisponiblesCeJour,
+  creneauxVoirArtisteParBenevole, indicatifDuJour, segmenterQuarts,
 } from './impression';
 
 function modeleVide(): Modele {
@@ -101,6 +101,57 @@ describe('affectationsQuartParMission', () => {
     expect(affectations.get(1)?.get(Q0)?.entrees.map((e) => e.benevoleNom).sort()).toEqual(['Karim', 'Marie']);
     // La mission 2 (besoin 2) n'a aucune place pourvue : rien à afficher.
     expect(affectations.has(2)).toBe(false);
+  });
+});
+
+describe('creneauxVoirArtisteParBenevole', () => {
+  it('retient les quarts libres du passage d’un artiste souhaité quand 30 minutes libres sont possibles', () => {
+    const m = new Magasin({
+      ...modeleVide(),
+      benevoles: [
+        {id: 1, Nom: 'Marie', Contact: '', Equipe: 0, Competences: [], Quota_heures_min: 0, Quota_heures_max: 99, Statut: 'Actif', Notes: ''},
+      ],
+      artistes: [{id: 1, Nom: 'Grand Concert', Lieu: 0, Debut: Q0, Fin: Q0 + 3600}],
+      // Souhaite voir l'artiste 1 — une seule ligne suffit (même lecture que le panneau Indicatifs).
+      disponibilites: [{Benevole: 1, Quart_heure: Q0, Statut: 'Artiste', Artiste: 1}],
+    });
+    const ix = indexer(m);
+    const quartsDuJour = new Set([Q0, Q1, Q2, Q3]);
+    const resultat = creneauxVoirArtisteParBenevole(m, ix, quartsDuJour, new Map());
+    expect(resultat.get(1)?.get(Q0)).toBe('Grand Concert');
+    expect(resultat.get(1)?.get(Q3)).toBe('Grand Concert');
+  });
+
+  it('exclut les quarts déjà occupés par une mission, même si le passage reste vu par ailleurs', () => {
+    const m = new Magasin({
+      ...modeleVide(),
+      benevoles: [
+        {id: 1, Nom: 'Marie', Contact: '', Equipe: 0, Competences: [], Quota_heures_min: 0, Quota_heures_max: 99, Statut: 'Actif', Notes: ''},
+      ],
+      artistes: [{id: 1, Nom: 'Grand Concert', Lieu: 0, Debut: Q0, Fin: Q0 + 3600}],
+      disponibilites: [{Benevole: 1, Quart_heure: Q0, Statut: 'Artiste', Artiste: 1}],
+    });
+    const ix = indexer(m);
+    const quartsDuJour = new Set([Q0, Q1, Q2, Q3]);
+    // Q0 occupé par une mission : les 3 quarts libres restants suffisent encore (>= 30 min).
+    const affectations = new Map([[1, new Map([[Q0, {missionNom: 'Accueil', groupeCode: 'A1'}]])]]);
+    const resultat = creneauxVoirArtisteParBenevole(m, ix, quartsDuJour, affectations);
+    expect(resultat.get(1)?.has(Q0)).toBe(false);
+    expect(resultat.get(1)?.get(Q1)).toBe('Grand Concert');
+  });
+
+  it('ne retient rien pour un bénévole n’ayant exprimé aucun souhait d’artiste', () => {
+    const m = new Magasin({
+      ...modeleVide(),
+      benevoles: [
+        {id: 1, Nom: 'Marie', Contact: '', Equipe: 0, Competences: [], Quota_heures_min: 0, Quota_heures_max: 99, Statut: 'Actif', Notes: ''},
+      ],
+      artistes: [{id: 1, Nom: 'Grand Concert', Lieu: 0, Debut: Q0, Fin: Q0 + 3600}],
+      disponibilites: [{Benevole: 1, Quart_heure: Q0, Statut: 'Disponible', Artiste: null}],
+    });
+    const ix = indexer(m);
+    const resultat = creneauxVoirArtisteParBenevole(m, ix, new Set([Q0, Q1, Q2, Q3]), new Map());
+    expect(resultat.has(1)).toBe(false);
   });
 });
 

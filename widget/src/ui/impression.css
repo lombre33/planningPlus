@@ -123,6 +123,9 @@ table.impression-table th, table.impression-table td {
 .impression-bloc--libre { background: var(--surface); }
 .impression-bloc--indisponible { background: var(--surface-muted); }
 .impression-bloc--assignee { background: var(--brand-tint); }
+/* Même teinte que `.dispos-cellule--artiste` (style.css) pour « veut voir un
+   artiste » : une seule couleur pour cette idée dans tout le widget. */
+.impression-bloc--artiste { background: var(--accent-2-tint); }
 .impression-bloc--limite-macro { border-left: 2px solid var(--border-strong); }
 
 .impression-bloc__texte {
@@ -176,6 +179,7 @@ table.impression-table th, table.impression-table td {
   .impression-bloc--libre { background: #fff; }
   .impression-bloc--indisponible { background: #ececec; }
   .impression-bloc--assignee { background: #dbe4ff; }
+  .impression-bloc--artiste { background: #f1eafd; }
 
   .impression-equipes__equipe {
     break-after: page;
