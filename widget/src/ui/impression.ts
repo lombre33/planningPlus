@@ -137,3 +137,33 @@ export function ajusterTexteBlocAvecTroncature(
   if (maxCaracteres < 1) { return null; }
   return {texte: `${texte.slice(0, maxCaracteres)}…`, taillePolicePx: taillePlancher};
 }
+
+export interface AjustementTexteBloc {
+  texte: string;
+  taillePolicePx: number;
+  /** `true` si `texte` ne tient pas sur une seule ligne à `taillePolicePx` :
+   *  l'appelant doit laisser le texte s'envelopper (CSS `white-space: normal`)
+   *  plutôt que le tronquer, et laisser le bloc grandir en hauteur pour
+   *  l'accueillir. */
+  enveloppe?: boolean;
+}
+
+/**
+ * Comme `ajusterTexteBloc`, mais ne renvoie jamais `null` ni un texte
+ * tronqué : quand aucun candidat ne tient sur une seule ligne même au
+ * plancher, retourne le candidat le plus complet à envelopper sur
+ * plusieurs lignes plutôt que de perdre de l'information (retour Antoine
+ * 2026-09-24 14h11-14h14, sur les noms de bénévoles qui disparaissaient
+ * encore derrière le code : « il me faut ABSOLUMENT les noms [...] quitte
+ * à ne pas afficher les indicatifs au pire », puis « si ça ne rentre pas
+ * on agrandit la hauteur »). Le bloc grandit donc en hauteur pour accueillir
+ * le texte plutôt que le texte se faire rapetisser ou couper.
+ */
+export function ajusterTexteBlocAvecEnveloppe(
+  candidats: readonly string[], largeurDisponiblePx: number, taillesPx: readonly number[] = TAILLES_POLICE_BLOC_PX,
+): AjustementTexteBloc {
+  const surUneLigne = ajusterTexteBloc(candidats, largeurDisponiblePx, taillesPx);
+  if (surUneLigne) { return surUneLigne; }
+  const taillePlancher = taillesPx[taillesPx.length - 1]!;
+  return {texte: candidats[0]!, taillePolicePx: taillePlancher, enveloppe: true};
+}

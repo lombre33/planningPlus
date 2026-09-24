@@ -265,8 +265,40 @@ describe('montrerEquipesImprimables : calibrages écran et papier (redécouplés
   });
 });
 
-describe('montrerEquipesImprimables avec un créneau trop court même pour le code d’indicatif', () => {
-  it('tronque avec une ellipse au plancher écran plutôt que de laisser le bloc sans texte (retour Antoine 2026-09-24 : lisibilité, calibrages redécouplés au sixième passage)', () => {
+describe('montrerEquipesImprimables avec un créneau trop court même pour le code d’indicatif seul (personne dessus)', () => {
+  it('tronque avec une ellipse au plancher écran plutôt que de laisser le bloc sans texte', () => {
+    const m = new Magasin({
+      ...modeleVide(),
+      equipes: [{id: 1, Nom: 'Bar', Couleur: '#000', Referent: null, Notes: ''}],
+      missions: [{id: 1, Nom: 'Bar central', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []}],
+      macroCreneaux: [{id: 1, Nom: 'Samedi', Debut: DEBUT, Fin: FIN}],
+      // Un seul quart d'heure, un code d'indicatif assez long pour que même le
+      // code seul ne tienne pas au plancher — personne dessus, rien d'autre à montrer.
+      sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: 'Bloc', Debut: DEBUT, Fin: DEBUT + 900}],
+      besoins: [{id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 2, Taille_groupe: 2}],
+      groupes: [{id: 1, Code: 'ZZZZZZZZZZZZZZZZ', Taille: 2, Equipe: 1, Notes: ''}],
+      positionsGroupe: [{id: 1, Groupe: 1, Besoin: 1}],
+      places: [
+        {id: 1, Groupe: 1, Rang: 1, Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0},
+        {id: 2, Groupe: 1, Rang: 2, Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0},
+      ],
+    });
+    const container = document.createElement('div');
+    montrerEquipesImprimables(container, m);
+
+    const bloc = container.querySelector('.impression-bloc--libre');
+    const texte = bloc?.querySelector<HTMLElement>('.impression-bloc__texte');
+    expect(texte).not.toBeNull();
+    expect(texte?.textContent).not.toBe('');
+    expect(texte?.textContent?.endsWith('…')).toBe(true);
+    // Plancher écran (`TAILLES_POLICE_ECRAN_PX`, redécouplé du papier au sixième passage) :
+    // 8px, jamais le plancher papier qui descend à 6px.
+    expect(texte?.style.fontSize).toBe('8px');
+  });
+});
+
+describe('montrerEquipesImprimables : priorité au nom du bénévole sur l’indicatif (retour Antoine 2026-09-24 14h11-14h14)', () => {
+  it('affiche le nom même dans un créneau trop court pour "Nom (Code)", plutôt que de retomber sur le code seul', () => {
     const m = new Magasin({
       ...modeleVide(),
       equipes: [{id: 1, Nom: 'Bar', Couleur: '#000', Referent: null, Notes: ''}],
@@ -275,8 +307,8 @@ describe('montrerEquipesImprimables avec un créneau trop court même pour le co
       ],
       missions: [{id: 1, Nom: 'Bar central', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []}],
       macroCreneaux: [{id: 1, Nom: 'Samedi', Debut: DEBUT, Fin: FIN}],
-      // Un seul quart d'heure, un code d'indicatif assez long pour que même le
-      // candidat de secours (le code seul, sans le nom) ne tienne pas au plancher partagé.
+      // Un seul quart d'heure, un code assez long pour que "Marie (ZZZ...)" ne tienne pas —
+      // mais "Marie" seul tient au plancher écran : jamais retomber sur le code.
       sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: 'Bloc', Debut: DEBUT, Fin: DEBUT + 900}],
       besoins: [{id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 1, Taille_groupe: 1}],
       groupes: [{id: 1, Code: 'ZZZZZZZZZZZZZZZZ', Taille: 1, Equipe: 1, Notes: ''}],
@@ -288,11 +320,37 @@ describe('montrerEquipesImprimables avec un créneau trop court même pour le co
 
     const bloc = container.querySelector('.impression-bloc--assignee');
     const texte = bloc?.querySelector<HTMLElement>('.impression-bloc__texte');
-    expect(texte).not.toBeNull();
-    expect(texte?.textContent).not.toBe('');
-    expect(texte?.textContent?.endsWith('…')).toBe(true);
-    // Plancher écran (`TAILLES_POLICE_ECRAN_PX`, redécouplé du papier au sixième passage) :
-    // 8px, jamais le plancher papier qui descend à 6px.
+    expect(texte?.textContent).toBe('Marie');
+    expect(texte?.textContent?.endsWith('…')).toBe(false);
+    expect(texte?.classList.contains('impression-bloc__texte--enveloppe')).toBe(false);
+  });
+
+  it('enveloppe le nom sur plusieurs lignes (jamais tronqué ni remplacé par le code) quand même le nom seul ne tient pas sur une ligne', () => {
+    const m = new Magasin({
+      ...modeleVide(),
+      equipes: [{id: 1, Nom: 'Bar', Couleur: '#000', Referent: null, Notes: ''}],
+      benevoles: [
+        {
+          id: 1, Nom: 'Maximilienne-Christodoulopoulos', Contact: '', Equipe: 1, Competences: [],
+          Quota_heures_min: 0, Quota_heures_max: 99, Statut: 'Actif', Notes: '',
+        },
+      ],
+      missions: [{id: 1, Nom: 'Bar central', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []}],
+      macroCreneaux: [{id: 1, Nom: 'Samedi', Debut: DEBUT, Fin: FIN}],
+      sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: 'Bloc', Debut: DEBUT, Fin: DEBUT + 900}],
+      besoins: [{id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 1, Taille_groupe: 1}],
+      groupes: [{id: 1, Code: 'A1', Taille: 1, Equipe: 1, Notes: ''}],
+      positionsGroupe: [{id: 1, Groupe: 1, Besoin: 1}],
+      places: [{id: 1, Groupe: 1, Rang: 1, Benevole: 1, Origine: 'Manuel', Verrouillee: false, Score: 0}],
+    });
+    const container = document.createElement('div');
+    montrerEquipesImprimables(container, m);
+
+    const bloc = container.querySelector('.impression-bloc--assignee');
+    const texte = bloc?.querySelector<HTMLElement>('.impression-bloc__texte');
+    // Jamais tronqué (pas d'ellipse), jamais le code nu : le nom complet, à envelopper.
+    expect(texte?.textContent).toBe('Maximilienne-Christodoulopoulos (A1)');
+    expect(texte?.classList.contains('impression-bloc__texte--enveloppe')).toBe(true);
     expect(texte?.style.fontSize).toBe('8px');
   });
 });
