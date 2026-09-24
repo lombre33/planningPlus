@@ -20,6 +20,16 @@ function modeleVide(): Modele {
 const DEBUT = 1_800_000_000;
 const FIN = DEBUT + 4 * 3600; // 4h, soit 16 quarts
 
+// jsdom ne déclenche l'événement « change » d'une case à cocher via `.click()`
+// que si l'élément est attaché au document — les conteneurs de ces tests ne le
+// sont jamais. On coche donc et on déclenche l'événement nous-mêmes.
+function cocherCase(container: HTMLElement): void {
+  const checkbox = container.querySelector<HTMLInputElement>('input[type=checkbox]');
+  if (!checkbox) { throw new Error('case à cocher introuvable'); }
+  checkbox.checked = true;
+  checkbox.dispatchEvent(new Event('change'));
+}
+
 describe('montrerRosterImprimable sans aucun macro-créneau', () => {
   it('explique l’absence de contenu plutôt que d’afficher un écran vide', () => {
     const m = new Magasin(modeleVide());
@@ -159,6 +169,10 @@ describe('montrerRosterImprimable avec une affectation qui empêche de voir un a
     const container = document.createElement('div');
     montrerRosterImprimable(container, m);
 
+    // Décochée par défaut (retour Antoine 2026-09-24) : aucun rouge tant qu'on ne l'active pas.
+    expect(container.querySelector('.impression-bloc--conflit')).toBeNull();
+    cocherCase(container);
+
     const bloc = container.querySelector('.impression-bloc--conflit');
     expect(bloc).not.toBeNull();
     expect(bloc?.getAttribute('title')).toBe("Accueil — l'empêche de voir Grand Concert");
@@ -186,6 +200,10 @@ describe('montrerRosterImprimable avec une affectation qui dépasse la disponibi
     });
     const container = document.createElement('div');
     montrerRosterImprimable(container, m);
+
+    // Décochée par défaut (retour Antoine 2026-09-24) : aucun rouge tant qu'on ne l'active pas.
+    expect(container.querySelector('.impression-bloc--conflit')).toBeNull();
+    cocherCase(container);
 
     const blocConflit = container.querySelector('.impression-bloc--conflit');
     expect(blocConflit).not.toBeNull();
