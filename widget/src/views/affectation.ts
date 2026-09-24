@@ -253,8 +253,7 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
   async function libererPlaceEtDeverrouiller(place: Place): Promise<{ok: true} | {ok: false; raison: string}> {
     const resultat = await m.assignerPlace(place.id, null);
     if (!resultat.ok) { return resultat; }
-    await m.basculerVerrouillage(place.id);
-    return {ok: true};
+    return m.basculerVerrouillage(place.id);
   }
 
   async function desaffecterDepuisRoster(place: Place): Promise<void> {
@@ -279,6 +278,16 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
    * verrouillée). Un indicatif déjà complet reste dans la liste (pour rester
    * visible) mais refuse avec un message clair plutôt qu'échouer en
    * silence ou évincer quelqu'un d'autre à sa place.
+   *
+   * Bug bloquant corrigé le 2026-09-24 (5h52, signalé par Antoine : « je
+   * change l'indicatif, ça remet à Aucun, ça ne prend pas en compte ») :
+   * l'ancienne place était libérée AVANT que la nouvelle ne soit assignée.
+   * Si l'écriture Grist de la nouvelle affectation échouait (l'ancienne,
+   * elle, ayant réussi), le bénévole se retrouvait sans aucune place —
+   * exactement le symptôme observé — malgré un message d'erreur affiché.
+   * On assigne maintenant la nouvelle place D'ABORD ; l'ancienne n'est
+   * libérée qu'une fois la nouvelle confirmée, donc un échec laisse le
+   * bénévole sur son affectation de départ plutôt que sans aucune.
    */
   async function changerIndicatifDepuisRoster(
     benevole: Benevole, placeActuelle: Place | undefined, nouveauGroupeId: Id | null,
@@ -298,13 +307,20 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
       rafraichir();
       return;
     }
-    if (placeActuelle) {
-      const resultatLiberation = await libererPlaceEtDeverrouiller(placeActuelle);
-      if (!resultatLiberation.ok) { dernierMessage = {texte: resultatLiberation.raison, ton: 'danger'}; rafraichir(); return; }
-    }
     const diff = apercuAffectation(m, placeCible.id, benevole.id);
     const resultat = await m.assignerPlace(placeCible.id, benevole.id);
     if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; rafraichir(); return; }
+    if (placeActuelle) {
+      const resultatLiberation = await libererPlaceEtDeverrouiller(placeActuelle);
+      if (!resultatLiberation.ok) {
+        dernierMessage = {
+          texte: `Réaffecté(e), mais l'ancienne place n'a pas pu être libérée : ${resultatLiberation.raison}`,
+          ton: 'danger',
+        };
+        rafraichir();
+        return;
+      }
+    }
     dernierMessage = messageDepuisDiff(`${benevole.Nom} réaffecté(e).`, diff);
     rafraichir();
   }

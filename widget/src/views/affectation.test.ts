@@ -14,7 +14,7 @@
 import {describe, expect, it} from 'vitest';
 import type {Modele} from '../domain/types';
 import {TYPE_BENEVOLE_DRAG} from '../logic/dnd-types';
-import {Magasin} from '../store';
+import {type EcritureGrist, Magasin} from '../store';
 import {epochDepuisHeureLocale} from '../temps';
 import {montrerAffectation} from './affectation';
 
@@ -263,6 +263,46 @@ describe('montrerAffectation — colonne indicatif du roster (2026-09-24 5h02, e
     expect(placeAcc1?.Verrouillee).toBe(false);
     expect(placeEnt1?.Benevole).toBe(1);
   });
+
+  it(
+    "si l'écriture Grist de la nouvelle place échoue, l'ancienne reste intacte plutôt que de finir sur Aucun " +
+    '(bug bloquant signalé par Antoine le 2026-09-24 5h52 : « je change l\'indicatif, ça remet à Aucun, ça ne ' +
+    "prend pas en compte » — l'ancienne place était libérée AVANT que la nouvelle ne soit confirmée)",
+    async () => {
+      const m = new Magasin(construireModeleTroisIndicatifs());
+      let echecEcriture = true;
+      const ecriture: EcritureGrist = {
+        creerEquipe: async () => 1, creerMission: async () => 1, creerMacroCreneau: async () => 1,
+        modifierMacroCreneau: async () => {}, supprimerMacroCreneau: async () => {}, creerArtiste: async () => 1,
+        modifierArtiste: async () => {}, remplacerSousCreneaux: async () => [], modifierSousCreneaux: async () => {},
+        repointerBesoins: async () => {}, creerBesoin: async () => 1, creerGroupe: async () => 1,
+        positionnerGroupe: async () => {}, definirPlaces: async () => {}, deplacerPosition: async () => {},
+        ajouterPosition: async () => 1,
+        modifierPlaces: async () => { if (echecEcriture) { throw new Error('document indisponible'); } },
+        supprimerPosition: async () => {}, definirAbsence: async () => {}, valeursColonneBrute: async () => new Map(),
+        colonnesTable: async () => [], tablesDocument: async () => [], definirParametre: async () => {},
+        remplacerDisponibilites: async () => {}, peuplerBenevoles: async () => ({benevoles: [], crees: 0, actualises: 0}),
+        creerAffinites: async () => [],
+      };
+      m.brancherEcriture(ecriture);
+      const container = document.createElement('div');
+      montrerAffectation(container, m);
+
+      const select = selectAlix(container);
+      select.value = '3'; // ENT1, ouvert
+      select.dispatchEvent(new Event('change'));
+      await tick();
+      await tick();
+
+      const placeAcc1 = m.places.find((p) => p.id === 1);
+      const placeEnt1 = m.places.find((p) => p.id === 3);
+      expect(placeAcc1?.Benevole).toBe(1); // Alix reste sur ACC1, jamais sans indicatif
+      expect(placeEnt1?.Benevole).toBeNull();
+      expect(container.textContent).toContain("Échec de l'écriture dans le document Grist connecté");
+
+      echecEcriture = false;
+    },
+  );
 });
 
 describe('montrerAffectation — point 4 de la nuit (2026-09-24, 4h34) : voir/désaffecter depuis le roster', () => {
