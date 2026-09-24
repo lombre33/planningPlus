@@ -21,7 +21,7 @@
  */
 
 import type {Epoch, Id, MacroCreneau} from '../domain/types';
-import {indexer} from '../logic/derive';
+import {benevolesDisponiblesCeJour, indexer, quartsDuJour} from '../logic/derive';
 import {regrouperParJour} from '../logic/derive';
 import {
   blocsDuJour, contraintesBenevole, estHeurePleine, graviteContraintes, indexerDisponibilitesParBenevole,
@@ -595,10 +595,20 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
       return;
     }
     const blocs = blocsDuJour(jour).filter((b) => b.quarts.length > 0);
+    // Bénévoles ayant une vraie disponibilité ce jour-là (§ prédicat commun,
+    // `logic/derive.ts` — un souhait « voir un artiste » n'en est pas une),
+    // même filtre que le roster Affectation et la feuille imprimable
+    // (Antoine, 2026-09-24 : la grille montrait tout le monde malgré le
+    // filtre par jour). Jamais en mode édition : sans ça, un bénévole tout
+    // juste importé ou dont la réponse du jour n'a pas été reconnue
+    // ("Manuelle", à saisir à la main) disparaîtrait de l'écran qui sert
+    // justement à le saisir.
+    const disposCeJour = benevolesDisponiblesCeJour(m, quartsDuJour(jour));
 
     const benevoles = m.benevoles
       .filter((b) => equipeFiltre === 'toutes' || b.Equipe === equipeFiltre)
       .filter((b) => recherche.trim() === '' || b.Nom.toLowerCase().includes(recherche.trim().toLowerCase()))
+      .filter((b) => modeEdition || disposCeJour.has(b.id))
       .sort((a, b) => a.Nom.localeCompare(b.Nom, 'fr'));
 
     if (blocs.length === 0) {
