@@ -24,7 +24,7 @@ import {
 } from '../logic/derive';
 import {type DiffAnomalies, apercuAffectation, apercuEchange, verifierDepot} from '../logic/glisser-deposer';
 import {lancerAlgorithme, type ResumeLancement} from '../logic/moteur-pont';
-import {classerCandidats, raisonsPlaceVide} from '../moteur/adaptateur-magasin';
+import {classerCandidats, raisonsNonAffecte, raisonsPlaceVide} from '../moteur/adaptateur-magasin';
 import type {CodeAnomalie, GraviteAnomalie} from '../moteur';
 import type {Magasin} from '../store';
 import {carteCandidatCompacte} from '../ui/candidat-carte';
@@ -448,6 +448,7 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
 
   function rosterCard(
     ix: Index, benevole: Benevole, placeCeJour: {place: Place; libelle: string} | undefined,
+    groupeIdsOuvertsCeJour: readonly Id[],
   ): Node {
     // `ix.equipe.get(...)` peut renvoyer `undefined` si l'équipe du bénévole
     // ne correspond plus à aucune équipe existante (référence orpheline,
@@ -488,7 +489,8 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
       },
         placeCeJour
           ? h('span', null, `Affecté(e) : ${placeCeJour.libelle}`)
-          : h('span', {class: 'view__intro', style: {margin: '0'}}, "Non affecté(e) aujourd'hui."),
+          : h('span', {class: 'view__intro', style: {margin: '0'}},
+            `Non affecté(e) aujourd'hui — ${raisonsNonAffecte(m, benevole.id, groupeIdsOuvertsCeJour).join(' ; ')}.`),
         placeCeJour ? h('button', {
           class: 'btn btn--sm btn--ghost', type: 'button',
           onclick: (e: Event) => { e.stopPropagation(); void desaffecterDepuisRoster(placeCeJour.place); },
@@ -550,6 +552,16 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
       const groupe = ix.groupe.get(place.Groupe);
       placeCeJourParBenevole.set(place.Benevole, {place, libelle: `${mission?.Nom ?? '?'} — ${groupe?.Code ?? '?'}`});
     }
+
+    // Point 1 de la nuit (2026-09-24 4h24) : groupes encore ouverts
+    // aujourd'hui (au moins une place vide non verrouillée), pour expliquer
+    // pourquoi un bénévole non affecté ne l'est sur aucun d'eux.
+    const groupeIdsOuvertsCeJour = [...new Set(
+      m.places
+        .filter((p) => p.Benevole == null && !p.Verrouillee)
+        .filter((p) => positionsDuGroupe(m, ix, p.Groupe).some(({sousCreneau}) => sousCreneauxDuJour.has(sousCreneau.id)))
+        .map((p) => p.Groupe),
+    )];
     const rosterFiltreEquipeRecherche = m.benevoles
       .filter((b) => equipeFiltre === 'toutes' || b.Equipe === equipeFiltre)
       .filter((b) => rechercheRoster.trim() === '' || b.Nom.toLowerCase().includes(rechercheRoster.trim().toLowerCase()))
@@ -628,7 +640,7 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
                 : rosterFiltreEquipeRecherche.length === 0
                   ? 'Aucun bénévole ne correspond à ce filtre.'
                   : `Aucun bénévole disponible ${jour ? jour.libelle.toLowerCase() : 'ce jour'} : le roster n'affiche que ceux qui ont déclaré au moins une disponibilité ce jour-là.`)
-              : roster.map((b) => rosterCard(ix, b, placeCeJourParBenevole.get(b.id))),
+              : roster.map((b) => rosterCard(ix, b, placeCeJourParBenevole.get(b.id), groupeIdsOuvertsCeJour)),
           ),
         ),
         h('div', {class: 'affectation__board'},

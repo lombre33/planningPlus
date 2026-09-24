@@ -257,6 +257,51 @@ export function raisonsPlaceVide(m: Magasin, groupeId: Id): string[] {
   return [...raisons].map((r) => LIBELLE_RAISON[r]);
 }
 
+// --- raisonsNonAffecte -------------------------------------------------------
+
+const LIBELLE_RAISON_BENEVOLE: Record<RaisonInEligibilite, string> = {
+  indisponible: 'indisponible sur les créneaux encore ouverts',
+  competence_manquante: 'compétence manquante pour les missions encore ouvertes',
+  deja_occupe: 'déjà occupé(e) sur ces créneaux via une autre place',
+  autre_indicatif_meme_jour: 'tient déjà un autre indicatif ce jour-là',
+  refus_mission: 'a refusé les missions encore ouvertes',
+  statut_absent: 'marqué(e) absent(e)',
+};
+
+/**
+ * Pourquoi CE bénévole n'est affecté à aucun indicatif encore ouvert
+ * (question d'Antoine, 2026-09-24 4h24 : « je ne vois pas la raison »),
+ * pendant de `raisonsPlaceVide` mais côté bénévole plutôt que côté place.
+ * `groupeIdsOuverts` doit être calculé par l'appelant (une seule notion de
+ * « groupe encore ouvert » — au moins une place vide non verrouillée — pour
+ * ne pas la redéfinir ici indépendamment du périmètre affiché, day ou tout).
+ */
+export function raisonsNonAffecte(m: Magasin, benevoleId: Id, groupeIdsOuverts: readonly Id[]): string[] {
+  if (groupeIdsOuverts.length === 0) {
+    return ['aucun indicatif encore ouvert sur ce périmètre'];
+  }
+  const donnees = versDonneesPlanning(m);
+  let eligibleQuelquePart = false;
+  const raisons = new Set<RaisonInEligibilite>();
+  for (const groupeId of groupeIdsOuverts) {
+    const classement = moteurClasserCandidats(donnees, groupeId);
+    const moi = classement.find((c) => c.benevoleId === benevoleId);
+    if (!moi) { continue; }
+    if (moi.eligible) { eligibleQuelquePart = true; continue; }
+    if (moi.raison) { raisons.add(moi.raison); }
+  }
+  if (eligibleQuelquePart) {
+    // On sait qu'il est éligible quelque part, pas s'il a déjà perdu un
+    // arbitrage face à un autre candidat (ça demanderait de rejouer le
+    // choix du solveur) — ne pas l'affirmer, juste dire ce qui reste possible.
+    return ['éligible sur au moins un indicatif encore ouvert — un glisser-déposer ou un nouveau lancement peut le pourvoir'];
+  }
+  if (raisons.size === 0) {
+    return ['aucun indicatif ouvert ne correspond à son profil'];
+  }
+  return [...raisons].map((r) => LIBELLE_RAISON_BENEVOLE[r]);
+}
+
 // --- proposerPermutation (Jour J) -------------------------------------------
 
 export interface EtapePermutation {

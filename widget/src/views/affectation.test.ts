@@ -192,8 +192,44 @@ describe('montrerAffectation — point 4 de la nuit (2026-09-24, 4h34) : voir/d�
     roster.click();
     await tick();
 
-    expect(container.textContent).toContain("Non affecté(e) aujourd'hui.");
+    expect(container.textContent).toContain("Non affecté(e) aujourd'hui");
     expect(Array.from(container.querySelectorAll('button')).some((b) => b.textContent === 'Désaffecter')).toBe(false);
+  });
+});
+
+describe('montrerAffectation — point 1 de la nuit (2026-09-24 4h24) : pourquoi un bénévole non affecté ne l\'est pas', () => {
+  it("dit qu'aucun indicatif n'est encore ouvert quand toutes les places du jour sont déjà pourvues ou verrouillées", async () => {
+    const modele = construireModeleUnBesoin();
+    modele.benevoles.push({
+      id: 2, Nom: 'Bao', Contact: '', Equipe: 1, Competences: [],
+      Quota_heures_min: 0, Quota_heures_max: 40, Statut: 'Actif', Notes: '',
+    });
+    modele.disponibilites.push({Benevole: 2, Quart_heure: 0, Statut: 'Disponible', Artiste: null});
+    modele.places = [{...modele.places[0]!, Benevole: 1, Verrouillee: true, Origine: 'Manuel'}];
+    const m = new Magasin(modele);
+    const container = document.createElement('div');
+    montrerAffectation(container, m);
+
+    const cartes = Array.from(container.querySelectorAll('.roster-card'));
+    const carteBao = cartes.find((c) => c.textContent?.includes('Bao')) as HTMLElement;
+    carteBao.click();
+    await tick();
+
+    expect(container.textContent).toContain('aucun indicatif encore ouvert');
+  });
+
+  it("nomme la compétence manquante quand c'est la seule raison qui bloque le bénévole sur les indicatifs encore ouverts", async () => {
+    const modele = construireModeleUnBesoin();
+    modele.missions[0]!.Competences_requises = ['Premiers secours'];
+    const m = new Magasin(modele);
+    const container = document.createElement('div');
+    montrerAffectation(container, m);
+
+    const roster = container.querySelector('.roster-card') as HTMLElement;
+    roster.click();
+    await tick();
+
+    expect(container.textContent).toContain('compétence manquante');
   });
 });
 
