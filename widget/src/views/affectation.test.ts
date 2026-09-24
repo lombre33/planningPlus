@@ -13,8 +13,37 @@
  */
 import {describe, expect, it} from 'vitest';
 import type {Modele} from '../domain/types';
+import {TYPE_BENEVOLE_DRAG} from '../logic/dnd-types';
 import {Magasin} from '../store';
+import {epochDepuisHeureLocale} from '../temps';
 import {montrerAffectation} from './affectation';
+
+/** Attend un tour de micro-tâches (le dépôt manuel passe par `assignerPlace`,
+ *  une fonction async, avant de redessiner). */
+function tick(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+function simulerDepotBenevole(roster: Element, slot: Element, benevoleId: number): void {
+  const data = new Map<string, string>();
+  const dataTransfer = {
+    setData: (t: string, v: string) => data.set(t, v),
+    getData: (t: string) => data.get(t) ?? '',
+    get types() { return [...data.keys()]; },
+  };
+  const dragStart = new Event('dragstart', {bubbles: true, cancelable: true});
+  Object.assign(dragStart, {dataTransfer});
+  roster.dispatchEvent(dragStart);
+  data.set(TYPE_BENEVOLE_DRAG, String(benevoleId));
+
+  const dragOver = new Event('dragover', {bubbles: true, cancelable: true});
+  Object.assign(dragOver, {dataTransfer});
+  slot.dispatchEvent(dragOver);
+
+  const drop = new Event('drop', {bubbles: true, cancelable: true});
+  Object.assign(drop, {dataTransfer});
+  slot.dispatchEvent(drop);
+}
 
 function construireModele(): Modele {
   return {
@@ -56,6 +85,112 @@ function construireModele(): Modele {
     affinites: [],
   };
 }
+
+function construireModeleUnBesoin(): Modele {
+  return {
+    equipes: [{id: 1, Nom: 'Bar', Couleur: '#c00', Referent: null, Notes: ''}],
+    lieux: [],
+    benevoles: [
+      {id: 1, Nom: 'Alix', Contact: '', Equipe: 1, Competences: [], Quota_heures_min: 0, Quota_heures_max: 40, Statut: 'Actif', Notes: ''},
+    ],
+    missions: [{id: 1, Nom: 'Accueil', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []}],
+    artistes: [],
+    macroCreneaux: [{id: 1, Nom: 'Samedi', Debut: 0, Fin: 900}],
+    sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: 'Cible', Debut: 0, Fin: 900}],
+    besoins: [{id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 1, Taille_groupe: 1}],
+    groupes: [{id: 1, Code: 'ACC1', Taille: 1, Equipe: 1, Notes: ''}],
+    positionsGroupe: [{id: 1, Groupe: 1, Besoin: 1}],
+    places: [{id: 1, Groupe: 1, Rang: 1, Benevole: null, Origine: 'Algorithme', Verrouillee: false, Score: 0}],
+    disponibilites: [{Benevole: 1, Quart_heure: 0, Statut: 'Disponible', Artiste: null}],
+    souhaitsMissions: [],
+    affinites: [],
+  };
+}
+
+function construireModeleDeuxJours(): Modele {
+  const jour1Debut = epochDepuisHeureLocale({annee: 2026, mois: 9, jour: 26, heures: 10, minutes: 0});
+  const jour2Debut = epochDepuisHeureLocale({annee: 2026, mois: 9, jour: 27, heures: 10, minutes: 0});
+  return {
+    equipes: [{id: 1, Nom: 'Bar', Couleur: '#c00', Referent: null, Notes: ''}],
+    lieux: [],
+    benevoles: [
+      {id: 1, Nom: 'Alix', Contact: '', Equipe: 1, Competences: [], Quota_heures_min: 0, Quota_heures_max: 40, Statut: 'Actif', Notes: ''},
+    ],
+    missions: [
+      {id: 1, Nom: 'Jour1', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Critique', Competences_requises: []},
+      {id: 2, Nom: 'Jour2', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Critique', Competences_requises: []},
+    ],
+    artistes: [],
+    macroCreneaux: [
+      {id: 1, Nom: 'Jour 1', Debut: jour1Debut, Fin: jour1Debut + 3600},
+      {id: 2, Nom: 'Jour 2', Debut: jour2Debut, Fin: jour2Debut + 3600},
+    ],
+    sousCreneaux: [
+      {id: 1, Macro_creneau: 1, Mission: null, Libelle: 'Cible1', Debut: jour1Debut, Fin: jour1Debut + 900},
+      {id: 2, Macro_creneau: 2, Mission: null, Libelle: 'Cible2', Debut: jour2Debut, Fin: jour2Debut + 900},
+    ],
+    besoins: [
+      {id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 1, Taille_groupe: 1},
+      {id: 2, Mission: 2, Sous_creneau: 2, Effectif_min: 1, Effectif_max: 1, Taille_groupe: 1},
+    ],
+    groupes: [
+      {id: 1, Code: 'J1', Taille: 1, Equipe: 1, Notes: ''},
+      {id: 2, Code: 'J2', Taille: 1, Equipe: 1, Notes: ''},
+    ],
+    positionsGroupe: [{id: 1, Groupe: 1, Besoin: 1}, {id: 2, Groupe: 2, Besoin: 2}],
+    places: [
+      {id: 1, Groupe: 1, Rang: 1, Benevole: null, Origine: 'Algorithme', Verrouillee: false, Score: 0},
+      {id: 2, Groupe: 2, Rang: 1, Benevole: 1, Origine: 'Manuel', Verrouillee: false, Score: 0},
+    ],
+    disponibilites: [
+      {Benevole: 1, Quart_heure: jour1Debut, Statut: 'Disponible', Artiste: null},
+      {Benevole: 1, Quart_heure: jour2Debut, Statut: 'Disponible', Artiste: null},
+    ],
+    souhaitsMissions: [],
+    affinites: [],
+  };
+}
+
+describe("montrerAffectation — l'algorithme ne recalcule que le jour affiché (2026-09-24, confirmé par Antoine)", () => {
+  it("remplit la place vide du jour affiché mais laisse intacte une place Manuelle non verrouillée d'un autre jour", async () => {
+    const m = new Magasin(construireModeleDeuxJours());
+    const container = document.createElement('div');
+    montrerAffectation(container, m);
+
+    const bouton = Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent === "Lancer l'algorithme") as HTMLButtonElement;
+    bouton.click();
+    await tick();
+
+    const placeJour1 = m.places.find((p) => p.id === 1)!;
+    const placeJour2 = m.places.find((p) => p.id === 2)!;
+    expect(placeJour1.Benevole).toBe(1);
+    expect(placeJour1.Origine).toBe('Algorithme');
+    // La place du jour 2 n'est jamais entrée dans le périmètre du calcul :
+    // même bénévole, mais son origine « Manuel » n'a pas dû être écrasée.
+    expect(placeJour2.Benevole).toBe(1);
+    expect(placeJour2.Origine).toBe('Manuel');
+    expect(placeJour2.Verrouillee).toBe(false);
+  });
+});
+
+describe("montrerAffectation — le dépôt qui couvre entièrement un besoin ne le fait pas disparaître (2026-09-24)", () => {
+  it("garde la carte du besoin et la place remplie visibles juste après le dépôt, au lieu de basculer sur « rien à traiter »", async () => {
+    const m = new Magasin(construireModeleUnBesoin());
+    const container = document.createElement('div');
+    montrerAffectation(container, m);
+
+    const roster = container.querySelector('.roster-card')!;
+    const slot = container.querySelector('.place-slot--vide')!;
+    simulerDepotBenevole(roster, slot, 1);
+    await tick();
+
+    expect(container.textContent).not.toContain('Rien à traiter ce jour');
+    const slotApres = container.querySelector('.place-slot');
+    expect(slotApres?.classList.contains('place-slot--occupee')).toBe(true);
+    expect(slotApres?.textContent).toContain('Alix');
+  });
+});
 
 describe('montrerAffectation — point 4 (candidats bloqués sur place prioritaire)', () => {
   it("propose Alix (non affectée ce jour, contrainte molle « voir un artiste »), pas Bao (déjà affectée ce jour ailleurs)", () => {

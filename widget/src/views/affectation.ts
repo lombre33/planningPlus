@@ -51,6 +51,15 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
   let voirTout = false;
   let dernierMessage: {texte: string; ton: Ton} | null = null;
   let dernierResume: ResumeLancement | null = null;
+  // Repro confirmée sur le banc (2026-09-24, signalement d'Antoine « je
+  // dépose mais rien ne se passe ») : un dépôt qui couvre entièrement un
+  // besoin le fait aussitôt disparaître du tableau (filtré par défaut,
+  // `voirTout` étant décoché) — la carte que l'œil suivait s'efface sous le
+  // curseur, seul un bandeau ailleurs sur l'écran confirme que ça a marché.
+  // Garde visibles, pour le rendu suivant seulement, les besoins touchés par
+  // le dernier geste manuel — remis à zéro à toute navigation qui n'est pas
+  // ce geste (jour, case à cocher, algorithme, réinitialisation).
+  let besoinsIdsGardesVisibles = new Set<Id>();
 
   function messageDepuisDiff(base: string, diff: DiffAnomalies): {texte: string; ton: Ton} {
     if (diff.creees.length === 0 && diff.resolues.length === 0) { return {texte: base, ton: 'ok'}; }
@@ -64,9 +73,31 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
     return {texte: parties.join(' — '), ton: diff.creees.length > 0 ? 'danger' : 'ok'};
   }
 
+  /** Besoins couverts par un groupe, via ses positions — sert à savoir quels
+   *  besoins garder visibles après un dépôt qui vient de les compléter. */
+  function besoinIdsDuGroupe(groupeId: Id): Id[] {
+    return m.positionsGroupe.filter((p) => p.Groupe === groupeId).map((p) => p.Besoin);
+  }
+
+  /**
+   * Confirmé par Antoine (2026-09-24 4h38) : « l'algo ne doit tourner que
+   * dans le contexte d'un même jour ». Avant ce correctif, `lancerAlgorithme`
+   * était appelé sans périmètre et libérait/reremplissait tout le planning
+   * non verrouillé, tous les jours confondus — un lancement fait en
+   * regardant un jour pouvait donc redistribuer des places d'un autre jour
+   * sous ses yeux, sans que rien à l'écran ne le montre. Le périmètre suit
+   * maintenant le jour affiché (§6.2 : un « jour » peut réunir plusieurs
+   * macro-créneaux via la coupure à 6h, d'où `jour.macros`).
+   */
   async function executerAlgorithme(): Promise<void> {
+    besoinsIdsGardesVisibles = new Set();
     dernierMessage = null;
-    dernierResume = await lancerAlgorithme(m);
+    const joursActuels = regrouperParJour(m.macroCreneaux);
+    const jourActuel = joursActuels[Math.min(jourIndex, Math.max(joursActuels.length - 1, 0))];
+    dernierResume = await lancerAlgorithme(
+      m,
+      jourActuel ? {perimetre: {macroCreneauIds: jourActuel.macros.map((macro) => macro.id)}} : undefined,
+    );
     if (dernierResume.echecEcriture) {
       dernierMessage = {texte: dernierResume.echecEcriture, ton: 'danger'};
     }
@@ -88,6 +119,7 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
       + "Ce geste vide et déverrouille chaque place, y compris vos corrections manuelles : irréversible. Vous pourrez ensuite relancer l'algorithme sur une ardoise vierge.",
     );
     if (!confirme) { return; }
+    besoinsIdsGardesVisibles = new Set();
     dernierMessage = null;
     dernierResume = null;
     const resultat = await m.reinitialiserAffectations();
@@ -142,8 +174,10 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
     const verdict = verifierDepot(m, benevoleId, placeId);
     if (!verdict.ok) { dernierMessage = {texte: verdict.motif, ton: 'danger'}; rafraichir(); return; }
     const diff = apercuAffectation(m, placeId, benevoleId);
+    const groupeId = m.places.find((p) => p.id === placeId)?.Groupe;
     const resultat = await m.assignerPlace(placeId, benevoleId, 'Manuel');
     if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; rafraichir(); return; }
+    if (groupeId != null) { besoinsIdsGardesVisibles = new Set(besoinIdsDuGroupe(groupeId)); }
     const nom = indexer(m).benevole.get(benevoleId)?.Nom ?? 'Bénévole';
     dernierMessage = messageDepuisDiff(`${nom} affecté(e).`, diff);
     rafraichir();
@@ -174,6 +208,7 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
     if (!resultat1.ok) { dernierMessage = {texte: resultat1.raison, ton: 'danger'}; rafraichir(); return; }
     const resultat2 = await m.assignerPlace(placeCibleId, benevoleSource, 'Manuel');
     if (!resultat2.ok) { dernierMessage = {texte: resultat2.raison, ton: 'danger'}; rafraichir(); return; }
+    besoinsIdsGardesVisibles = new Set([...besoinIdsDuGroupe(source.Groupe), ...besoinIdsDuGroupe(cible.Groupe)]);
     dernierMessage = messageDepuisDiff(benevoleCible != null ? 'Échange effectué.' : 'Déplacé.', diff);
     rafraichir();
   }
@@ -414,7 +449,7 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
     const besoinsExistantsDuJour = m.besoins.filter((b) => sousCreneauxDuJour.has(b.Sous_creneau));
     const besoinsDuJour = besoinsExistantsDuJour
       .map((besoin) => ({besoin, c: couvertureBesoin(m, ix, besoin.id)}))
-      .filter(({c}) => voirTout || c.statut !== 'ok')
+      .filter(({besoin, c}) => voirTout || c.statut !== 'ok' || besoinsIdsGardesVisibles.has(besoin.id))
       .sort((a, b) => {
         const rang = {sous: 0, partiel: 1, ok: 2} as const;
         return rang[a.c.statut] - rang[b.c.statut];
@@ -460,13 +495,16 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
     vider(container);
     container.append(
       h('div', {class: 'affectation__lancement', style: {display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', flexWrap: 'wrap'}},
-        h('button', {class: 'btn btn--primary', type: 'button', onclick: executerAlgorithme}, "Lancer l'algorithme"),
+        h('button', {
+          class: 'btn btn--primary', type: 'button', title: 'Ne remplit que le jour affiché — les autres jours ne sont jamais touchés',
+          onclick: executerAlgorithme,
+        }, "Lancer l'algorithme"),
         h('button', {
           class: 'btn btn--ghost', type: 'button', title: 'Vide et déverrouille tout le planning, tous les jours confondus',
           onclick: () => { void executerReinitialisation(); },
         }, 'Réinitialiser tout'),
         h('span', {class: 'view__intro', style: {margin: '0'}},
-          "Remplit tout le planning non verrouillé à partir des indicatifs positionnés et des disponibilités (§7.5.1). Peut se relancer à volonté : les corrections manuelles, verrouillées, ne sont jamais reprises."),
+          "Remplit le jour affiché, non verrouillé, à partir des indicatifs positionnés et des disponibilités (§7.5.1). Peut se relancer à volonté : les corrections manuelles, verrouillées, ne sont jamais reprises, et les autres jours ne sont jamais touchés."),
       ),
       h('div', null, dernierResume ? resumeAlgorithmeVue(dernierResume) : null),
       h('div', {class: 'affectation__banniere'},
@@ -477,12 +515,16 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
       h('div', {class: 'agenda__toolbar', style: {marginBottom: '12px'}},
         ...jours.map((j, i) => h('button', {
           class: `btn btn--sm${i === jourIndex ? ' btn--primary' : ''}`, type: 'button',
-          onclick: () => { jourIndex = i; rafraichir(); },
+          onclick: () => { jourIndex = i; besoinsIdsGardesVisibles = new Set(); rafraichir(); },
         }, j.libelle.split(' ').slice(0, 1).join(' '))),
         h('label', {class: 'field', style: {flexDirection: 'row', alignItems: 'center', gap: '6px'}},
           h('input', {
             type: 'checkbox', checked: voirTout,
-            onchange: (e: Event) => { voirTout = (e.target as HTMLInputElement).checked; rafraichir(); },
+            onchange: (e: Event) => {
+              voirTout = (e.target as HTMLInputElement).checked;
+              besoinsIdsGardesVisibles = new Set();
+              rafraichir();
+            },
           }),
           h('span', null, 'Afficher aussi les besoins déjà couverts'),
         ),
