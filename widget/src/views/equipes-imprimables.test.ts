@@ -206,21 +206,22 @@ describe('montrerEquipesImprimables avec plusieurs équipes', () => {
       // Le sous-titre de page (plage horaire) n'existe plus : plus de pagination à sous-titrer.
       expect(zoneImpression.querySelector('.impression-equipes__sous-titre')).toBeNull();
 
-      // WYSIWYG (cinquième passage) : la table imprimée a exactement la même largeur inline
-      // que la table affichée à l'écran pour la même équipe — même calibrage, pas un aperçu
-      // à une échelle différente du papier.
+      // WYSIWYG abandonné (sixième passage, régression sur les noms) : les calibrages
+      // écran et papier sont redécouplés, donc les deux largeurs diffèrent à nouveau —
+      // 16 quarts sur 4h, colonne mission 190px : écran 190+16*34=734px, papier
+      // 190+16*(860/16)=1050px (tient sur une page A4 paysage).
       const largeurEcran = container.querySelector<HTMLTableElement>('table.impression-table')?.style.width;
       const largeurImpression = zoneImpression.querySelector<HTMLTableElement>('table.impression-table')?.style.width;
-      expect(largeurEcran).toBeTruthy();
-      expect(largeurImpression).toBe(largeurEcran);
+      expect(largeurEcran).toBe('734px');
+      expect(largeurImpression).toBe('1050px');
     } finally {
       zoneImpression.remove();
     }
   });
 });
 
-describe('montrerEquipesImprimables : la largeur d’un quart d’heure tient toute la journée sur une page A4 (retour Antoine 2026-09-24, cinquième passage)', () => {
-  it('calcule la même largeur de quart, à l’écran comme à l’impression, à partir du nombre total de quarts du jour', () => {
+describe('montrerEquipesImprimables : calibrages écran et papier (redécouplés au sixième passage, WYSIWYG abandonné)', () => {
+  it('donne à l’écran sa propre largeur de quart fixe, et au papier une largeur qui tient la journée entière sur une page A4', () => {
     const m = new Magasin({
       ...modeleVide(),
       equipes: [{id: 1, Nom: 'Bar', Couleur: '#000', Referent: null, Notes: ''}],
@@ -228,8 +229,8 @@ describe('montrerEquipesImprimables : la largeur d’un quart d’heure tient to
         {id: 1, Nom: 'Marie', Contact: '', Equipe: 1, Competences: [], Quota_heures_min: 0, Quota_heures_max: 99, Statut: 'Actif', Notes: ''},
       ],
       missions: [{id: 1, Nom: 'Bar central', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []}],
-      // Une journée de 8h (32 quarts) pour vérifier que la largeur se resserre en
-      // conséquence, jamais fixée à une valeur écran indépendante du nombre de quarts.
+      // Une journée de 8h (32 quarts) pour vérifier que la largeur papier se resserre en
+      // conséquence, alors que la largeur écran reste calculée sur sa propre base fixe.
       macroCreneaux: [{id: 1, Nom: 'Samedi', Debut: DEBUT, Fin: DEBUT + 8 * 3600}],
       sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: 'Bloc', Debut: DEBUT, Fin: DEBUT + 3600}],
       besoins: [{id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 1, Taille_groupe: 1}],
@@ -238,17 +239,34 @@ describe('montrerEquipesImprimables : la largeur d’un quart d’heure tient to
       places: [{id: 1, Groupe: 1, Rang: 1, Benevole: 1, Origine: 'Manuel', Verrouillee: false, Score: 0}],
     });
     const container = document.createElement('div');
-    montrerEquipesImprimables(container, m);
+    const zoneImpression = document.createElement('div');
+    zoneImpression.id = 'zone-impression';
+    document.body.append(zoneImpression);
+    window.print = () => {};
 
-    // 32 quarts sur 8h, colonne mission 190px, page ~1050px : (1050-190)/32 = 26.875px/quart,
-    // largeur totale de la table = 190 + 32*26.875 = 1050px (tient exactement sur une page).
-    const table = container.querySelector<HTMLTableElement>('table.impression-table');
-    expect(table?.style.width).toBe('1050px');
+    try {
+      montrerEquipesImprimables(container, m);
+
+      // Écran : 32 quarts * 34px (largeur fixe, généreuse) + 190px de colonne mission.
+      const tableEcran = container.querySelector<HTMLTableElement>('table.impression-table');
+      expect(tableEcran?.style.width).toBe('1278px');
+
+      const boutonImprimer = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+        .find((b) => b.textContent?.startsWith('Imprimer'));
+      boutonImprimer?.click();
+
+      // Papier : 32 quarts sur 8h, colonne mission 190px, page ~1050px : (1050-190)/32 =
+      // 26.875px/quart, largeur totale = 190 + 32*26.875 = 1050px (tient sur une page).
+      const tableImpression = zoneImpression.querySelector<HTMLTableElement>('table.impression-table');
+      expect(tableImpression?.style.width).toBe('1050px');
+    } finally {
+      zoneImpression.remove();
+    }
   });
 });
 
 describe('montrerEquipesImprimables avec un créneau trop court même pour le code d’indicatif', () => {
-  it('tronque avec une ellipse au plancher partagé écran/impression plutôt que de laisser le bloc sans texte (retour Antoine 2026-09-24 : lisibilité, puis WYSIWYG au cinquième passage)', () => {
+  it('tronque avec une ellipse au plancher écran plutôt que de laisser le bloc sans texte (retour Antoine 2026-09-24 : lisibilité, calibrages redécouplés au sixième passage)', () => {
     const m = new Magasin({
       ...modeleVide(),
       equipes: [{id: 1, Nom: 'Bar', Couleur: '#000', Referent: null, Notes: ''}],
@@ -273,9 +291,9 @@ describe('montrerEquipesImprimables avec un créneau trop court même pour le co
     expect(texte).not.toBeNull();
     expect(texte?.textContent).not.toBe('');
     expect(texte?.textContent?.endsWith('…')).toBe(true);
-    // Plancher partagé écran/impression (unifié au cinquième passage) : 6px, jamais un
-    // plancher écran distinct plus haut.
-    expect(texte?.style.fontSize).toBe('6px');
+    // Plancher écran (`TAILLES_POLICE_ECRAN_PX`, redécouplé du papier au sixième passage) :
+    // 8px, jamais le plancher papier qui descend à 6px.
+    expect(texte?.style.fontSize).toBe('8px');
   });
 });
 
