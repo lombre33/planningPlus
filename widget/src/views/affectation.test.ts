@@ -175,7 +175,12 @@ describe('montrerAffectation — point 4 de la nuit (2026-09-24, 4h34) : voir/d�
     bouton.click();
     await tick();
 
-    expect(m.places.find((p) => p.id === 1)?.Benevole).toBeNull();
+    const place = m.places.find((p) => p.id === 1);
+    expect(place?.Benevole).toBeNull();
+    // Contrairement au « vider » du tableau, la place ne doit pas rester
+    // verrouillée-vide : sinon ni un glisser-déposer ni l'algorithme ne
+    // pourraient plus jamais la reprendre (piège signalé par le coordinateur).
+    expect(place?.Verrouillee).toBe(false);
   });
 
   it("affiche « non affecté(e) » pour un bénévole libre aujourd'hui, sans bouton Désaffecter", async () => {

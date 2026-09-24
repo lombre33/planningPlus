@@ -235,6 +235,31 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
     rafraichir();
   }
 
+  /**
+   * Désaffecter depuis le roster (point 4 de la nuit, 2026-09-24) : à la
+   * différence de `viderPlace` (le « vider » du tableau, qui verrouille
+   * volontairement une place laissée vide à la main — un choix voulu, voir
+   * `corrigerPlace` dans le moteur), ce geste vise à libérer le bénévole
+   * pour le réaffecter « facilement » ailleurs (mot d'Antoine). La place ne
+   * doit donc pas rester verrouillée-vide : ni un glisser-déposer, ni un
+   * nouveau lancement de l'algorithme ne pourraient plus jamais la
+   * reprendre — même piège que celui qu'évite déjà `executerReinitialisation`
+   * en déverrouillant, signalé par le coordinateur avant que ça atterrisse.
+   */
+  async function desaffecterDepuisRoster(place: Place): Promise<void> {
+    if (place.Verrouillee) {
+      dernierMessage = {texte: 'Place verrouillée : déverrouillez-la avant de la modifier.', ton: 'danger'};
+      rafraichir();
+      return;
+    }
+    const diff = apercuAffectation(m, place.id, null);
+    const resultat = await m.assignerPlace(place.id, null);
+    if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; rafraichir(); return; }
+    await m.basculerVerrouillage(place.id);
+    dernierMessage = messageDepuisDiff('Désaffecté(e), place libre pour un glisser-déposer ou un nouveau lancement.', diff);
+    rafraichir();
+  }
+
   function accepteDepot(e: DragEvent): boolean {
     const types = e.dataTransfer?.types ?? [];
     return types.includes(TYPE_BENEVOLE) || types.includes(TYPE_PLACE);
@@ -466,7 +491,7 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
           : h('span', {class: 'view__intro', style: {margin: '0'}}, "Non affecté(e) aujourd'hui."),
         placeCeJour ? h('button', {
           class: 'btn btn--sm btn--ghost', type: 'button',
-          onclick: (e: Event) => { e.stopPropagation(); void viderPlace(placeCeJour.place); },
+          onclick: (e: Event) => { e.stopPropagation(); void desaffecterDepuisRoster(placeCeJour.place); },
         }, 'Désaffecter') : null,
       ),
     );
