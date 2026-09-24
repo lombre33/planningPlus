@@ -8,12 +8,15 @@
  * d'impression.
  */
 
-import type {Benevole, Disponibilite, Epoch, Id} from '../domain/types';
-import {type Index, benevolesDisponiblesCeJour, indexer, regrouperParJour} from '../logic/derive';
+import type {Benevole, Disponibilite, Epoch, Id, StatutDisponibilite} from '../domain/types';
+import {
+  type Index, benevolesDisponiblesCeJour, estVraimentDisponibleAuQuart, indexer, indexerDisponibilites,
+  regrouperParJour,
+} from '../logic/derive';
 import {type BlocMacro, blocsDuJour, indexerDisponibilitesParBenevole} from '../logic/dispos-terrain';
 import {
-  type AffectationQuart, affectationsQuartParBenevole, creneauxVoirArtisteParBenevole,
-  indicatifDuJour, segmenterQuarts,
+  type AffectationQuart, affectationsQuartParBenevole, creneauxConflitArtisteParBenevole,
+  creneauxVoirArtisteParBenevole, indicatifDuJour, segmenterQuarts,
 } from '../logic/impression';
 import type {Magasin} from '../store';
 import {
@@ -28,11 +31,17 @@ export const LARGEUR_COLONNE_INDICATIF_PX = 50;
 interface ContenuQuart {
   missionNom: string | null;
   artisteNom: string | null;
+  conflitArtisteNom: string | null;
+  horsDispoReelle: boolean;
   disponible: boolean;
 }
 
 function cleContenu(c: ContenuQuart): string {
-  if (c.missionNom != null) { return `A:${c.missionNom}`; }
+  if (c.missionNom != null) {
+    return c.horsDispoReelle || c.conflitArtisteNom != null
+      ? `X:${c.missionNom}:${c.horsDispoReelle ? 1 : 0}:${c.conflitArtisteNom ?? ''}`
+      : `A:${c.missionNom}`;
+  }
   if (c.artisteNom != null) { return `V:${c.artisteNom}`; }
   return c.disponible ? 'L' : 'G';
 }
@@ -64,7 +73,8 @@ function construireLigneBenevole(
   benevole: Benevole, equipeCouleur: string, indicatif: string | null,
   blocs: readonly BlocMacro[], affectationsBenevole: Map<Epoch, AffectationQuart> | undefined,
   creneauxArtisteBenevole: Map<Epoch, string> | undefined,
-  disponibleAuQuart: (q: Epoch) => boolean, pxParQuart: number,
+  conflitArtisteBenevole: Map<Epoch, string> | undefined,
+  disponibleAuQuart: (q: Epoch) => boolean, horsDispoReelleAuQuart: (q: Epoch) => boolean, pxParQuart: number,
 ): Node {
   const cellules: Node[] = [
     h('th', {class: 'impression-table__entite', scope: 'row', title: benevole.Nom},
@@ -80,21 +90,32 @@ function construireLigneBenevole(
       (q) => ({
         missionNom: affectationsBenevole?.get(q)?.missionNom ?? null,
         artisteNom: creneauxArtisteBenevole?.get(q) ?? null,
+        conflitArtisteNom: conflitArtisteBenevole?.get(q) ?? null,
+        horsDispoReelle: affectationsBenevole?.get(q)?.missionNom != null && horsDispoReelleAuQuart(q),
         disponible: disponibleAuQuart(q),
       }),
       cleContenu,
     );
     segments.forEach((segment, iSegment) => {
-      const {missionNom, artisteNom, disponible} = segment.valeur;
-      const classeEtat = missionNom != null ? 'assignee' : artisteNom != null ? 'artiste' : (disponible ? 'libre' : 'indisponible');
+      const {missionNom, artisteNom, conflitArtisteNom, horsDispoReelle, disponible} = segment.valeur;
+      const enConflit = horsDispoReelle || conflitArtisteNom != null;
+      const classeEtat = missionNom != null
+        ? (enConflit ? 'conflit' : 'assignee')
+        : artisteNom != null ? 'artiste' : (disponible ? 'libre' : 'indisponible');
       const texteACaler = missionNom ?? artisteNom;
+      const motifs: string[] = [];
+      if (horsDispoReelle) { motifs.push('hors de sa disponibilité déclarée'); }
+      if (conflitArtisteNom != null) { motifs.push(`l'empêche de voir ${conflitArtisteNom}`); }
+      const titre = missionNom != null && motifs.length > 0
+        ? `${missionNom} — ${motifs.join(' · ')}`
+        : (texteACaler ?? undefined);
       const limiteMacro = iSegment === 0 && iBloc > 0;
       const largeurDisponible = Math.max(0, segment.quarts.length * pxParQuart - PADDING_HORIZONTAL_BLOC_PX);
       const ajuste = texteACaler != null ? ajusterTexteBlocAvecTroncature(texteACaler, largeurDisponible) : null;
       cellules.push(h('td', {
         class: `impression-bloc impression-bloc--${classeEtat}${limiteMacro ? ' impression-bloc--limite-macro' : ''}`,
         colspan: segment.quarts.length,
-        title: texteACaler ?? undefined,
+        title: titre,
       },
         ajuste
           ? h('span', {class: 'impression-bloc__texte', style: {fontSize: `${ajuste.taillePolicePx}px`}}, ajuste.texte)
@@ -109,7 +130,9 @@ function construireLigneBenevole(
 function construireTable(
   ix: Index, benevoles: readonly Benevole[], blocs: readonly BlocMacro[],
   affectations: Map<Id, Map<Epoch, AffectationQuart>>, creneauxArtiste: Map<Id, Map<Epoch, string>>,
-  indexDispos: Map<Id, Map<Epoch, Disponibilite>>, pxParQuart: number,
+  conflitArtiste: Map<Id, Map<Epoch, string>>,
+  indexDispos: Map<Id, Map<Epoch, Disponibilite>>, indexDispoReelle: Map<string, StatutDisponibilite>,
+  pxParQuart: number,
 ): HTMLTableElement {
   const nbQuartsTotal = blocs.reduce((n, b) => n + b.quarts.length, 0);
   const totalPx = LARGEUR_COLONNE_NOM_PX + LARGEUR_COLONNE_INDICATIF_PX + nbQuartsTotal * pxParQuart;
@@ -127,11 +150,12 @@ function construireTable(
       const dispoBenevole = indexDispos.get(b.id);
       return construireLigneBenevole(
         b, equipeCouleur, indicatifDuJour(affectationsBenevole), blocs, affectationsBenevole,
-        creneauxArtiste.get(b.id),
+        creneauxArtiste.get(b.id), conflitArtiste.get(b.id),
         (q) => {
           const d = dispoBenevole?.get(q);
           return d !== undefined && d.Statut !== 'Indisponible';
         },
+        (q) => !estVraimentDisponibleAuQuart(indexDispoReelle, b.id, q),
         pxParQuart,
       );
     })),
@@ -161,6 +185,9 @@ export function montrerRosterImprimable(container: HTMLElement, m: Magasin): () 
     // Seule source pour « qui est vraiment là ce jour » (logic/derive.ts) : un souhait
     // « voir un artiste » n'est pas une vraie disponibilité (retour d'Antoine, 2026-09-24).
     const idsDisponibles = benevolesDisponiblesCeJour(m, quartsDuJourSet);
+    // Même source, mais au quart d'heure précis (logic/derive.ts) : sert à signaler en
+    // rouge un créneau affecté qui dépasse la disponibilité réellement déclarée.
+    const indexDispoReelle = indexerDisponibilites(m);
     const benevoles = m.benevoles
       .filter((b) => idsDisponibles.has(b.id))
       .sort((a, b) => a.Nom.localeCompare(b.Nom, 'fr'));
@@ -174,6 +201,7 @@ export function montrerRosterImprimable(container: HTMLElement, m: Magasin): () 
 
     const affectations = affectationsQuartParBenevole(m, ix, quartsDuJourSet);
     const creneauxArtiste = creneauxVoirArtisteParBenevole(m, ix, quartsDuJourSet, affectations);
+    const conflitArtiste = creneauxConflitArtisteParBenevole(m, ix, quartsDuJourSet, affectations);
 
     const barre = h('div', {class: 'impression-barre'},
       h('p', {class: 'view__intro', style: {margin: '0'}},
@@ -183,7 +211,10 @@ export function montrerRosterImprimable(container: HTMLElement, m: Magasin): () 
         class: 'btn btn--primary btn--sm', type: 'button',
         onclick: () => {
           const pxImpression = largeurQuartImpressionPx(quartsDuJour.length, LARGEUR_COLONNE_NOM_PX + LARGEUR_COLONNE_INDICATIF_PX);
-          const table = construireTable(ix, benevoles, blocs, affectations, creneauxArtiste, indexDispos, pxImpression);
+          const table = construireTable(
+            ix, benevoles, blocs, affectations, creneauxArtiste, conflitArtiste, indexDispos, indexDispoReelle,
+            pxImpression,
+          );
           imprimer(
             [h('h2', null, `Roster bénévoles — ${jour.libelle}`), table],
             'impression-roster',
@@ -192,7 +223,10 @@ export function montrerRosterImprimable(container: HTMLElement, m: Magasin): () 
       }, 'Imprimer ce roster'),
     );
 
-    const table = construireTable(ix, benevoles, blocs, affectations, creneauxArtiste, indexDispos, LARGEUR_QUART_ECRAN_PX);
+    const table = construireTable(
+      ix, benevoles, blocs, affectations, creneauxArtiste, conflitArtiste, indexDispos, indexDispoReelle,
+      LARGEUR_QUART_ECRAN_PX,
+    );
 
     container.append(barre, h('div', {class: 'impression-scroll'}, table));
   }

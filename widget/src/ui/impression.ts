@@ -92,16 +92,20 @@ const RATIO_LARGEUR_CARACTERE = 0.56;
  * Choisit, parmi `candidats` (du plus complet au plus court — ex.
  * `["Comptage entrée Village partenaire"]`, ou `["Marie (A1)", "Marie"]`),
  * le premier qui tient dans `largeurDisponiblePx` à la plus grande taille de
- * police possible. Aucun ne tient même au plancher : retourne `null` plutôt
- * que de tronquer au hasard (demande d'Antoine, 2026-09-23 : « coupure quand
- * le bloc est vraiment trop court ») — l'appelant garde alors le bloc
- * coloré, sans texte, avec le nom complet en infobulle à l'écran.
+ * police possible parmi `taillesPx` (par défaut `TAILLES_POLICE_BLOC_PX`,
+ * le plancher pensé pour le papier — un appelant peut passer un plancher
+ * plus haut pour un rendu à l'écran, où un texte encore lisible sur une
+ * feuille imprimée peut être trop petit sur un moniteur). Aucun ne tient
+ * même au plancher : retourne `null` plutôt que de tronquer au hasard
+ * (demande d'Antoine, 2026-09-23 : « coupure quand le bloc est vraiment
+ * trop court ») — l'appelant garde alors le bloc coloré, sans texte, avec
+ * le nom complet en infobulle à l'écran.
  */
 export function ajusterTexteBloc(
-  candidats: readonly string[], largeurDisponiblePx: number,
+  candidats: readonly string[], largeurDisponiblePx: number, taillesPx: readonly number[] = TAILLES_POLICE_BLOC_PX,
 ): {texte: string; taillePolicePx: number} | null {
   for (const texte of candidats) {
-    for (const taille of TAILLES_POLICE_BLOC_PX) {
+    for (const taille of taillesPx) {
       if (texte.length * taille * RATIO_LARGEUR_CARACTERE <= largeurDisponiblePx) {
         return {texte, taillePolicePx: taille};
       }
@@ -113,21 +117,22 @@ export function ajusterTexteBloc(
 /**
  * Comme `ajusterTexteBloc`, mais pour un texte unique (pas de candidat plus
  * court à essayer — le roster n'a pas de code court à proposer à la place
- * du nom de mission) : si même le plancher ne suffit pas, tronque au
- * plancher plutôt que de laisser le bloc coloré sans aucune information.
- * Ajouté après retour d'Antoine (2026-09-24) : beaucoup de créneaux réels
- * durent 30 à 45 minutes, plus courts que ce qu'il faut pour un nom de
- * mission d'une vingtaine de caractères même au plancher — le bloc restait
- * bleu sans rien dessus, illisible sur une feuille imprimée où l'infobulle
- * du survol n'existe plus. Ne retourne `null` que si même un seul
- * caractère plus l'ellipse ne tient pas (créneau de quelques pixels).
+ * du nom de mission) : si même le plancher de `taillesPx` ne suffit pas,
+ * tronque à ce plancher plutôt que de laisser le bloc coloré sans aucune
+ * information. Ajouté après retour d'Antoine (2026-09-24) : beaucoup de
+ * créneaux réels durent 30 à 45 minutes, plus courts que ce qu'il faut pour
+ * un nom de mission d'une vingtaine de caractères même au plancher — le
+ * bloc restait bleu sans rien dessus, illisible là où l'infobulle du
+ * survol n'existe plus (une feuille imprimée, ou un plancher de police
+ * relevé pour l'écran). Ne retourne `null` que si même un seul caractère
+ * plus l'ellipse ne tient pas (créneau de quelques pixels).
  */
 export function ajusterTexteBlocAvecTroncature(
-  texte: string, largeurDisponiblePx: number,
+  texte: string, largeurDisponiblePx: number, taillesPx: readonly number[] = TAILLES_POLICE_BLOC_PX,
 ): {texte: string; taillePolicePx: number} | null {
-  const exact = ajusterTexteBloc([texte], largeurDisponiblePx);
+  const exact = ajusterTexteBloc([texte], largeurDisponiblePx, taillesPx);
   if (exact) { return exact; }
-  const taillePlancher = TAILLES_POLICE_BLOC_PX[TAILLES_POLICE_BLOC_PX.length - 1]!;
+  const taillePlancher = taillesPx[taillesPx.length - 1]!;
   const maxCaracteres = Math.floor(largeurDisponiblePx / (taillePlancher * RATIO_LARGEUR_CARACTERE)) - 1;
   if (maxCaracteres < 1) { return null; }
   return {texte: `${texte.slice(0, maxCaracteres)}…`, taillePolicePx: taillePlancher};
