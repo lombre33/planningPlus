@@ -31,15 +31,29 @@
  * seul son nom disparaît, jamais son code — pour qu'un plan de construction
  * en cours reste lisible avant d'être entièrement pourvu.
  *
- * Retour d'Antoine du 2026-09-24, troisième passage : doubler le calibrage
- * PAPIER (jamais l'aperçu écran, déjà découplé et non concerné) pour garder
- * des blancs dans les cases où corriger au stylo après impression. Une page
- * imprimée a une largeur fixe : doubler la largeur de chaque quart d'heure
- * veut donc dire moitié moins de quarts par page, jamais l'inverse. Chaque
- * équipe imprimée est donc découpée en `NB_PAGES_IMPRESSION_EQUIPES` pages
- * chronologiques (une page = la moitié des quarts du jour), chacune sa
- * propre page physique — plus de pages est le résultat attendu, jamais une
- * raison de revenir en arrière.
+ * Retour d'Antoine du 2026-09-24, troisième puis quatrième passage : doubler
+ * le calibrage papier puis tripler la hauteur des lignes pour garder des
+ * blancs où corriger au stylo. Le troisième passage avait découpé chaque
+ * équipe en plusieurs pages chronologiques (une demi-journée par page) pour
+ * doubler la largeur des colonnes — **renversé au cinquième passage**
+ * ci-dessous, jamais repris.
+ *
+ * Retour d'Antoine du 2026-09-24, cinquième passage : deux griefs. D'abord,
+ * la pagination chronologique du troisième passage avait mal compris « au
+ * pire j'imprimerai une équipe par page » — il voulait une ÉQUIPE par page,
+ * pas une demi-journée par page, et exige que **toute la largeur de la
+ * timeline du jour tienne sur la largeur d'une seule page A4 paysage**.
+ * Ensuite, l'écart entre l'aperçu écran et le papier (introduit au tout
+ * premier passage pour répondre à « sans zoomer c'est inutilisable ») le
+ * gêne : il veut un aperçu WYSIWYG. Les deux se résolvent ensemble en
+ * arrêtant d'avoir deux calibrages distincts : l'écran affiche désormais une
+ * vraie page — mêmes dimensions, même largeur de quart d'heure, même
+ * plancher de police que l'impression — plutôt qu'un tableau qui s'étale
+ * sur la largeur du navigateur. Conséquence géométrique acceptée : les
+ * colonnes redeviennent étroites (toute la journée sur une seule largeur de
+ * page), donc la place pour écrire ne vient plus que de la hauteur des
+ * lignes (déjà généreuse) et de l'empilement des noms sur plusieurs lignes,
+ * jamais d'un élargissement.
  */
 
 import type {Epoch, Equipe, Id, Mission} from '../domain/types';
@@ -49,7 +63,6 @@ import {
   type AffectationMissionQuart, affectationsQuartParMission, segmenterQuarts,
 } from '../logic/impression';
 import type {Magasin} from '../store';
-import {libelleHeurePlage, PAS_SECONDES} from '../temps';
 import {
   ajusterTexteBloc, ajusterTexteBlocAvecTroncature, cellulesEnTeteQuarts, imprimer, largeurQuartImpressionPx,
   PADDING_HORIZONTAL_BLOC_PX,
@@ -57,74 +70,6 @@ import {
 import {h, vider} from '../ui/dom';
 
 const LARGEUR_COLONNE_MISSION_PX = 190;
-
-/** Nombre de pages chronologiques par équipe à l'impression (retour Antoine
- *  2026-09-24 : « doubler la taille de l'ensemble » pour garder de la place
- *  à écrire au stylo sur la feuille) — jamais appliqué à l'aperçu écran. */
-const NB_PAGES_IMPRESSION_EQUIPES = 2;
-
-/** Découpe `blocs` en `nbPages` tranches chronologiques de quarts à peu près
- *  égales, pour l'impression uniquement : chaque tranche garde la même
- *  largeur de page physique (100%, voir `impression.css`) mais moitié moins
- *  de quarts que l'ensemble, donc des colonnes deux fois plus larges — c'est
- *  le seul moyen fiable de « doubler » un calibrage sur une page dont la
- *  largeur ne change pas (le navigateur ne pagine jamais un tableau trop
- *  large horizontalement, il le tronque). Une tranche peut couper un bloc
- *  (macro-créneau) en deux sous-blocs qui gardent la même référence `macro`
- *  — l'en-tête réaffiche alors son nom en haut de la page suivante, ce qui
- *  est juste (c'est bien le même macro-créneau qui continue). */
-export function decouperBlocsEnPages(blocs: readonly BlocMacro[], nbPages: number): BlocMacro[][] {
-  const quartsTotal = blocs.reduce((n, b) => n + b.quarts.length, 0);
-  if (quartsTotal === 0 || nbPages <= 1) { return [blocs.slice()]; }
-  const tailleParPage = Math.ceil(quartsTotal / nbPages);
-  const pages: BlocMacro[][] = [];
-  let pageActuelle: BlocMacro[] = [];
-  let quartsDansPage = 0;
-  for (const bloc of blocs) {
-    let reste = bloc.quarts;
-    while (reste.length > 0) {
-      const place = Math.max(1, tailleParPage - quartsDansPage);
-      const pris = reste.slice(0, place);
-      pageActuelle.push({macro: bloc.macro, quarts: pris});
-      quartsDansPage += pris.length;
-      reste = reste.slice(pris.length);
-      if (quartsDansPage >= tailleParPage) {
-        pages.push(pageActuelle);
-        pageActuelle = [];
-        quartsDansPage = 0;
-      }
-    }
-  }
-  if (pageActuelle.length > 0) { pages.push(pageActuelle); }
-  return pages;
-}
-
-/** Plage horaire couverte par une tranche de blocs, pour le sous-titre de
- *  chaque page imprimée (ex. « 08:00–14:00 ») — la fin d'un quart est son
- *  début + un pas, jamais son propre horodatage (qui désigne son début). */
-export function plageHoraire(blocs: readonly BlocMacro[]): string | null {
-  const quarts = blocs.flatMap((b) => b.quarts);
-  if (quarts.length === 0) { return null; }
-  return libelleHeurePlage(quarts[0]!, quarts[quarts.length - 1]! + PAS_SECONDES);
-}
-
-/** Largeur d'un quart d'heure à l'écran, PROPRE à cette vue — décorrélée de
- *  `LARGEUR_QUART_ECRAN_PX` (`ui/impression.ts`, 22px, partagée avec le
- *  roster imprimable, non touchée ici pour ne rien changer à une vue
- *  distincte non signalée). Plus généreuse pour que l'en-tête d'heure
- *  ("16:00") ne soit plus tronqué et qu'un nom tienne à une taille lisible
- *  sans avoir à zoomer le navigateur (retour d'Antoine, 2026-09-24).
- *  L'impression garde son propre calcul (`largeurQuartImpressionPx`), pensé
- *  pour tenir sur une page A4 paysage — jamais touché ici. */
-const LARGEUR_QUART_ECRAN_PX = 34;
-
-/** Plancher de police à l'écran : plus haut que le plancher d'impression
- *  (`TAILLES_POLICE_BLOC_PX` dans `ui/impression.ts`, qui descend à 6px —
- *  lisible sur papier, pas sur un moniteur sans zoomer). Au-delà de ce
- *  plancher, on tronque en ellipse plutôt que de continuer à rapetisser
- *  (même principe que `ajusterTexteBlocAvecTroncature`, déjà appliqué
- *  ailleurs — le projet a déjà réglé ce compromis une fois). */
-const TAILLES_POLICE_ECRAN_PX = [11, 10, 9, 8] as const;
 
 interface ContenuQuart {
   cle: string;
@@ -155,7 +100,7 @@ function construireColgroup(nbQuartsTotal: number, pxParQuart: number, totalPx: 
 
 function construireLigneMission(
   mission: Mission, lieuNom: string, blocs: readonly BlocMacro[],
-  parQuart: Map<Epoch, AffectationMissionQuart> | undefined, pxParQuart: number, pourEcran: boolean,
+  parQuart: Map<Epoch, AffectationMissionQuart> | undefined, pxParQuart: number,
 ): Node {
   const cellules: Node[] = [
     h('th', {
@@ -174,21 +119,17 @@ function construireLigneMission(
       const {entrees} = segment.valeur;
       const limiteMacro = iSegment === 0 && iBloc > 0;
       const largeurDisponible = Math.max(0, segment.quarts.length * pxParQuart - PADDING_HORIZONTAL_BLOC_PX);
-      const taillesPx = pourEcran ? TAILLES_POLICE_ECRAN_PX : undefined;
       // Une entrée (indicatif) = une ligne, jamais fondues en une seule (retour
       // Antoine 2026-09-24) : le code reste toujours le candidat de secours, pour
-      // qu'il ne disparaisse jamais même si le nom ne tient pas.
+      // qu'il ne disparaisse jamais même si le nom ne tient pas. Même plancher de
+      // police que l'écran et le papier (unifiés, cinquième passage) : jamais de
+      // bloc coloré sans texte, quitte à tronquer en ellipse.
       const lignes = entrees.map((entree) => {
         const candidats = entree.benevoleNoms.length > 0
           ? [`${entree.benevoleNoms.join(', ')} (${entree.groupeCode})`, entree.groupeCode]
           : [entree.groupeCode];
-        let ajuste = ajusterTexteBloc(candidats, largeurDisponible, taillesPx);
-        if (!ajuste && pourEcran) {
-          // Même le plancher écran ne suffit pas pour le code seul : tronque en
-          // ellipse plutôt que de laisser cette ligne du bloc sans texte.
-          ajuste = ajusterTexteBlocAvecTroncature(entree.groupeCode, largeurDisponible, TAILLES_POLICE_ECRAN_PX);
-        }
-        return ajuste;
+        return ajusterTexteBloc(candidats, largeurDisponible)
+          ?? ajusterTexteBlocAvecTroncature(entree.groupeCode, largeurDisponible);
       });
       const aBenevole = entrees.some((e) => e.benevoleNoms.length > 0);
       const titre = entrees.length > 0
@@ -213,7 +154,7 @@ function construireLigneMission(
 
 function construireTableEquipe(
   ix: Index, missions: readonly Mission[], blocs: readonly BlocMacro[],
-  affectationsParMission: Map<Id, Map<Epoch, AffectationMissionQuart>>, pxParQuart: number, pourEcran: boolean,
+  affectationsParMission: Map<Id, Map<Epoch, AffectationMissionQuart>>, pxParQuart: number,
 ): HTMLTableElement {
   const nbQuartsTotal = blocs.reduce((n, b) => n + b.quarts.length, 0);
   const totalPx = LARGEUR_COLONNE_MISSION_PX + nbQuartsTotal * pxParQuart;
@@ -225,21 +166,17 @@ function construireTableEquipe(
     )),
     h('tbody', null, ...missions.map((mission) => construireLigneMission(
       mission, ix.lieu.get(mission.Lieu)?.Nom ?? '', blocs, affectationsParMission.get(mission.id), pxParQuart,
-      pourEcran,
     ))),
   );
 }
 
 function construireSectionEquipe(
   ix: Index, equipe: Equipe, missions: readonly Mission[], blocs: readonly BlocMacro[],
-  affectationsParMission: Map<Id, Map<Epoch, AffectationMissionQuart>>, pxParQuart: number, pourEcran: boolean,
-  sousTitre?: string | null,
+  affectationsParMission: Map<Id, Map<Epoch, AffectationMissionQuart>>, pxParQuart: number,
 ): Node {
-  const table = construireTableEquipe(ix, missions, blocs, affectationsParMission, pxParQuart, pourEcran);
+  const table = construireTableEquipe(ix, missions, blocs, affectationsParMission, pxParQuart);
   return h('section', {class: 'impression-equipes__equipe'},
-    h('h2', {class: 'impression-equipes__titre'},
-      equipe.Nom, sousTitre ? h('span', {class: 'impression-equipes__sous-titre'}, ` — ${sousTitre}`) : null,
-    ),
+    h('h2', {class: 'impression-equipes__titre'}, equipe.Nom),
     h('div', {class: 'impression-scroll'}, table),
   );
 }
@@ -273,6 +210,14 @@ export function montrerEquipesImprimables(container: HTMLElement, m: Magasin): (
     const sousCreneauxDuJour = m.sousCreneaux.filter((sc) => jour.macros.some((ma) => ma.id === sc.Macro_creneau));
     const quartsDuJour = new Set(blocs.flatMap((b) => b.quarts));
     const affectationsParMission = affectationsQuartParMission(m, ix, quartsDuJour);
+
+    // Une seule largeur de quart d'heure, calculée pour que la journée ENTIÈRE tienne sur la
+    // largeur d'une page A4 paysage — utilisée à l'identique à l'écran et à l'impression
+    // (retour Antoine 2026-09-24, cinquième passage : plus de pagination chronologique pour
+    // élargir les colonnes, plus d'aperçu écran à une échelle différente du papier). L'écran
+    // montre donc littéralement une page, pas un tableau étiré à la largeur du navigateur.
+    const nbQuartsTotal = blocs.reduce((n, b) => n + b.quarts.length, 0);
+    const pxParQuart = largeurQuartImpressionPx(nbQuartsTotal, LARGEUR_COLONNE_MISSION_PX);
 
     const equipesAvecMissions = m.equipes
       .slice()
@@ -320,25 +265,18 @@ export function montrerEquipesImprimables(container: HTMLElement, m: Magasin): (
       h('button', {
         class: 'btn btn--primary btn--sm', type: 'button',
         onclick: () => {
-          // Une page = la moitié des quarts du jour, jamais l'équipe entière compressée
-          // pour tenir sur une seule page (retour Antoine 2026-09-24, troisième passage :
-          // « n'hésite pas à ce que ce soit gros »). Voir la doc de tête du fichier.
-          const pagesDeBlocs = decouperBlocsEnPages(blocs, NB_PAGES_IMPRESSION_EQUIPES);
-          const sections = equipesAffichees.flatMap(({equipe, missions}) => pagesDeBlocs.map((blocsPage) => {
-            const nbQuartsPage = blocsPage.reduce((n, b) => n + b.quarts.length, 0);
-            const pxImpression = largeurQuartImpressionPx(nbQuartsPage, LARGEUR_COLONNE_MISSION_PX);
-            const sousTitre = pagesDeBlocs.length > 1 ? plageHoraire(blocsPage) : null;
-            return construireSectionEquipe(
-              ix, equipe, missions, blocsPage, affectationsParMission, pxImpression, false, sousTitre,
-            );
-          }));
+          // Une équipe = une page, la journée entière en largeur (retour Antoine
+          // 2026-09-24, cinquième passage) : plus de découpage chronologique.
+          const sections = equipesAffichees.map(({equipe, missions}) => construireSectionEquipe(
+            ix, equipe, missions, blocs, affectationsParMission, pxParQuart,
+          ));
           imprimer([h('h1', null, `Plannings équipes — ${jour.libelle}`), ...sections], 'impression-equipes');
         },
       }, equipeFiltree ? `Imprimer le planning ${equipeFiltree.equipe.Nom}` : 'Imprimer tous les plannings équipe'),
     );
 
     const sectionsEcran = equipesAffichees.map(({equipe, missions}) => construireSectionEquipe(
-      ix, equipe, missions, blocs, affectationsParMission, LARGEUR_QUART_ECRAN_PX, true,
+      ix, equipe, missions, blocs, affectationsParMission, pxParQuart,
     ));
 
     container.append(filtreEquipe, barre, ...sectionsEcran);
