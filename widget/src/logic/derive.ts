@@ -57,6 +57,36 @@ export function regrouperParJour(macroCreneaux: MacroCreneau[], heureCoupure = H
     .sort((a, b) => a.macros[0]!.Debut - b.macros[0]!.Debut);
 }
 
+/** Tous les quarts d'heure d'un jour de festival (chacun de ses macro-créneaux, au pas de l'application). */
+export function quartsDuJour(jour: Jour | undefined): Set<number> {
+  const quarts = new Set<number>();
+  for (const macro of jour?.macros ?? []) {
+    for (let t = macro.Debut; t < macro.Fin; t += PAS_SECONDES) { quarts.add(t); }
+  }
+  return quarts;
+}
+
+/**
+ * Bénévoles ayant une vraie disponibilité un jour donné : au moins un quart
+ * marqué `Disponible`, pas seulement « pas Indisponible ». Un souhait
+ * « voir un artiste » (`Statut === 'Artiste'`) n'en est pas une — Antoine
+ * l'a trouvé lui-même le 2026-09-24 en voyant des bénévoles absents ce
+ * jour-là apparaître comme disponibles, parce que seule l'info « veut voir
+ * un artiste » existait sur leur profil. Le moteur, lui, garde `Artiste`
+ * comme candidat éligible en secours (§7.2, `moteur/eligibilite.ts`) — ce
+ * prédicat ne change rien à l'algorithme, il sert uniquement l'affichage
+ * « qui est vraiment là aujourd'hui » (roster Affectation, feuille
+ * imprimable). Seule source pour cette question : toute vue qui la pose
+ * doit passer par ici plutôt que refaire son propre filtre.
+ */
+export function benevolesDisponiblesCeJour(m: Magasin, quarts: Set<number>): Set<Id> {
+  const disponibles = new Set<Id>();
+  for (const d of m.disponibilites) {
+    if (d.Statut === 'Disponible' && quarts.has(d.Quart_heure)) { disponibles.add(d.Benevole); }
+  }
+  return disponibles;
+}
+
 // --- Créneaux et couverture ----------------------------------------------
 
 export function quartsDuSousCreneau(sc: SousCreneau): number[] {

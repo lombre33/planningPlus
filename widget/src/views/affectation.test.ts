@@ -78,6 +78,12 @@ function construireModele(): Modele {
     ],
     disponibilites: [
       {Benevole: 1, Quart_heure: 0, Statut: 'Artiste', Artiste: 1},
+      // Alix a aussi une vraie disponibilité ce jour-là (quart 900, hors de
+      // la place ciblée par le test) : sans ça, le correctif du 2026-09-24
+      // (benevolesDisponiblesCeJour, un souhait « voir un artiste » n'est
+      // pas une vraie disponibilité) la ferait disparaître du roster, ce qui
+      // n'est pas ce que ce fichier teste ici.
+      {Benevole: 1, Quart_heure: 900, Statut: 'Disponible', Artiste: null},
       {Benevole: 2, Quart_heure: 0, Statut: 'Artiste', Artiste: 1},
       {Benevole: 2, Quart_heure: 900, Statut: 'Disponible', Artiste: null},
     ],

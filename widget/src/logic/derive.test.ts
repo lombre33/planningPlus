@@ -1,8 +1,8 @@
 import {describe, expect, it} from 'vitest';
 import type {Mission, Modele, SousCreneau} from '../domain/types';
 import {
-  feuilleBenevole, indexer, indicatifsDeLEquipe, ligneArtistes, lignesGroupeesParArtiste,
-  regrouperParJourFestival, sousCreneauxApplicables,
+  benevolesDisponiblesCeJour, feuilleBenevole, indexer, indicatifsDeLEquipe, ligneArtistes, lignesGroupeesParArtiste,
+  quartsDuJour, regrouperParJour, regrouperParJourFestival, sousCreneauxApplicables,
 } from './derive';
 import {epochDepuisHeureLocale} from '../temps';
 import {Magasin} from '../store';
@@ -81,6 +81,26 @@ function modeleDeTest(): Modele {
     affinites: [],
   };
 }
+
+describe('benevolesDisponiblesCeJour', () => {
+  it("ignore un souhait « voir un artiste » : ce n'est pas une vraie disponibilité (2026-09-24, diagnostic d'Antoine)", () => {
+    const modele: Modele = {
+      ...modeleDeTest(),
+      disponibilites: [
+        {Benevole: 1, Quart_heure: 0, Statut: 'Disponible', Artiste: null},
+        {Benevole: 2, Quart_heure: 0, Statut: 'Artiste', Artiste: 1},
+        {Benevole: 3, Quart_heure: 0, Statut: 'Indisponible', Artiste: null},
+      ],
+    };
+    const m = new Magasin(modele);
+    const jours = regrouperParJour(m.macroCreneaux);
+    const disponibles = benevolesDisponiblesCeJour(m, quartsDuJour(jours[0]));
+
+    expect(disponibles.has(1)).toBe(true); // vraie dispo
+    expect(disponibles.has(2)).toBe(false); // veut voir un artiste, mais aucune vraie dispo ce jour-là
+    expect(disponibles.has(3)).toBe(false); // indisponible
+  });
+});
 
 describe('feuilleBenevole', () => {
   it('assemble les étapes de tous les indicatifs du bénévole, triées chronologiquement', () => {

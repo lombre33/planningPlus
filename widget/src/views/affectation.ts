@@ -19,14 +19,14 @@
 import type {Benevole, Besoin, Groupe, Id, Place} from '../domain/types';
 import {TYPE_BENEVOLE_DRAG as TYPE_BENEVOLE, TYPE_PLACE_DRAG as TYPE_PLACE} from '../logic/dnd-types';
 import {
-  type Candidat, type Index, couvertureBesoin, heuresAffectees, indexer, positionsDuGroupe, regrouperParJour,
+  type Candidat, type Index, benevolesDisponiblesCeJour, couvertureBesoin, heuresAffectees, indexer,
+  positionsDuGroupe, quartsDuJour, regrouperParJour,
 } from '../logic/derive';
 import {type DiffAnomalies, apercuAffectation, apercuEchange, verifierDepot} from '../logic/glisser-deposer';
 import {lancerAlgorithme, type ResumeLancement} from '../logic/moteur-pont';
 import {classerCandidats, raisonsPlaceVide} from '../moteur/adaptateur-magasin';
 import type {CodeAnomalie, GraviteAnomalie} from '../moteur';
 import type {Magasin} from '../store';
-import {PAS_SECONDES} from '../temps';
 import {carteCandidatCompacte} from '../ui/candidat-carte';
 import {formatHeures, h, icone, ICONES, vider} from '../ui/dom';
 
@@ -455,21 +455,13 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
         return rang[a.c.statut] - rang[b.c.statut];
       });
 
-    // Roster limité aux bénévoles ayant au moins une disponibilité ce
-    // jour-là (demande d'Antoine, 2026-09-23) : les quarts du jour affiché
-    // viennent des mêmes macro-créneaux que `sousCreneauxDuJour` ci-dessus,
-    // pas des sous-créneaux (une dispo se déclare par macro-créneau, voir
-    // l'écran Disponibilités), donc reconstruits séparément à partir de
-    // `jour.macros`.
-    const quartsDuJour = new Set<number>();
-    for (const macro of jour?.macros ?? []) {
-      for (let t = macro.Debut; t < macro.Fin; t += PAS_SECONDES) { quartsDuJour.add(t); }
-    }
-    const benevolesDisposCeJour = new Set(
-      m.disponibilites
-        .filter((d) => d.Statut !== 'Indisponible' && quartsDuJour.has(d.Quart_heure))
-        .map((d) => d.Benevole),
-    );
+    // Roster limité aux bénévoles ayant une vraie disponibilité ce jour-là
+    // (demande d'Antoine, 2026-09-23 ; prédicat corrigé le 2026-09-24, voir
+    // `benevolesDisponiblesCeJour` — un souhait « voir un artiste » n'en est
+    // pas une). Les quarts du jour affiché viennent des mêmes macro-créneaux
+    // que `sousCreneauxDuJour` ci-dessus, pas des sous-créneaux (une dispo se
+    // déclare par macro-créneau, voir l'écran Disponibilités).
+    const benevolesDisposCeJour = benevolesDisponiblesCeJour(m, quartsDuJour(jour));
 
     // Point 5 (nuit du 2026-09-23, corrigé après relecture du coordinateur) :
     // un simple filtre, pas un nouveau classement — mais "affecté" doit
