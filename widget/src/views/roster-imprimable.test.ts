@@ -146,9 +146,14 @@ describe('montrerRosterImprimable avec une affectation qui empêche de voir un a
       groupes: [{id: 1, Code: 'A1', Taille: 1, Equipe: 1, Notes: ''}],
       positionsGroupe: [{id: 1, Groupe: 1, Besoin: 1}],
       places: [{id: 1, Groupe: 1, Rang: 1, Benevole: 1, Origine: 'Manuel', Verrouillee: false, Score: 0}],
+      // Vraie disponibilité sur les 3 quarts affectés (jamais le même quart que le souhait
+      // d'artiste, sinon `logic/derive.ts` indexerDisponibilites n'en garde qu'un des deux) :
+      // isole le motif « artiste » du motif « hors disponibilité », testé séparément plus bas.
       disponibilites: [
         {Benevole: 1, Quart_heure: DEBUT, Statut: 'Disponible', Artiste: null},
-        {Benevole: 1, Quart_heure: DEBUT, Statut: 'Artiste', Artiste: 1},
+        {Benevole: 1, Quart_heure: DEBUT + 900, Statut: 'Disponible', Artiste: null},
+        {Benevole: 1, Quart_heure: DEBUT + 1800, Statut: 'Disponible', Artiste: null},
+        {Benevole: 1, Quart_heure: DEBUT + 2700, Statut: 'Artiste', Artiste: 1},
       ],
     });
     const container = document.createElement('div');
@@ -158,5 +163,34 @@ describe('montrerRosterImprimable avec une affectation qui empêche de voir un a
     expect(bloc).not.toBeNull();
     expect(bloc?.getAttribute('title')).toBe("Accueil — l'empêche de voir Grand Concert");
     expect(container.querySelector('.impression-bloc--assignee')).toBeNull();
+  });
+});
+
+describe('montrerRosterImprimable avec une affectation qui dépasse la disponibilité réelle du bénévole', () => {
+  it('colore en rouge uniquement le quart hors disponibilité, garde le reste du même bloc en bleu (retour Antoine 2026-09-24)', () => {
+    const m = new Magasin({
+      ...modeleVide(),
+      equipes: [{id: 1, Nom: 'Bénévoles', Couleur: '#000', Referent: null, Notes: ''}],
+      benevoles: [
+        {id: 1, Nom: 'Marie', Contact: '', Equipe: 1, Competences: [], Quota_heures_min: 0, Quota_heures_max: 99, Statut: 'Actif', Notes: ''},
+      ],
+      missions: [{id: 1, Nom: 'Accueil', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []}],
+      macroCreneaux: [{id: 1, Nom: 'Samedi', Debut: DEBUT, Fin: FIN}],
+      // Affectée sur 2 quarts contigus, mais seul le premier est une vraie disponibilité déclarée.
+      sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: 'Bloc', Debut: DEBUT, Fin: DEBUT + 1800}],
+      besoins: [{id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 1, Taille_groupe: 1}],
+      groupes: [{id: 1, Code: 'A1', Taille: 1, Equipe: 1, Notes: ''}],
+      positionsGroupe: [{id: 1, Groupe: 1, Besoin: 1}],
+      places: [{id: 1, Groupe: 1, Rang: 1, Benevole: 1, Origine: 'Manuel', Verrouillee: false, Score: 0}],
+      disponibilites: [{Benevole: 1, Quart_heure: DEBUT, Statut: 'Disponible', Artiste: null}],
+    });
+    const container = document.createElement('div');
+    montrerRosterImprimable(container, m);
+
+    const blocConflit = container.querySelector('.impression-bloc--conflit');
+    expect(blocConflit).not.toBeNull();
+    expect(blocConflit?.getAttribute('title')).toBe('Accueil — hors de sa disponibilité déclarée');
+    // Le premier quart, réellement disponible, reste un bloc « assignee » distinct — jamais fusionné.
+    expect(container.querySelector('.impression-bloc--assignee')).not.toBeNull();
   });
 });
