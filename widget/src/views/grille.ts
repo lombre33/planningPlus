@@ -133,7 +133,9 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
     const axe = axeJour(jour);
     const lignes = missions.map((mission) => {
       const lieu = ix.lieu.get(mission.Lieu);
-      const equipe = ix.equipe.get(mission.Equipe)!;
+      // Même défaut que `rosterCard` dans `views/affectation.ts`, corrigé
+      // le 2026-09-23 (équipe orpheline) : `equipe` peut être absente.
+      const equipe = ix.equipe.get(mission.Equipe);
       const applicables = sousCreneauxApplicables(mission, tousSousCreneaux);
       const blocs: BlocMission[] = applicables.map((sc) => {
         const besoin = m.besoins.find((b) => b.Mission === mission.id && b.Sous_creneau === sc.id) ?? null;
@@ -149,7 +151,7 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
       return {
         id: mission.id,
         libelle: h('span', null,
-          h('span', {class: 'dot', style: {background: equipe.Couleur, marginRight: '6px'}}),
+          h('span', {class: 'dot', style: {background: equipe?.Couleur ?? 'var(--text-faint)', marginRight: '6px'}}),
           h('span', {class: 'nom'}, mission.Nom),
           h('span', {class: 'lieu'}, lieu?.Nom ?? ''),
           // Un découpage automatique tapisse le jour de communs bord à bord
@@ -503,11 +505,13 @@ export function montrerGrille(container: HTMLElement, m: Magasin): () => void {
   function carteGroupe(besoinId: Id, groupe: Groupe): Node {
     const ix = indexer(m);
     const places = m.places.filter((p) => p.Groupe === groupe.id).sort((a, b) => a.Rang - b.Rang);
-    const equipe = ix.equipe.get(groupe.Equipe)!;
+    // Même défaut que `rosterCard` dans `views/affectation.ts`, corrigé
+    // le 2026-09-23 (équipe orpheline) : `equipe` peut être absente.
+    const equipe = ix.equipe.get(groupe.Equipe);
     return h('div', {class: 'card', style: {marginBottom: '10px'}},
       h('div', {style: {display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px'}},
         h('span', {class: 'mono', style: {fontWeight: '700'}}, groupe.Code),
-        h('span', {class: 'pill pill--neutral'}, equipe.Nom),
+        h('span', {class: 'pill pill--neutral'}, equipe?.Nom ?? '?'),
       ),
       ...places.map((place) => ligneMembre(besoinId, place)),
     );
