@@ -30,6 +30,16 @@
  * Ensuite, l'indicatif d'un binôme s'affiche même sans personne dessus —
  * seul son nom disparaît, jamais son code — pour qu'un plan de construction
  * en cours reste lisible avant d'être entièrement pourvu.
+ *
+ * Retour d'Antoine du 2026-09-24, troisième passage : doubler le calibrage
+ * PAPIER (jamais l'aperçu écran, déjà découplé et non concerné) pour garder
+ * des blancs dans les cases où corriger au stylo après impression. Une page
+ * imprimée a une largeur fixe : doubler la largeur de chaque quart d'heure
+ * veut donc dire moitié moins de quarts par page, jamais l'inverse. Chaque
+ * équipe imprimée est donc découpée en `NB_PAGES_IMPRESSION_EQUIPES` pages
+ * chronologiques (une page = la moitié des quarts du jour), chacune sa
+ * propre page physique — plus de pages est le résultat attendu, jamais une
+ * raison de revenir en arrière.
  */
 
 import type {Epoch, Equipe, Id, Mission} from '../domain/types';
@@ -39,6 +49,7 @@ import {
   type AffectationMissionQuart, affectationsQuartParMission, segmenterQuarts,
 } from '../logic/impression';
 import type {Magasin} from '../store';
+import {libelleHeurePlage, PAS_SECONDES} from '../temps';
 import {
   ajusterTexteBloc, ajusterTexteBlocAvecTroncature, cellulesEnTeteQuarts, imprimer, largeurQuartImpressionPx,
   PADDING_HORIZONTAL_BLOC_PX,
@@ -46,6 +57,56 @@ import {
 import {h, vider} from '../ui/dom';
 
 const LARGEUR_COLONNE_MISSION_PX = 190;
+
+/** Nombre de pages chronologiques par équipe à l'impression (retour Antoine
+ *  2026-09-24 : « doubler la taille de l'ensemble » pour garder de la place
+ *  à écrire au stylo sur la feuille) — jamais appliqué à l'aperçu écran. */
+const NB_PAGES_IMPRESSION_EQUIPES = 2;
+
+/** Découpe `blocs` en `nbPages` tranches chronologiques de quarts à peu près
+ *  égales, pour l'impression uniquement : chaque tranche garde la même
+ *  largeur de page physique (100%, voir `impression.css`) mais moitié moins
+ *  de quarts que l'ensemble, donc des colonnes deux fois plus larges — c'est
+ *  le seul moyen fiable de « doubler » un calibrage sur une page dont la
+ *  largeur ne change pas (le navigateur ne pagine jamais un tableau trop
+ *  large horizontalement, il le tronque). Une tranche peut couper un bloc
+ *  (macro-créneau) en deux sous-blocs qui gardent la même référence `macro`
+ *  — l'en-tête réaffiche alors son nom en haut de la page suivante, ce qui
+ *  est juste (c'est bien le même macro-créneau qui continue). */
+export function decouperBlocsEnPages(blocs: readonly BlocMacro[], nbPages: number): BlocMacro[][] {
+  const quartsTotal = blocs.reduce((n, b) => n + b.quarts.length, 0);
+  if (quartsTotal === 0 || nbPages <= 1) { return [blocs.slice()]; }
+  const tailleParPage = Math.ceil(quartsTotal / nbPages);
+  const pages: BlocMacro[][] = [];
+  let pageActuelle: BlocMacro[] = [];
+  let quartsDansPage = 0;
+  for (const bloc of blocs) {
+    let reste = bloc.quarts;
+    while (reste.length > 0) {
+      const place = Math.max(1, tailleParPage - quartsDansPage);
+      const pris = reste.slice(0, place);
+      pageActuelle.push({macro: bloc.macro, quarts: pris});
+      quartsDansPage += pris.length;
+      reste = reste.slice(pris.length);
+      if (quartsDansPage >= tailleParPage) {
+        pages.push(pageActuelle);
+        pageActuelle = [];
+        quartsDansPage = 0;
+      }
+    }
+  }
+  if (pageActuelle.length > 0) { pages.push(pageActuelle); }
+  return pages;
+}
+
+/** Plage horaire couverte par une tranche de blocs, pour le sous-titre de
+ *  chaque page imprimée (ex. « 08:00–14:00 ») — la fin d'un quart est son
+ *  début + un pas, jamais son propre horodatage (qui désigne son début). */
+export function plageHoraire(blocs: readonly BlocMacro[]): string | null {
+  const quarts = blocs.flatMap((b) => b.quarts);
+  if (quarts.length === 0) { return null; }
+  return libelleHeurePlage(quarts[0]!, quarts[quarts.length - 1]! + PAS_SECONDES);
+}
 
 /** Largeur d'un quart d'heure à l'écran, PROPRE à cette vue — décorrélée de
  *  `LARGEUR_QUART_ECRAN_PX` (`ui/impression.ts`, 22px, partagée avec le
@@ -172,10 +233,13 @@ function construireTableEquipe(
 function construireSectionEquipe(
   ix: Index, equipe: Equipe, missions: readonly Mission[], blocs: readonly BlocMacro[],
   affectationsParMission: Map<Id, Map<Epoch, AffectationMissionQuart>>, pxParQuart: number, pourEcran: boolean,
+  sousTitre?: string | null,
 ): Node {
   const table = construireTableEquipe(ix, missions, blocs, affectationsParMission, pxParQuart, pourEcran);
   return h('section', {class: 'impression-equipes__equipe'},
-    h('h2', {class: 'impression-equipes__titre'}, equipe.Nom),
+    h('h2', {class: 'impression-equipes__titre'},
+      equipe.Nom, sousTitre ? h('span', {class: 'impression-equipes__sous-titre'}, ` — ${sousTitre}`) : null,
+    ),
     h('div', {class: 'impression-scroll'}, table),
   );
 }
@@ -256,11 +320,18 @@ export function montrerEquipesImprimables(container: HTMLElement, m: Magasin): (
       h('button', {
         class: 'btn btn--primary btn--sm', type: 'button',
         onclick: () => {
-          const nbQuartsTotal = blocs.reduce((n, b) => n + b.quarts.length, 0);
-          const pxImpression = largeurQuartImpressionPx(nbQuartsTotal, LARGEUR_COLONNE_MISSION_PX);
-          const sections = equipesAffichees.map(({equipe, missions}) => construireSectionEquipe(
-            ix, equipe, missions, blocs, affectationsParMission, pxImpression, false,
-          ));
+          // Une page = la moitié des quarts du jour, jamais l'équipe entière compressée
+          // pour tenir sur une seule page (retour Antoine 2026-09-24, troisième passage :
+          // « n'hésite pas à ce que ce soit gros »). Voir la doc de tête du fichier.
+          const pagesDeBlocs = decouperBlocsEnPages(blocs, NB_PAGES_IMPRESSION_EQUIPES);
+          const sections = equipesAffichees.flatMap(({equipe, missions}) => pagesDeBlocs.map((blocsPage) => {
+            const nbQuartsPage = blocsPage.reduce((n, b) => n + b.quarts.length, 0);
+            const pxImpression = largeurQuartImpressionPx(nbQuartsPage, LARGEUR_COLONNE_MISSION_PX);
+            const sousTitre = pagesDeBlocs.length > 1 ? plageHoraire(blocsPage) : null;
+            return construireSectionEquipe(
+              ix, equipe, missions, blocsPage, affectationsParMission, pxImpression, false, sousTitre,
+            );
+          }));
           imprimer([h('h1', null, `Plannings équipes — ${jour.libelle}`), ...sections], 'impression-equipes');
         },
       }, equipeFiltree ? `Imprimer le planning ${equipeFiltree.equipe.Nom}` : 'Imprimer tous les plannings équipe'),

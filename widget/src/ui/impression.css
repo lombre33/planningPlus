@@ -154,6 +154,12 @@ table.impression-table th, table.impression-table td {
   margin: 0 0 8px;
 }
 
+.impression-equipes__sous-titre {
+  font-size: 0.7em;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
 /* ---------- Impression ---------- */
 
 @media print {
@@ -209,5 +215,16 @@ table.impression-table th, table.impression-table td {
 
   .impression-equipes__equipe:last-child {
     break-after: auto;
+  }
+
+  /* Retour d'Antoine 2026-09-24, troisième passage : garder du blanc dans les
+     cases pour corriger au stylo après impression. La largeur double déjà
+     (moitié moins de quarts par page, voir `decouperBlocsEnPages`) ; cette
+     marge verticale généreuse fait la même chose en hauteur. Seule la vue
+     équipes est concernée — le roster bénévoles (même règle de base
+     `.impression-bloc`) n'a jamais reçu cette demande. */
+  .impression-equipes .impression-bloc {
+    padding-top: 10px;
+    padding-bottom: 10px;
   }
 }
