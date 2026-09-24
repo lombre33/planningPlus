@@ -20,7 +20,7 @@ import type {Benevole, Besoin, Groupe, Id, Place} from '../domain/types';
 import {TYPE_BENEVOLE_DRAG as TYPE_BENEVOLE, TYPE_PLACE_DRAG as TYPE_PLACE} from '../logic/dnd-types';
 import {
   type Candidat, type Index, benevolesDisponiblesCeJour, couvertureBesoin, heuresAffectees, indexer,
-  missionsCouvertesParGroupe, positionsDuGroupe, quartsDuJour, regrouperParJour,
+  positionsDuGroupe, quartsDuJour, regrouperParJour,
 } from '../logic/derive';
 import {type DiffAnomalies, apercuAffectation, apercuEchange, verifierDepot} from '../logic/glisser-deposer';
 import {lancerAlgorithme, type ResumeLancement} from '../logic/moteur-pont';
@@ -497,7 +497,7 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
 
   function rosterCard(
     ix: Index, benevole: Benevole, placeCeJour: {place: Place; libelle: string} | undefined,
-    groupeIdsOuvertsCeJour: readonly Id[], groupesDuJourTries: readonly {id: Id; code: string; libelle: string}[],
+    groupeIdsOuvertsCeJour: readonly Id[], groupesDuJourTries: readonly {id: Id; code: string}[],
   ): Node {
     // `ix.equipe.get(...)` peut renvoyer `undefined` si l'équipe du bénévole
     // ne correspond plus à aucune équipe existante (référence orpheline,
@@ -521,18 +521,30 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
         if (dt) { dt.effectAllowed = 'move'; }
       } : undefined,
     },
-      h('span', {class: 'dot', style: {background: equipe?.Couleur ?? 'var(--text-faint)'}}),
-      h('span', {class: 'roster-card__nom'}, benevole.Nom),
-      h('span', {class: 'roster-card__meta mono'}, `${formatHeures(heures)}/${benevole.Quota_heures_max} h`),
+      h('span', {class: 'dot', style: {background: equipe?.Couleur ?? 'var(--text-faint)', flexShrink: '0'}}),
+      // `minWidth: '0'` indispensable sur un enfant flex à côté d'un
+      // `<select>` : sans lui, le nom peut se faire écraser à rien plutôt
+      // que de laisser le sélecteur prendre sa vraie taille (piège déjà
+      // rencontré sur Indicatifs, voir la mémoire de ce fil-là — régression
+      // visuelle signalée par Antoine le 2026-09-24 avant ce correctif).
+      h('span', {
+        class: 'roster-card__nom',
+        style: {flex: '1 1 auto', minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'},
+      }, benevole.Nom),
+      h('span', {class: 'roster-card__meta mono', style: {flexShrink: '0'}}, `${formatHeures(heures)}/${benevole.Quota_heures_max} h`),
       // Colonne indicatif (demande d'Antoine, 2026-09-24 5h02, en plus du
       // clic-pour-voir ci-dessus) : « Aucun » en tête, puis les indicatifs
       // du jour affiché par ordre alphabétique — stopPropagation partout
       // pour ne pas aussi basculer le panneau du clic sur la carte, et sur
       // mousedown en plus de click : une carte `draggable` peut sinon voler
-      // l'interaction avant qu'un <select> imbriqué ne la reçoive.
+      // l'interaction avant qu'un <select> imbriqué ne la reçoive. Largeur
+      // fixe et étroite (le code fait 2-3 caractères) : jamais dépendante
+      // du contenu, sans quoi le sélecteur peut redevenir large et écraser
+      // le nom si une option plus longue s'y glisse un jour.
       h('select', {
         class: 'roster-card__indicatif',
         title: 'Changer son indicatif du jour affiché',
+        style: {flexShrink: '0', width: '56px', fontSize: '12px'},
         onclick: (e: Event) => e.stopPropagation(),
         onmousedown: (e: Event) => e.stopPropagation(),
         onchange: (e: Event) => {
@@ -543,7 +555,7 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
         h('option', {value: '', selected: placeCeJour == null}, 'Aucun'),
         ...groupesDuJourTries.map((g) => h('option', {
           value: String(g.id), selected: placeCeJour?.place.Groupe === g.id,
-        }, g.libelle)),
+        }, g.code)),
       ),
     );
     if (!ouvert) { return carte; }
@@ -641,14 +653,14 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
         .filter((p) => positionsDuGroupe(m, ix, p.Groupe).some(({sousCreneau}) => sousCreneauxDuJour.has(sousCreneau.id)))
         .map((p) => p.Groupe),
     )];
+    // Juste le code (pas la mission, corrigé le 2026-09-24 : un même
+    // indicatif tourne d'une mission à l'autre au fil de la soirée — lui
+    // accoler une mission arbitraire n'a pas de sens et cassait la mise en
+    // page en plus, régression signalée par Antoine).
     const groupesDuJourTries = groupeIdsDuJour
       .map((id) => ix.groupe.get(id))
       .filter((g): g is Groupe => g != null)
-      .map((g) => {
-        const missionId = missionsCouvertesParGroupe(m, ix, g.id)[0];
-        const missionNom = missionId != null ? ix.mission.get(missionId)?.Nom : undefined;
-        return {id: g.id, code: g.Code, libelle: `${g.Code} — ${missionNom ?? '?'}`};
-      })
+      .map((g) => ({id: g.id, code: g.Code}))
       .sort((a, b) => a.code.localeCompare(b.code, 'fr'));
     const rosterFiltreEquipeRecherche = m.benevoles
       .filter((b) => equipeFiltre === 'toutes' || b.Equipe === equipeFiltre)

@@ -211,7 +211,9 @@ describe('montrerAffectation — colonne indicatif du roster (2026-09-24 5h02, e
 
     const select = selectAlix(container);
     const options = Array.from(select.options).map((o) => o.textContent);
-    expect(options).toEqual(['Aucun', 'ACC1 — Accueil', 'BAR1 — Bar', 'ENT1 — Entrée']);
+    // Juste le code, jamais la mission (régression visuelle du 2026-09-24 :
+    // un indicatif tourne d'une mission à l'autre au fil de la soirée).
+    expect(options).toEqual(['Aucun', 'ACC1', 'BAR1', 'ENT1']);
     expect(select.value).toBe('1'); // ACC1, l'indicatif actuel d'Alix
   });
 
