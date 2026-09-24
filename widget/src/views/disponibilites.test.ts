@@ -98,6 +98,15 @@ describe('comportement d’origine (consultation), inchangé', () => {
     expect(container.textContent).toContain('Aucun macro-créneau');
   });
 
+  it("ne plante pas quand un bénévole porte une référence d'équipe orpheline (même défaut qu'Affectation, Jour J, Missions et Indicatifs, corrigé le 2026-09-24) : pastille neutre plutôt qu'une exception", () => {
+    const modele = modeleDeTest();
+    modele.benevoles[0]!.Equipe = 99; // Alice — aucune équipe 99 dans ce modèle
+    const m = new Magasin(modele);
+    expect(() => montrerDisponibilites(container, m)).not.toThrow();
+    expect(container.textContent).toContain('Alice');
+    expect(container.querySelector('.dot')).toHaveProperty('style.background', 'var(--text-faint)');
+  });
+
   it("sans sélection globale, affiche le premier jour (retombe sur `m.macroCreneauSelectionne` nul)", () => {
     const m = new Magasin(modeleDeTest());
     montrerDisponibilites(container, m);

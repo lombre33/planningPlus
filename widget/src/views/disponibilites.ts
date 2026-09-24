@@ -635,7 +635,10 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
     });
 
     const lignes = benevoles.map((b) => {
-      const equipe = ix.equipe.get(b.Equipe)!;
+      // Même défaut que `rosterCard` dans `views/affectation.ts`, corrigé le
+      // 2026-09-23/24 (équipe orpheline) : `equipe` peut être absente si le
+      // bénévole pointe vers une équipe qu'Antoine a depuis supprimée.
+      const equipe = ix.equipe.get(b.Equipe);
       const contraintes = contraintesBenevole(m, ix, b.id);
       const gravite = graviteContraintes(contraintes);
       const cellules = blocs.flatMap((bloc, iBloc) => bloc.quarts.map((q, iQuart) => {
@@ -656,7 +659,7 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
       }));
       return h('tr', null,
         h('th', {class: 'dispos-table__benevole', scope: 'row'},
-          h('span', {class: 'dot', style: {background: equipe.Couleur}}),
+          h('span', {class: 'dot', style: {background: equipe?.Couleur ?? 'var(--text-faint)'}}),
           b.Nom,
           gravite ? h('span', {
             class: `contrainte-badge contrainte-badge--${gravite}`,
