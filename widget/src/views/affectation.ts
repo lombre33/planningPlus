@@ -179,60 +179,91 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
     );
   }
 
+  // Filet du 2026-09-24 6h56 (Antoine bloqué depuis 6h34, demandé par le
+  // coordinateur) : `deposerBenevoleSurPlace`, `deposerPlaceSurPlace` et
+  // `viderPlace` sont toutes appelées depuis un gestionnaire d'événement
+  // DOM sans `await` ni `.catch()` (un dépôt glisser-déposer ne peut pas
+  // attendre) — jusqu'ici, une exception inattendue n'importe où dans leur
+  // chemin (par ex. `apercuAffectation`, qui traverse tout le modèle)
+  // devenait une promesse rejetée MUETTE : rien à l'écran, rien écrit,
+  // aucune piste. Chacune tourne maintenant dans un try/catch/finally qui
+  // garantit un message ET un rafraîchissement sur toute issue.
   async function deposerBenevoleSurPlace(benevoleId: Id, placeId: Id): Promise<void> {
-    const verdict = verifierDepot(m, benevoleId, placeId);
-    if (!verdict.ok) { dernierMessage = {texte: verdict.motif, ton: 'danger'}; rafraichir(); return; }
-    const diff = apercuAffectation(m, placeId, benevoleId);
-    const groupeId = m.places.find((p) => p.id === placeId)?.Groupe;
-    const resultat = await m.assignerPlace(placeId, benevoleId, 'Manuel');
-    if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; rafraichir(); return; }
-    if (groupeId != null) { besoinsIdsGardesVisibles = new Set(besoinIdsDuGroupe(groupeId)); }
-    const nom = indexer(m).benevole.get(benevoleId)?.Nom ?? 'Bénévole';
-    dernierMessage = messageDepuisDiff(`${nom} affecté(e).`, diff);
-    rafraichir();
+    try {
+      const verdict = verifierDepot(m, benevoleId, placeId);
+      if (!verdict.ok) { dernierMessage = {texte: verdict.motif, ton: 'danger'}; return; }
+      const diff = apercuAffectation(m, placeId, benevoleId);
+      const groupeId = m.places.find((p) => p.id === placeId)?.Groupe;
+      const resultat = await m.assignerPlace(placeId, benevoleId, 'Manuel');
+      if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; return; }
+      if (groupeId != null) { besoinsIdsGardesVisibles = new Set(besoinIdsDuGroupe(groupeId)); }
+      const nom = indexer(m).benevole.get(benevoleId)?.Nom ?? 'Bénévole';
+      dernierMessage = messageDepuisDiff(`${nom} affecté(e).`, diff);
+    } catch (erreur) {
+      dernierMessage = {
+        texte: `Erreur inattendue en affectant : ${erreur instanceof Error ? erreur.message : String(erreur)}`,
+        ton: 'danger',
+      };
+    } finally {
+      rafraichir();
+    }
   }
 
   async function deposerPlaceSurPlace(placeSourceId: Id, placeCibleId: Id): Promise<void> {
-    const source = m.places.find((p) => p.id === placeSourceId);
-    const cible = m.places.find((p) => p.id === placeCibleId);
-    if (!source || !cible || source.Benevole == null) { return; }
-    if (source.Verrouillee || cible.Verrouillee) {
-      dernierMessage = {texte: 'Place verrouillée : déverrouillez-la avant de la modifier.', ton: 'danger'};
-      rafraichir();
-      return;
-    }
-    if (source.Benevole != null) {
-      const verdict = verifierDepot(m, source.Benevole, placeCibleId, [placeSourceId]);
-      if (!verdict.ok) { dernierMessage = {texte: verdict.motif, ton: 'danger'}; rafraichir(); return; }
-    }
-    if (cible.Benevole != null) {
-      const verdict = verifierDepot(m, cible.Benevole, placeSourceId, [placeCibleId]);
-      if (!verdict.ok) { dernierMessage = {texte: verdict.motif, ton: 'danger'}; rafraichir(); return; }
-    }
+    try {
+      const source = m.places.find((p) => p.id === placeSourceId);
+      const cible = m.places.find((p) => p.id === placeCibleId);
+      if (!source || !cible || source.Benevole == null) { return; }
+      if (source.Verrouillee || cible.Verrouillee) {
+        dernierMessage = {texte: 'Place verrouillée : déverrouillez-la avant de la modifier.', ton: 'danger'};
+        return;
+      }
+      if (source.Benevole != null) {
+        const verdict = verifierDepot(m, source.Benevole, placeCibleId, [placeSourceId]);
+        if (!verdict.ok) { dernierMessage = {texte: verdict.motif, ton: 'danger'}; return; }
+      }
+      if (cible.Benevole != null) {
+        const verdict = verifierDepot(m, cible.Benevole, placeSourceId, [placeCibleId]);
+        if (!verdict.ok) { dernierMessage = {texte: verdict.motif, ton: 'danger'}; return; }
+      }
 
-    const diff = apercuEchange(m, placeSourceId, placeCibleId);
-    const benevoleSource = source.Benevole;
-    const benevoleCible = cible.Benevole;
-    const resultat1 = await m.assignerPlace(placeSourceId, benevoleCible, 'Manuel');
-    if (!resultat1.ok) { dernierMessage = {texte: resultat1.raison, ton: 'danger'}; rafraichir(); return; }
-    const resultat2 = await m.assignerPlace(placeCibleId, benevoleSource, 'Manuel');
-    if (!resultat2.ok) { dernierMessage = {texte: resultat2.raison, ton: 'danger'}; rafraichir(); return; }
-    besoinsIdsGardesVisibles = new Set([...besoinIdsDuGroupe(source.Groupe), ...besoinIdsDuGroupe(cible.Groupe)]);
-    dernierMessage = messageDepuisDiff(benevoleCible != null ? 'Échange effectué.' : 'Déplacé.', diff);
-    rafraichir();
+      const diff = apercuEchange(m, placeSourceId, placeCibleId);
+      const benevoleSource = source.Benevole;
+      const benevoleCible = cible.Benevole;
+      const resultat1 = await m.assignerPlace(placeSourceId, benevoleCible, 'Manuel');
+      if (!resultat1.ok) { dernierMessage = {texte: resultat1.raison, ton: 'danger'}; return; }
+      const resultat2 = await m.assignerPlace(placeCibleId, benevoleSource, 'Manuel');
+      if (!resultat2.ok) { dernierMessage = {texte: resultat2.raison, ton: 'danger'}; return; }
+      besoinsIdsGardesVisibles = new Set([...besoinIdsDuGroupe(source.Groupe), ...besoinIdsDuGroupe(cible.Groupe)]);
+      dernierMessage = messageDepuisDiff(benevoleCible != null ? 'Échange effectué.' : 'Déplacé.', diff);
+    } catch (erreur) {
+      dernierMessage = {
+        texte: `Erreur inattendue en échangeant : ${erreur instanceof Error ? erreur.message : String(erreur)}`,
+        ton: 'danger',
+      };
+    } finally {
+      rafraichir();
+    }
   }
 
   async function viderPlace(place: Place): Promise<void> {
-    if (place.Verrouillee) {
-      dernierMessage = {texte: 'Place verrouillée : déverrouillez-la avant de la modifier.', ton: 'danger'};
+    try {
+      if (place.Verrouillee) {
+        dernierMessage = {texte: 'Place verrouillée : déverrouillez-la avant de la modifier.', ton: 'danger'};
+        return;
+      }
+      const diff = apercuAffectation(m, place.id, null);
+      const resultat = await m.assignerPlace(place.id, null);
+      if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; return; }
+      dernierMessage = messageDepuisDiff('Place vidée.', diff);
+    } catch (erreur) {
+      dernierMessage = {
+        texte: `Erreur inattendue en vidant la place : ${erreur instanceof Error ? erreur.message : String(erreur)}`,
+        ton: 'danger',
+      };
+    } finally {
       rafraichir();
-      return;
     }
-    const diff = apercuAffectation(m, place.id, null);
-    const resultat = await m.assignerPlace(place.id, null);
-    if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; rafraichir(); return; }
-    dernierMessage = messageDepuisDiff('Place vidée.', diff);
-    rafraichir();
   }
 
   /**
@@ -257,16 +288,29 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
   }
 
   async function desaffecterDepuisRoster(place: Place): Promise<void> {
-    if (place.Verrouillee) {
-      dernierMessage = {texte: 'Place verrouillée : déverrouillez-la avant de la modifier.', ton: 'danger'};
+    try {
+      if (place.Verrouillee) {
+        dernierMessage = {texte: 'Place verrouillée : déverrouillez-la avant de la modifier.', ton: 'danger'};
+        return;
+      }
+      const diff = apercuAffectation(m, place.id, null);
+      const resultat = await libererPlaceEtDeverrouiller(place);
+      if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; return; }
+      dernierMessage = messageDepuisDiff('Désaffecté(e), place libre pour un glisser-déposer ou un nouveau lancement.', diff);
+    } catch (erreur) {
+      // Filet du 2026-09-24 6h56 (demandé par le coordinateur, Antoine
+      // toujours bloqué après deux correctifs) : sans ça, une exception
+      // inattendue ici (donnée manuelle qui ne respecte pas la forme que le
+      // code suppose, par exemple) interrompait le geste EN SILENCE — rien
+      // à l'écran, rien écrit, aucune piste. Voir le même filet sur
+      // `changerIndicatifDepuisRoster` juste en dessous.
+      dernierMessage = {
+        texte: `Erreur inattendue en désaffectant : ${erreur instanceof Error ? erreur.message : String(erreur)}`,
+        ton: 'danger',
+      };
+    } finally {
       rafraichir();
-      return;
     }
-    const diff = apercuAffectation(m, place.id, null);
-    const resultat = await libererPlaceEtDeverrouiller(place);
-    if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; rafraichir(); return; }
-    dernierMessage = messageDepuisDiff('Désaffecté(e), place libre pour un glisser-déposer ou un nouveau lancement.', diff);
-    rafraichir();
   }
 
   /**
@@ -288,52 +332,73 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
    * On assigne maintenant la nouvelle place D'ABORD ; l'ancienne n'est
    * libérée qu'une fois la nouvelle confirmée, donc un échec laisse le
    * bénévole sur son affectation de départ plutôt que sans aucune.
+   *
+   * Filet du 2026-09-24 6h56 (Antoine toujours bloqué après deux
+   * correctifs, demandé par le coordinateur) : toute la fonction tourne
+   * maintenant dans un try/catch qui garantit un message ET un
+   * rafraîchissement sur CHAQUE issue, y compris une exception qu'aucune
+   * branche ci-dessous ne prévoyait explicitement — jusqu'ici, une telle
+   * exception interrompait le geste sans rien montrer à l'écran ni rien
+   * écrire, un vrai échec devenant indiscernable d'un geste qui n'aurait
+   * simplement rien eu à faire.
    */
   async function changerIndicatifDepuisRoster(
     benevole: Benevole, placeActuelle: Place | undefined, nouveauGroupeId: Id | null,
   ): Promise<void> {
-    if (placeActuelle?.Verrouillee) {
-      dernierMessage = {texte: 'Place verrouillée : déverrouillez-la avant de la modifier.', ton: 'danger'};
-      rafraichir();
-      return;
-    }
-    if (nouveauGroupeId == null) {
-      if (placeActuelle) { await desaffecterDepuisRoster(placeActuelle); }
-      return;
-    }
-    // Une place vide reste candidate même verrouillée : le verrou protège un
-    // occupant (`Benevole == null` l'exclut déjà) contre une éviction
-    // silencieuse, pas une place vide contre CE geste-ci — choisir un
-    // indicatif dans ce menu déroulant EST la correction manuelle que le
-    // verrou existe pour laisser passer (`assignerPlace` la reverrouille de
-    // toute façon, origine Manuel). Exclure aussi les places vides
-    // verrouillées bloquait tout indicatif déjà touché à la main cette nuit
-    // — sans aucun message d'erreur visible, puisque le geste s'arrêtait
-    // avant même de tenter une écriture (bug bloquant confirmé le
-    // 2026-09-24 6h42 sur une vraie instance : l'écriture qui part persiste
-    // bien, celle-ci ne partait jamais).
-    const placeCible = m.places.find((p) => p.Groupe === nouveauGroupeId && p.Benevole == null);
-    if (!placeCible) {
-      dernierMessage = {texte: 'Indicatif complet : libérez-y une place avant de le choisir.', ton: 'danger'};
-      rafraichir();
-      return;
-    }
-    const diff = apercuAffectation(m, placeCible.id, benevole.id);
-    const resultat = await m.assignerPlace(placeCible.id, benevole.id);
-    if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; rafraichir(); return; }
-    if (placeActuelle) {
-      const resultatLiberation = await libererPlaceEtDeverrouiller(placeActuelle);
-      if (!resultatLiberation.ok) {
-        dernierMessage = {
-          texte: `Réaffecté(e), mais l'ancienne place n'a pas pu être libérée : ${resultatLiberation.raison}`,
-          ton: 'danger',
-        };
-        rafraichir();
+    try {
+      if (placeActuelle?.Verrouillee) {
+        dernierMessage = {texte: 'Place verrouillée : déverrouillez-la avant de la modifier.', ton: 'danger'};
         return;
       }
+      if (nouveauGroupeId == null) {
+        if (placeActuelle) { await desaffecterDepuisRoster(placeActuelle); }
+        return;
+      }
+      // Une place vide reste candidate même verrouillée : le verrou protège
+      // un occupant (`Benevole == null` l'exclut déjà) contre une éviction
+      // silencieuse, pas une place vide contre CE geste-ci — choisir un
+      // indicatif dans ce menu déroulant EST la correction manuelle que le
+      // verrou existe pour laisser passer (`assignerPlace` la reverrouille
+      // de toute façon, origine Manuel). Exclure aussi les places vides
+      // verrouillées bloquait tout indicatif déjà touché à la main cette
+      // nuit — sans aucun message d'erreur visible, puisque le geste
+      // s'arrêtait avant même de tenter une écriture (bug bloquant
+      // confirmé le 2026-09-24 6h42 sur une vraie instance : l'écriture
+      // qui part persiste bien, celle-ci ne partait jamais).
+      const placeCible = m.places.find((p) => p.Groupe === nouveauGroupeId && p.Benevole == null);
+      if (!placeCible) {
+        // Message plus précis (2026-09-24 7h05) : le nombre de places
+        // réellement trouvées pour ce groupe, pour distinguer un vrai
+        // complet d'un décompte inattendu plutôt qu'un « complet » générique.
+        const placesDeCeGroupe = m.places.filter((p) => p.Groupe === nouveauGroupeId);
+        dernierMessage = {
+          texte: `Indicatif complet (${placesDeCeGroupe.length} place${placesDeCeGroupe.length > 1 ? 's' : ''}, toutes occupées ou verrouillées) : libérez-y une place avant de le choisir.`,
+          ton: 'danger',
+        };
+        return;
+      }
+      const diff = apercuAffectation(m, placeCible.id, benevole.id);
+      const resultat = await m.assignerPlace(placeCible.id, benevole.id);
+      if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; return; }
+      if (placeActuelle) {
+        const resultatLiberation = await libererPlaceEtDeverrouiller(placeActuelle);
+        if (!resultatLiberation.ok) {
+          dernierMessage = {
+            texte: `Réaffecté(e), mais l'ancienne place n'a pas pu être libérée : ${resultatLiberation.raison}`,
+            ton: 'danger',
+          };
+          return;
+        }
+      }
+      dernierMessage = messageDepuisDiff(`${benevole.Nom} réaffecté(e).`, diff);
+    } catch (erreur) {
+      dernierMessage = {
+        texte: `Erreur inattendue en changeant l'indicatif : ${erreur instanceof Error ? erreur.message : String(erreur)}`,
+        ton: 'danger',
+      };
+    } finally {
+      rafraichir();
     }
-    dernierMessage = messageDepuisDiff(`${benevole.Nom} réaffecté(e).`, diff);
-    rafraichir();
   }
 
   function accepteDepot(e: DragEvent): boolean {

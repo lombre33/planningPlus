@@ -291,6 +291,30 @@ describe('montrerAffectation — colonne indicatif du roster (2026-09-24 5h02, e
   );
 
   it(
+    'une exception inattendue pendant le geste affiche un message clair plutôt que de se terminer en ' +
+    "silence (filet ajouté le 2026-09-24 6h56 : Antoine toujours bloqué après deux correctifs, aucune " +
+    "branche connue ne suffisait à expliquer ce qu'il voyait)",
+    async () => {
+      const m = new Magasin(construireModeleTroisIndicatifs());
+      const echec = 'panne réseau simulée'; // valeur non-Error, pour couvrir le repli String(erreur)
+      m.assignerPlace = () => { throw echec; };
+      const container = document.createElement('div');
+      montrerAffectation(container, m);
+
+      const select = selectAlix(container);
+      select.value = '3'; // ENT1, ouvert
+      select.dispatchEvent(new Event('change'));
+      await tick();
+
+      expect(container.textContent).toContain('Erreur inattendue');
+      expect(container.textContent).toContain(echec);
+      // La carte doit rester interactive (pas de rendu figé) : un
+      // rafraîchissement a bien eu lieu malgré l'exception.
+      expect(container.querySelector('.roster-card__indicatif')).not.toBeNull();
+    },
+  );
+
+  it(
     "si l'écriture Grist de la nouvelle place échoue, l'ancienne reste intacte plutôt que de finir sur Aucun " +
     '(bug bloquant signalé par Antoine le 2026-09-24 5h52 : « je change l\'indicatif, ça remet à Aucun, ça ne ' +
     "prend pas en compte » — l'ancienne place était libérée AVANT que la nouvelle ne soit confirmée)",
