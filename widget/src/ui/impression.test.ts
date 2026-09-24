@@ -41,9 +41,9 @@ describe('ajusterTexteBlocAvecEnveloppe', () => {
     expect(resultat.enveloppe).toBeUndefined();
   });
 
-  it('ne renvoie jamais null : enveloppe le candidat le plus complet au plancher quand rien ne tient sur une ligne', () => {
+  it('ne renvoie jamais null : enveloppe le candidat le plus COURT au plancher quand rien ne tient sur une ligne (limite la hauteur)', () => {
     const resultat = ajusterTexteBlocAvecEnveloppe(['Maximilienne-Christodoulopoulos (A1)', 'Maximilienne-Christodoulopoulos'], 16);
-    expect(resultat.texte).toBe('Maximilienne-Christodoulopoulos (A1)');
+    expect(resultat.texte).toBe('Maximilienne-Christodoulopoulos');
     expect(resultat.enveloppe).toBe(true);
     expect(resultat.taillePolicePx).toBe(6); // plancher par défaut (TAILLES_POLICE_BLOC_PX)
   });
