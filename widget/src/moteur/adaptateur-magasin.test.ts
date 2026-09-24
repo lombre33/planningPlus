@@ -277,6 +277,18 @@ describe('calculerAnomalies (adaptateur)', () => {
     const doubleEngagement = anomalies.find((a) => a.type === 'double-engagement');
     expect(doubleEngagement).toMatchObject({type: 'double-engagement', gravite: 'danger', benevoleId: 1, benevoleNom: 'Alix'});
   });
+
+  it('ignore une anomalie dont la mission référencée a disparu du document au lieu de planter (régression 2026-09-24 : dropdown indicatif ne persistait plus, `ix.mission.get(...)` non gardé)', () => {
+    const modele = construireModele();
+    // Édition manuelle d'Antoine côté Grist : la mission 1 n'existe plus, mais
+    // le besoin qui la référence (toujours en sous-effectif) reste en place.
+    modele.missions = modele.missions.filter((mi) => mi.id !== 1);
+    const m = new Magasin(modele);
+    const ix = indexer(m);
+    expect(() => calculerAnomalies(m, ix)).not.toThrow();
+    const anomalies = calculerAnomalies(m, ix);
+    expect(anomalies.some((a) => a.type === 'sous-effectif' && a.besoin.id === 1)).toBe(false);
+  });
 });
 
 describe('proposerPermutation (adaptateur)', () => {

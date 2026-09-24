@@ -329,9 +329,11 @@ export interface EtapePermutation {
 export function proposerPermutation(m: Magasin, ix: Index, placeVacanteId: Id): EtapePermutation[] | null {
   const placeVacante = m.places.find((p) => p.id === placeVacanteId);
   if (!placeVacante) { return null; }
-  const groupeCible = ix.groupe.get(placeVacante.Groupe)!;
+  const groupeCible = ix.groupe.get(placeVacante.Groupe);
+  if (!groupeCible) { return null; } // groupe orphelin : rien à proposer
   const missionCible = missionsCouvertesParGroupe(m, ix, groupeCible.id)
-    .map((id) => ix.mission.get(id)!)[0];
+    .map((id) => ix.mission.get(id))
+    .find((mission): mission is NonNullable<typeof mission> => mission != null);
 
   const directs = classerCandidats(m, ix, groupeCible.id);
   const meilleurDirect = directs[0];
@@ -340,8 +342,8 @@ export function proposerPermutation(m: Magasin, ix: Index, placeVacanteId: Id): 
 
   for (const donneur of m.places) {
     if (donneur.Benevole == null || donneur.Verrouillee || donneur.id === placeVacanteId) { continue; }
-    const groupeDonneur = ix.groupe.get(donneur.Groupe)!;
-    if (groupeDonneur.id === groupeCible.id) { continue; }
+    const groupeDonneur = ix.groupe.get(donneur.Groupe);
+    if (!groupeDonneur || groupeDonneur.id === groupeCible.id) { continue; }
 
     // Le groupe donneur ne doit pas tomber sous le minimum une fois ce
     // bénévole retiré : on vérifie chacun de ses besoins positionnés.
@@ -365,8 +367,11 @@ export function proposerPermutation(m: Magasin, ix: Index, placeVacanteId: Id): 
     if (candidatsPourDonneur.length === 0) { continue; }
     const remplacant = candidatsPourDonneur[0]!;
 
-    const benevoleDonneur = ix.benevole.get(donneur.Benevole)!;
-    const missionDonneur = missionsCouvertesParGroupe(m, ix, groupeDonneur.id).map((id) => ix.mission.get(id)!)[0];
+    const benevoleDonneur = ix.benevole.get(donneur.Benevole);
+    if (!benevoleDonneur) { continue; }
+    const missionDonneur = missionsCouvertesParGroupe(m, ix, groupeDonneur.id)
+      .map((id) => ix.mission.get(id))
+      .find((mission): mission is NonNullable<typeof mission> => mission != null);
 
     return [
       {
@@ -398,46 +403,65 @@ export function calculerAnomalies(m: Magasin, ix: Index): AnomalieUI[] {
   const brutes = moteurDetecterAnomalies(donnees);
   const anomalies: AnomalieUI[] = [];
 
+  // Une anomalie brute référence des ids (besoin, place, bénévole, sous-créneau…)
+  // qui peuvent avoir disparu du document (édition manuelle par Antoine dans
+  // Grist) sans que le moteur le sache. Chaque lecture ci-dessous est donc
+  // gardée : si une référence ne résout pas, l'anomalie concernée est
+  // ignorée plutôt que de faire planter tout le calcul (même principe que
+  // l'équipe orpheline, voir `affectation.ts`/`feuilleBenevole`).
   for (const a of brutes) {
     switch (a.code) {
       case 'sous_effectif': {
-        const besoin = ix.besoin.get(a.besoinId!)!;
+        const besoin = a.besoinId != null ? ix.besoin.get(a.besoinId) : undefined;
+        if (!besoin) { continue; }
+        const mission = ix.mission.get(besoin.Mission);
+        const sousCreneau = ix.sousCreneau.get(besoin.Sous_creneau);
+        if (!mission || !sousCreneau) { continue; }
         const c = couvertureBesoin(m, ix, besoin.id);
         anomalies.push({
           type: 'sous-effectif', gravite: 'danger', besoin,
-          missionNom: ix.mission.get(besoin.Mission)!.Nom,
-          sousCreneauLibelle: ix.sousCreneau.get(besoin.Sous_creneau)!.Libelle,
+          missionNom: mission.Nom,
+          sousCreneauLibelle: sousCreneau.Libelle,
           manque: besoin.Effectif_min - c.pourvues,
         });
         break;
       }
       case 'sur_effectif': {
-        const besoin = ix.besoin.get(a.besoinId!)!;
+        const besoin = a.besoinId != null ? ix.besoin.get(a.besoinId) : undefined;
+        if (!besoin) { continue; }
+        const mission = ix.mission.get(besoin.Mission);
+        const sousCreneau = ix.sousCreneau.get(besoin.Sous_creneau);
+        if (!mission || !sousCreneau) { continue; }
         const c = couvertureBesoin(m, ix, besoin.id);
         anomalies.push({
           type: 'sur-effectif', gravite: 'warn', besoin,
-          missionNom: ix.mission.get(besoin.Mission)!.Nom,
-          sousCreneauLibelle: ix.sousCreneau.get(besoin.Sous_creneau)!.Libelle,
+          missionNom: mission.Nom,
+          sousCreneauLibelle: sousCreneau.Libelle,
           surplus: c.pourvues - besoin.Effectif_max,
         });
         break;
       }
       case 'souhait_refuse': {
-        const place = m.places.find((p) => p.id === a.placeId)!;
-        const benevole = ix.benevole.get(a.benevoleId!)!;
-        const besoin = ix.besoin.get(a.besoinId!)!;
-        const groupe = ix.groupe.get(place.Groupe)!;
+        const place = m.places.find((p) => p.id === a.placeId);
+        const benevole = a.benevoleId != null ? ix.benevole.get(a.benevoleId) : undefined;
+        const besoin = a.besoinId != null ? ix.besoin.get(a.besoinId) : undefined;
+        if (!place || !benevole || !besoin) { continue; }
+        const groupe = ix.groupe.get(place.Groupe);
+        const mission = ix.mission.get(besoin.Mission);
+        if (!groupe || !mission) { continue; }
         anomalies.push({
           type: 'souhait-refuse', gravite: 'danger', place,
-          benevoleNom: benevole.Nom, missionNom: ix.mission.get(besoin.Mission)!.Nom, groupeCode: groupe.Code,
+          benevoleNom: benevole.Nom, missionNom: mission.Nom, groupeCode: groupe.Code,
         });
         break;
       }
       case 'indisponibilite': {
-        const place = m.places.find((p) => p.id === a.placeId)!;
-        const benevole = ix.benevole.get(a.benevoleId!)!;
-        const groupe = ix.groupe.get(place.Groupe)!;
-        const sousCreneau = ix.sousCreneau.get(a.sousCreneauId!)!;
+        const place = m.places.find((p) => p.id === a.placeId);
+        const benevole = a.benevoleId != null ? ix.benevole.get(a.benevoleId) : undefined;
+        const sousCreneau = a.sousCreneauId != null ? ix.sousCreneau.get(a.sousCreneauId) : undefined;
+        if (!place || !benevole || !sousCreneau) { continue; }
+        const groupe = ix.groupe.get(place.Groupe);
+        if (!groupe) { continue; }
         anomalies.push({
           type: 'indisponibilite', gravite: 'danger', place,
           benevoleNom: benevole.Nom, groupeCode: groupe.Code, sousCreneauLibelle: sousCreneau.Libelle,
@@ -445,9 +469,11 @@ export function calculerAnomalies(m: Magasin, ix: Index): AnomalieUI[] {
         break;
       }
       case 'conflit_artiste': {
-        const place = m.places.find((p) => p.id === a.placeId)!;
-        const benevole = ix.benevole.get(a.benevoleId!)!;
-        const groupe = ix.groupe.get(place.Groupe)!;
+        const place = m.places.find((p) => p.id === a.placeId);
+        const benevole = a.benevoleId != null ? ix.benevole.get(a.benevoleId) : undefined;
+        if (!place || !benevole) { continue; }
+        const groupe = ix.groupe.get(place.Groupe);
+        if (!groupe) { continue; }
         // Le moteur ne retient que le fait qu'il y a conflit, pas le nom de
         // l'artiste visé sur ce quart précis (voir `./types.ts`
         // `ExplicationScore` / `Anomalie`) : texte générique, comme le
@@ -459,17 +485,20 @@ export function calculerAnomalies(m: Magasin, ix: Index): AnomalieUI[] {
         break;
       }
       case 'chevauchement_creneaux': {
-        const sousCreneau = ix.sousCreneau.get(a.sousCreneauId!)!;
+        const sousCreneau = a.sousCreneauId != null ? ix.sousCreneau.get(a.sousCreneauId) : undefined;
+        if (!sousCreneau) { continue; }
         anomalies.push({type: 'chevauchement-creneaux', gravite: 'warn', sousCreneau});
         break;
       }
       case 'double_engagement': {
-        const benevole = ix.benevole.get(a.benevoleId!)!;
+        const benevole = a.benevoleId != null ? ix.benevole.get(a.benevoleId) : undefined;
+        if (!benevole) { continue; }
         anomalies.push({type: 'double-engagement', gravite: 'danger', benevoleId: benevole.id, benevoleNom: benevole.Nom});
         break;
       }
       case 'hors_quota': {
-        const benevole = ix.benevole.get(a.benevoleId!)!;
+        const benevole = a.benevoleId != null ? ix.benevole.get(a.benevoleId) : undefined;
+        if (!benevole) { continue; }
         anomalies.push({
           type: 'hors-quota', gravite: 'warn', benevoleId: a.benevoleId!,
           benevoleNom: benevole.Nom, heures: heuresAffecteesPourAffichage(m, ix, benevole.id), quotaMax: benevole.Quota_heures_max,
@@ -497,8 +526,14 @@ function heuresAffecteesPourAffichage(m: Magasin, ix: Index, benevoleId: Id): nu
   return quarts.size / 4;
 }
 
-function positionsDuGroupePourHeures(m: Magasin, ix: Index, groupeId: Id) {
-  return m.positionsGroupe
-    .filter((p) => p.Groupe === groupeId)
-    .map((p) => ({sousCreneau: ix.sousCreneau.get(ix.besoin.get(p.Besoin)!.Sous_creneau)!}));
+function positionsDuGroupePourHeures(m: Magasin, ix: Index, groupeId: Id): Array<{sousCreneau: SousCreneauUI}> {
+  const resultat: Array<{sousCreneau: SousCreneauUI}> = [];
+  for (const p of m.positionsGroupe) {
+    if (p.Groupe !== groupeId) { continue; }
+    const besoin = ix.besoin.get(p.Besoin);
+    const sousCreneau = besoin ? ix.sousCreneau.get(besoin.Sous_creneau) : undefined;
+    if (!sousCreneau) { continue; } // référence pendante : cette position n'est pas comptée
+    resultat.push({sousCreneau});
+  }
+  return resultat;
 }
