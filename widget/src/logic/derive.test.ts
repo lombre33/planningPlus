@@ -79,7 +79,7 @@ function modeleDeTest(): Modele {
       {Benevole: 3, Quart_heure: 1000, Statut: 'Artiste', Artiste: 1}, // Chloé : demande sans conflit (aucune place)
     ],
     souhaitsMissions: [],
-    affinites: [],
+    affinites: [], presences: [],
   };
 }
 

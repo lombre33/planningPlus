@@ -2,7 +2,7 @@ import {describe, expect, it} from 'vitest';
 import {type DocumentBrut} from './brut';
 import {construireModele} from './modele';
 
-/** Un document minimal mais complet, une ligne par table concernée — les 14 tables du `Modele`. */
+/** Un document minimal mais complet, une ligne par table concernée — les 15 tables du `Modele`. */
 function documentDeTest(): DocumentBrut {
   return {
     Equipes: {
@@ -105,6 +105,12 @@ function documentDeTest(): DocumentBrut {
       Benevole_A: [1],
       Benevole_B: [2],
       Type: ['Éviter'],
+    },
+    Presences: {
+      id: [120],
+      Benevole: [1],
+      Jour: ['2026-09-24'],
+      Present: [false],
     },
   };
 }
@@ -221,12 +227,16 @@ describe('construireModele', () => {
     expect(modele.affinites).toEqual([{id: 110, Benevole_A: 1, Benevole_B: 2, Type: 'Éviter'}]);
   });
 
-  it('rend des tableaux vides pour les 14 tables d\'un document vide, plutôt que de lever', () => {
+  it('décode une présence (appel), la clé du jour comme un texte simple', () => {
+    expect(modele.presences).toEqual([{id: 120, Benevole: 1, Jour: '2026-09-24', Present: false}]);
+  });
+
+  it('rend des tableaux vides pour les 15 tables d\'un document vide, plutôt que de lever', () => {
     const vide = construireModele({});
     expect(vide).toEqual({
       equipes: [], lieux: [], benevoles: [], missions: [], artistes: [], macroCreneaux: [],
       sousCreneaux: [], besoins: [], groupes: [], positionsGroupe: [], places: [],
-      disponibilites: [], souhaitsMissions: [], affinites: [],
+      disponibilites: [], souhaitsMissions: [], affinites: [], presences: [],
     });
   });
 });

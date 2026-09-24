@@ -40,6 +40,6 @@ export function jeuMinimal(): Modele {
     places: [],
     disponibilites: [],
     souhaitsMissions: [],
-    affinites: [],
+    affinites: [], presences: [],
   };
 }

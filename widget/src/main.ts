@@ -29,7 +29,7 @@ import {
   actionsCreerArtiste, actionsCreerBenevolesSource, actionsCreerBesoin, actionsCreerEquipe, actionsCreerGroupe,
   actionsCreerMacroCreneau,
   actionsCreerMission, actionsCreerSousCreneaux, actionsCreerTablesManquantes, actionsDefinirAbsence,
-  actionsDefinirParametre, actionsDefinirPlaces, actionsDeplacerMacroCreneau, actionsDeplacerPositionGroupe,
+  actionsDefinirParametre, actionsDefinirPlaces, actionsDefinirPresence, actionsDeplacerMacroCreneau, actionsDeplacerPositionGroupe,
   actionsEcrireDisponibilites, actionsModifierArtiste, actionsModifierPlaces, actionsModifierSousCreneaux,
   actionsPositionnerGroupe, actionsReglerAffichage, actionsRenommerMacroCreneau, actionsRepointerBesoins,
   actionsRetirerPositionGroupe, actionsRetirerPositionsGroupe, actionsSupprimerBesoins, actionsSupprimerDisponibilites,
@@ -53,7 +53,7 @@ import {type EcritureGrist, Magasin, SuppressionApresCreationEchouee} from './st
 const TABLES_REQUISES = [
   'Equipes', 'Lieux', 'Benevoles', 'Missions', 'Artistes', 'Macro_creneaux',
   'Sous_creneaux', 'Besoins', 'Groupes', 'Positions_groupe', 'Places',
-  'Disponibilites', 'Souhaits_missions', 'Affinites', 'Parametres',
+  'Disponibilites', 'Souhaits_missions', 'Affinites', 'Presences', 'Parametres',
 ] as const;
 
 /**
@@ -341,6 +341,16 @@ function construireEcritureGrist(
       return paires.map((p, i): Affinite => ({
         id: (ids as Id[])[i] as Id, Benevole_A: p.benevoleAId, Benevole_B: p.benevoleBId, Type: 'Ensemble',
       }));
+    },
+    async definirPresence(benevoleId, jour, present, presenceIdExistante) {
+      // Upsert par (Benevole, Jour) : sur une mise à jour, le seul id qui
+      // compte est celui déjà connu du `Magasin` (`presenceIdExistante`),
+      // jamais le retour de `UpdateRecord` (Grist n'y rend rien d'utile) —
+      // même discipline que `definirParametre` juste au-dessus.
+      const [retVal] = await appliquerActions(
+        docApi, actionsDefinirPresence(benevoleId, jour, present, presenceIdExistante), resolution,
+      );
+      return presenceIdExistante ?? (retVal as Id);
     },
   };
 }

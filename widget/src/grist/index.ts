@@ -47,6 +47,7 @@ export {
   actionsDefinirCompetencesBenevole,
   actionsDefinirParametre,
   actionsDefinirPlaces,
+  actionsDefinirPresence,
   actionsDeplacerMacroCreneau,
   actionsDeplacerPositionGroupe,
   actionsEcrireDisponibilites,

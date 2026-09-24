@@ -698,6 +698,28 @@ export function actionsDefinirAbsence(
   return actions;
 }
 
+// --- Présences (appel, §8, vue Indicatifs, 2026-09-24) ---------------------
+
+/**
+ * Pointe un bénévole présent ou absent pour un jour de festival donné
+ * (`Magasin.definirPresence`) : upsert par (Benevole, Jour), même patron que
+ * `upsertParametres` juste en dessous (upsert par clé) — `presenceIdExistante`
+ * est l'id déjà connu du `Magasin` (sa propre liste `presences` porte les
+ * ids réels depuis la lecture du document, pas besoin de relire la table
+ * comme `actionsEcrireDisponibilites`, dont le type de domaine n'a pas
+ * d'id). Ne touche jamais `Places` ni `Groupes` — un pointage d'appel est
+ * volontairement sans effet sur l'affectation (à la différence de
+ * `actionsDefinirAbsence`, qui libère des places).
+ */
+export function actionsDefinirPresence(
+  benevoleId: Id, jour: string, present: boolean, presenceIdExistante: Id | null,
+): UserAction[] {
+  if (presenceIdExistante != null) {
+    return [['UpdateRecord', 'Presences', presenceIdExistante, {Present: present}]];
+  }
+  return [['AddRecord', 'Presences', null, {Benevole: encoderRef(benevoleId), Jour: jour, Present: present}]];
+}
+
 // --- Paramètres (§5.4, §7.2) -------------------------------------------------
 
 /**

@@ -24,7 +24,7 @@ function modeleAvecPassage(): Modele {
     // cette vue n'a plus d'axe du tout — même règle que Missions.
     macroCreneaux: [{id: 1, Nom: 'Soirée', Debut: debut - 3600, Fin: fin + 3600}],
     sousCreneaux: [], besoins: [], groupes: [],
-    positionsGroupe: [], places: [], disponibilites: [], souhaitsMissions: [], affinites: [],
+    positionsGroupe: [], places: [], disponibilites: [], souhaitsMissions: [], affinites: [], presences: [],
   };
 }
 

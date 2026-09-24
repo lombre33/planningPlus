@@ -51,7 +51,7 @@ function creerModeleDeTest(): Modele {
     // Contraintes (§7.2) pour les tests de `contraintesBenevole` : Bob
     // refuse la seule mission du fixture.
     souhaitsMissions: [{id: 1, Benevole: 2, Mission: 1, Preference: 'Refuse'}],
-    affinites: [],
+    affinites: [], presences: [],
   };
 }
 

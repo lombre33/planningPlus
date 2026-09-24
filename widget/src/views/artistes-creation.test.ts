@@ -16,7 +16,7 @@ function modeleVide(): Modele {
   return {
     equipes: [], lieux: [{id: 1, Nom: 'Grande scène', Description: ''}], benevoles: [], missions: [], artistes: [],
     macroCreneaux: [], sousCreneaux: [], besoins: [], groupes: [],
-    positionsGroupe: [], places: [], disponibilites: [], souhaitsMissions: [], affinites: [],
+    positionsGroupe: [], places: [], disponibilites: [], souhaitsMissions: [], affinites: [], presences: [],
   };
 }
 
@@ -193,6 +193,7 @@ describe('document connecté : échec d’écriture puis nouvel essai', () => {
       remplacerDisponibilites: async () => {},
       peuplerBenevoles: async () => ({benevoles: [], crees: 0, actualises: 0}),
       creerAffinites: async () => [],
+      definirPresence: async () => 1,
     };
     m.brancherEcriture(ecriture);
     montrerArtistes(container, m);

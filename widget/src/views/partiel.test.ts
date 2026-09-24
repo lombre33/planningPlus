@@ -19,7 +19,7 @@ function modeleVide(): Modele {
   return {
     equipes: [], lieux: [], benevoles: [], missions: [], artistes: [],
     macroCreneaux: [], sousCreneaux: [], besoins: [], groupes: [],
-    positionsGroupe: [], places: [], disponibilites: [], souhaitsMissions: [], affinites: [],
+    positionsGroupe: [], places: [], disponibilites: [], souhaitsMissions: [], affinites: [], presences: [],
   };
 }
 

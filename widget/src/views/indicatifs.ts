@@ -22,7 +22,7 @@
  * temps, mais n'est jamais glissable depuis cette vue.
  */
 
-import type {Artiste, Besoin, Epoch, Groupe, Id, Mission, SousCreneau} from '../domain/types';
+import type {Artiste, Benevole, Besoin, Epoch, Groupe, Id, Mission, SousCreneau} from '../domain/types';
 import {
   type Candidat, type Index, type Jour, couvertureBesoin, indexer, placesDuGroupe, positionsDuGroupe,
   quartsCouvertsParGroupe, regrouperParJour, sousCreneauxApplicables,
@@ -46,6 +46,14 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
    *  Antoine 2026-09-23, point 9 : cliquer #1/#2). Purement informatif —
    *  jamais d'affectation depuis cette vue, voir `panneauIndicatif`. */
   let placeCandidatsVisible: Id | null = null;
+  /** Panneau d'appel ouvert (demande d'Antoine du 2026-09-24) : remplace le
+   *  panneau d'indicatif tant qu'il est actif — un seul panneau latéral à la
+   *  fois, voir `rafraichir`. Purement un pointage de présence par jour de
+   *  festival ; ne touche jamais `Places` ni `Groupes` (voir
+   *  `Magasin.definirPresence`), à la différence du bouton Absent/De retour
+   *  de la vue Jour J, qui vide les places non verrouillées pour tout le
+   *  festival — un mécanisme volontairement distinct, voir `panneauAppel`. */
+  let appelOuvert = false;
 
   // État transitoire du glisser-déposer natif (pas dans le magasin : ça ne
   // survit pas à un rafraîchissement, et n'a pas à le faire).
@@ -111,7 +119,9 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
       ),
     );
 
-    if (groupeSelectionne != null && ix.groupe.has(groupeSelectionne)) {
+    if (appelOuvert) {
+      panneauAppel(ix, jour, tousSousCreneaux);
+    } else if (groupeSelectionne != null && ix.groupe.has(groupeSelectionne)) {
       panneauIndicatif(ix, groupeSelectionne, jour);
     } else {
       fermerPanneau();
@@ -147,6 +157,16 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
         h('option', {value: 'toutes'}, 'Toutes les équipes'),
         ...m.equipes.map((eq) => h('option', {value: String(eq.id), selected: equipeFiltre === eq.id}, eq.Nom)),
       ),
+      h('button', {
+        class: `btn btn--sm${appelOuvert ? ' btn--primary' : ''}`, type: 'button',
+        title: "Pointer les bénévoles présents ce jour — sans effet sur les affectations.",
+        onclick: () => {
+          appelOuvert = !appelOuvert;
+          groupeSelectionne = null;
+          placeCandidatsVisible = null;
+          rafraichir();
+        },
+      }, 'Faire l’appel'),
     );
   }
 
@@ -215,7 +235,7 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
       axeFin: axe.fin,
       classesBloc: (bloc) => (bloc.besoin ? '' : 'besoin-cell--vide'),
       titreBloc: (bloc) => (bloc.besoin ? undefined : bloc.sc.Libelle),
-      rendreBloc: (bloc) => (bloc.besoin ? [celluleIndicatifs(ix, bloc.besoin.id)] : []),
+      rendreBloc: (bloc) => (bloc.besoin ? [celluleIndicatifs(ix, bloc.besoin.id, jour.cle)] : []),
       // Le clic utile (sélectionner une puce, cibler un besoin en mode
       // cible) est déjà géré par les écouteurs posés sur le contenu du bloc
       // dans `celluleIndicatifs` ; un clic hors de tout contenu (rare, une
@@ -232,7 +252,7 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
     });
   }
 
-  function celluleIndicatifs(ix: Index, besoinId: Id): HTMLElement {
+  function celluleIndicatifs(ix: Index, besoinId: Id, jourCle: string): HTMLElement {
     const c = couvertureBesoin(m, ix, besoinId);
     const sc = ix.sousCreneau.get(c.besoin.Sous_creneau)!;
     const sousEffectif = c.pourvues < c.besoin.Effectif_min;
@@ -260,7 +280,7 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
         }, `≈${binomesRecommandes} binôme${binomesRecommandes > 1 ? 's' : ''}`),
         surEffectif ? h('span', {class: 'flag', title: 'Dépasse le maximum — signalé, pas bloquant'}, '⚑') : null,
       ),
-      ...c.groupesPositionnes.map((g) => puceGroupe(ix, g.groupe, besoinId)),
+      ...c.groupesPositionnes.map((g) => puceGroupe(ix, g.groupe, besoinId, jourCle)),
     );
 
     // Icône seule, jamais un bouton en toutes lettres (retour Connexion
@@ -328,8 +348,15 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
    *  créneau (donc son besoin, donc sa mission) qui porte la priorité, pas
    *  l'indicatif dans l'absolu. « Pourvue » exige les deux places du binôme
    *  (choix du coordinateur ; une place manquante reste un trou), pas
-   *  seulement l'une d'elles. */
-  function puceGroupe(ix: Index, groupe: Groupe, besoinId: Id): HTMLElement {
+   *  seulement l'une d'elles.
+   *
+   *  Statut `absence` (retour Antoine du 2026-09-24, appel) : prime sur les
+   *  trois autres dès qu'un membre du binôme, bien que pourvu, est pointé
+   *  absent ce jour-là (`presenceDuJour`) — signal plus urgent que
+   *  pourvu/non-pourvu, qui ne dit rien de la présence réelle. Jaune, pas
+   *  violet (déjà pris par `--accent-2`, « veut voir un artiste »,
+   *  `.dispos-cellule--artiste`) — voir `--absence` dans `style.css`. */
+  function puceGroupe(ix: Index, groupe: Groupe, besoinId: Id, jourCle: string): HTMLElement {
     // Même défaut que `rosterCard` dans `views/affectation.ts`, corrigé
     // le 2026-09-23 (équipe orpheline) : `equipe` peut être absente.
     const equipe = ix.equipe.get(groupe.Equipe);
@@ -337,8 +364,13 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
     const vide = places.every((p) => p.Benevole == null);
     const pourvu = places.every((p) => p.Benevole != null);
     const mission = ix.mission.get(ix.besoin.get(besoinId)!.Mission)!;
-    const statut = pourvu ? 'pourvu' : mission.Priorite === 'Critique' ? 'critique' : 'non-pourvu';
-    const noms = places.map((p) => (p.Benevole != null ? courtNom(ix.benevole.get(p.Benevole)!.Nom) : '—')).join(' · ');
+    const membreAbsent = places.some((p) => p.Benevole != null && presenceDuJour(p.Benevole, jourCle) === false);
+    const statut = membreAbsent ? 'absence' : pourvu ? 'pourvu' : mission.Priorite === 'Critique' ? 'critique' : 'non-pourvu';
+    const noms = places.map((p) => {
+      if (p.Benevole == null) { return '—'; }
+      const nom = courtNom(ix.benevole.get(p.Benevole)!.Nom);
+      return presenceDuJour(p.Benevole, jourCle) === false ? `${nom} (absent·e)` : nom;
+    }).join(' · ');
 
     let ordre: number | null = null;
     if (groupeSelectionne === groupe.id) {
@@ -368,6 +400,7 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
       if (modeCible) { return; }
       groupeSelectionne = groupeSelectionne === groupe.id ? null : groupe.id;
       placeCandidatsVisible = null;
+      appelOuvert = false;
       rafraichir();
     });
     chip.addEventListener('dragstart', () => {
@@ -555,6 +588,72 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
     ouvrirPanneau(panneau);
   }
 
+  /** Panneau d'appel (retour Antoine du 2026-09-24) : une ligne par
+   *  bénévole positionné ce jour (`groupesDuJour`, dédupliqué — un même
+   *  bénévole peut tenir plusieurs indicatifs), avec deux boutons pour
+   *  pointer présent/absent. Purement un pointage (`Magasin.definirPresence`) :
+   *  ne libère, ne verrouille ni ne modifie aucune place — à la différence
+   *  du bouton Absent/De retour de la vue Jour J. La couleur du binôme
+   *  (`puceGroupe`) est la conséquence visible de ce pointage, pas l'inverse. */
+  function panneauAppel(ix: Index, jour: Jour | undefined, tousSousCreneaux: SousCreneau[]): void {
+    if (!jour) {
+      ouvrirPanneau(h('p', {class: 'empty'}, 'Choisissez un jour avant de faire l’appel.'));
+      return;
+    }
+    const vus = new Set<Id>();
+    const lignes: {benevole: Benevole; groupe: Groupe}[] = [];
+    for (const groupe of groupesDuJour(ix, tousSousCreneaux)) {
+      for (const place of placesDuGroupe(m, groupe.id)) {
+        if (place.Benevole == null || vus.has(place.Benevole)) { continue; }
+        const benevole = ix.benevole.get(place.Benevole);
+        if (!benevole) { continue; }
+        vus.add(place.Benevole);
+        lignes.push({benevole, groupe});
+      }
+    }
+    lignes.sort((a, b) => a.benevole.Nom.localeCompare(b.benevole.Nom, 'fr'));
+
+    const panneau = h('div', {style: {display: 'flex', flexDirection: 'column', gap: '16px'}},
+      h('div', {class: 'side-panel__head'},
+        h('div', null,
+          h('h3', null, 'Appel'),
+          h('p', {class: 'topbar__subtitle'}, jour.libelle),
+        ),
+        h('button', {
+          class: 'btn btn--ghost btn--sm', type: 'button',
+          onclick: () => { appelOuvert = false; rafraichir(); },
+        }, 'Fermer'),
+      ),
+      lignes.length === 0
+        ? h('p', {class: 'empty'}, "Aucun bénévole positionné ce jour-là — positionnez des indicatifs avant de faire l'appel.")
+        : h('div', {class: 'card', style: {display: 'flex', flexDirection: 'column', gap: '6px'}},
+          ...lignes.map(({benevole, groupe}) => {
+            const present = presenceDuJour(benevole.id, jour.cle);
+            return h('div', {class: 'membre'},
+              h('span', {style: {flex: '1'}}, benevole.Nom),
+              h('span', {class: 'groupe-chip__code mono', style: {color: 'var(--text-faint)'}}, groupe.Code),
+              present === undefined ? null
+                : present ? h('span', {class: 'pill pill--ok'}, 'Présent·e')
+                  : h('span', {class: 'pill pill--danger'}, 'Absent·e'),
+              h('button', {
+                class: 'btn btn--ghost btn--sm', type: 'button', title: 'Marquer présent·e',
+                onclick: () => void ecrire(async () => { await m.definirPresence(benevole.id, jour.cle, true); }),
+              }, '✓'),
+              h('button', {
+                class: 'btn btn--ghost btn--sm', type: 'button', title: 'Marquer absent·e',
+                onclick: () => void ecrire(async () => { await m.definirPresence(benevole.id, jour.cle, false); }),
+              }, '✗'),
+            );
+          }),
+        ),
+      h('p', {class: 'view__intro', style: {marginTop: '8px', marginBottom: '0'}},
+        'Un pointage n’affecte ni ne libère aucune place : c’est un rappel visuel séparé de l’affectation. '
+          + 'Un binôme dont un membre pointé absent est toujours positionné passe en jaune sur la frise.',
+      ),
+    );
+    ouvrirPanneau(panneau);
+  }
+
   function executerCible(besoinId: Id): void {
     if (!modeCible) { return; }
     const cible = modeCible;
@@ -571,6 +670,33 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
   function courtNom(nomComplet: string): string {
     const parties = nomComplet.split(' ');
     return parties.length < 2 ? nomComplet : `${parties[0]} ${parties[1]![0]}.`;
+  }
+
+  /** Pointage d'un bénévole pour un jour de festival donné, ou `undefined`
+   *  si pas encore pointé (`Magasin.presences`, jamais absent par défaut —
+   *  voir l'en-tête de `domain/types.ts`, `Presence`). */
+  function presenceDuJour(benevoleId: Id, jourCle: string): boolean | undefined {
+    return m.presences.find((p) => p.Benevole === benevoleId && p.Jour === jourCle)?.Present;
+  }
+
+  /** Les indicatifs positionnés sur au moins un besoin du jour affiché —
+   *  même filtre que la frise (`tousSousCreneaux`, `rafraichir`), mais à
+   *  plat et dédupliqué par groupe plutôt que ligne de mission par ligne de
+   *  mission : sert de base à `panneauAppel`, qui liste les bénévoles à
+   *  pointer plutôt que les cases où ils sont positionnés. */
+  function groupesDuJour(ix: Index, tousSousCreneaux: SousCreneau[]): Groupe[] {
+    const scIds = new Set(tousSousCreneaux.map((sc) => sc.id));
+    const vus = new Set<Id>();
+    const groupes: Groupe[] = [];
+    for (const position of m.positionsGroupe) {
+      const besoin = ix.besoin.get(position.Besoin);
+      if (!besoin || !scIds.has(besoin.Sous_creneau) || vus.has(position.Groupe)) { continue; }
+      const groupe = ix.groupe.get(position.Groupe);
+      if (!groupe) { continue; } // groupe orphelin : position ignorée, même garde que `couvertureBesoin`.
+      vus.add(position.Groupe);
+      groupes.push(groupe);
+    }
+    return groupes;
   }
 
   const desabonner = m.subscribe(rafraichir);

@@ -88,7 +88,7 @@ function construireModele(): Modele {
       {Benevole: 2, Quart_heure: 900, Statut: 'Disponible', Artiste: null},
     ],
     souhaitsMissions: [],
-    affinites: [],
+    affinites: [], presences: [],
   };
 }
 
@@ -109,7 +109,7 @@ function construireModeleUnBesoin(): Modele {
     places: [{id: 1, Groupe: 1, Rang: 1, Benevole: null, Origine: 'Algorithme', Verrouillee: false, Score: 0}],
     disponibilites: [{Benevole: 1, Quart_heure: 0, Statut: 'Disponible', Artiste: null}],
     souhaitsMissions: [],
-    affinites: [],
+    affinites: [], presences: [],
   };
 }
 
@@ -153,7 +153,7 @@ function construireModeleDeuxJours(): Modele {
       {Benevole: 1, Quart_heure: jour2Debut, Statut: 'Disponible', Artiste: null},
     ],
     souhaitsMissions: [],
-    affinites: [],
+    affinites: [], presences: [],
   };
 }
 
@@ -194,7 +194,7 @@ function construireModeleTroisIndicatifs(): Modele {
       {Benevole: 2, Quart_heure: 0, Statut: 'Disponible', Artiste: null},
     ],
     souhaitsMissions: [],
-    affinites: [],
+    affinites: [], presences: [],
   };
 }
 
@@ -333,6 +333,7 @@ describe('montrerAffectation — colonne indicatif du roster (2026-09-24 5h02, e
         colonnesTable: async () => [], tablesDocument: async () => [], definirParametre: async () => {},
         remplacerDisponibilites: async () => {}, peuplerBenevoles: async () => ({benevoles: [], crees: 0, actualises: 0}),
         creerAffinites: async () => [],
+        definirPresence: async () => 1,
       };
       m.brancherEcriture(ecriture);
       const container = document.createElement('div');

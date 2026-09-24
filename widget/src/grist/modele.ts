@@ -33,6 +33,7 @@ import type {
   Place,
   PositionGroupe,
   Preference,
+  Presence,
   SousCreneau,
   SouhaitMission,
 } from '../domain/types';
@@ -180,9 +181,18 @@ function affiniteDepuisLigne(l: LigneBrute): Affinite {
   };
 }
 
+function presenceDepuisLigne(l: LigneBrute): Presence {
+  return {
+    id: l.id,
+    Benevole: decoderNombre(l.Benevole),
+    Jour: decoderTexte(l.Jour),
+    Present: decoderBool(l.Present),
+  };
+}
+
 /**
  * Construit le `Modele` complet de l'UI à partir des tables brutes d'un
- * document — les 14 tableaux, y compris Équipes/Lieux/Artistes/Macro-
+ * document — les 15 tableaux, y compris Équipes/Lieux/Artistes/Macro-
  * créneaux. Une table absente du document compte comme vide plutôt que de
  * lever, comme `construireDonneesPlanning` (`./lecture`).
  */
@@ -202,5 +212,6 @@ export function construireModele(document: DocumentBrut): Modele {
     disponibilites: zipperTable(document.Disponibilites).map(disponibiliteDepuisLigne),
     souhaitsMissions: zipperTable(document.Souhaits_missions).map(souhaitMissionDepuisLigne),
     affinites: zipperTable(document.Affinites).map(affiniteDepuisLigne),
+    presences: zipperTable(document.Presences).map(presenceDepuisLigne),
   };
 }
