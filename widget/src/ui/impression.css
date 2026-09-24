@@ -114,6 +114,16 @@ table.impression-table th, table.impression-table td {
   white-space: nowrap;
 }
 
+.impression-table__equipe {
+  padding: 3px 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .impression-bloc {
   padding: 1px 3px;
   vertical-align: middle;
