@@ -5,10 +5,8 @@
  */
 import {describe, expect, it} from 'vitest';
 import type {Modele} from '../domain/types';
-import type {BlocMacro} from '../logic/dispos-terrain';
 import {Magasin} from '../store';
-import {libelleHeurePlage} from '../temps';
-import {decouperBlocsEnPages, montrerEquipesImprimables, plageHoraire} from './equipes-imprimables';
+import {montrerEquipesImprimables} from './equipes-imprimables';
 
 function modeleVide(): Modele {
   return {
@@ -127,10 +125,70 @@ describe('montrerEquipesImprimables avec plusieurs équipes', () => {
     trouverBouton('Toutes les équipes')?.click();
     expect(container.querySelectorAll('.impression-equipes__equipe').length).toBe(2);
   });
+
+  it('imprime une section par équipe, jamais découpée en plusieurs pages chronologiques (retour Antoine 2026-09-24, cinquième passage : une équipe = une page, jamais une demi-journée)', () => {
+    const m = new Magasin(modeleDeuxEquipes());
+    const container = document.createElement('div');
+    const zoneImpression = document.createElement('div');
+    zoneImpression.id = 'zone-impression';
+    document.body.append(zoneImpression);
+    window.print = () => {};
+
+    try {
+      montrerEquipesImprimables(container, m);
+      const boutonImprimer = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+        .find((b) => b.textContent?.startsWith('Imprimer'));
+      boutonImprimer?.click();
+
+      // Une section par équipe, jamais plusieurs pour la même équipe : le découpage
+      // chronologique du troisième passage est bien renversé.
+      expect(zoneImpression.querySelectorAll('.impression-equipes__equipe').length).toBe(2);
+      // Le sous-titre de page (plage horaire) n'existe plus : plus de pagination à sous-titrer.
+      expect(zoneImpression.querySelector('.impression-equipes__sous-titre')).toBeNull();
+
+      // WYSIWYG (cinquième passage) : la table imprimée a exactement la même largeur inline
+      // que la table affichée à l'écran pour la même équipe — même calibrage, pas un aperçu
+      // à une échelle différente du papier.
+      const largeurEcran = container.querySelector<HTMLTableElement>('table.impression-table')?.style.width;
+      const largeurImpression = zoneImpression.querySelector<HTMLTableElement>('table.impression-table')?.style.width;
+      expect(largeurEcran).toBeTruthy();
+      expect(largeurImpression).toBe(largeurEcran);
+    } finally {
+      zoneImpression.remove();
+    }
+  });
 });
 
-describe('montrerEquipesImprimables à l’écran avec un créneau trop court même pour le code d’indicatif', () => {
-  it('tronque avec une ellipse au plancher écran plutôt que de laisser le bloc sans texte (retour Antoine 2026-09-24 : lisibilité écran)', () => {
+describe('montrerEquipesImprimables : la largeur d’un quart d’heure tient toute la journée sur une page A4 (retour Antoine 2026-09-24, cinquième passage)', () => {
+  it('calcule la même largeur de quart, à l’écran comme à l’impression, à partir du nombre total de quarts du jour', () => {
+    const m = new Magasin({
+      ...modeleVide(),
+      equipes: [{id: 1, Nom: 'Bar', Couleur: '#000', Referent: null, Notes: ''}],
+      benevoles: [
+        {id: 1, Nom: 'Marie', Contact: '', Equipe: 1, Competences: [], Quota_heures_min: 0, Quota_heures_max: 99, Statut: 'Actif', Notes: ''},
+      ],
+      missions: [{id: 1, Nom: 'Bar central', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []}],
+      // Une journée de 8h (32 quarts) pour vérifier que la largeur se resserre en
+      // conséquence, jamais fixée à une valeur écran indépendante du nombre de quarts.
+      macroCreneaux: [{id: 1, Nom: 'Samedi', Debut: DEBUT, Fin: DEBUT + 8 * 3600}],
+      sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: 'Bloc', Debut: DEBUT, Fin: DEBUT + 3600}],
+      besoins: [{id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 1, Taille_groupe: 1}],
+      groupes: [{id: 1, Code: 'A1', Taille: 1, Equipe: 1, Notes: ''}],
+      positionsGroupe: [{id: 1, Groupe: 1, Besoin: 1}],
+      places: [{id: 1, Groupe: 1, Rang: 1, Benevole: 1, Origine: 'Manuel', Verrouillee: false, Score: 0}],
+    });
+    const container = document.createElement('div');
+    montrerEquipesImprimables(container, m);
+
+    // 32 quarts sur 8h, colonne mission 190px, page ~1050px : (1050-190)/32 = 26.875px/quart,
+    // largeur totale de la table = 190 + 32*26.875 = 1050px (tient exactement sur une page).
+    const table = container.querySelector<HTMLTableElement>('table.impression-table');
+    expect(table?.style.width).toBe('1050px');
+  });
+});
+
+describe('montrerEquipesImprimables avec un créneau trop court même pour le code d’indicatif', () => {
+  it('tronque avec une ellipse au plancher partagé écran/impression plutôt que de laisser le bloc sans texte (retour Antoine 2026-09-24 : lisibilité, puis WYSIWYG au cinquième passage)', () => {
     const m = new Magasin({
       ...modeleVide(),
       equipes: [{id: 1, Nom: 'Bar', Couleur: '#000', Referent: null, Notes: ''}],
@@ -140,10 +198,10 @@ describe('montrerEquipesImprimables à l’écran avec un créneau trop court m�
       missions: [{id: 1, Nom: 'Bar central', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []}],
       macroCreneaux: [{id: 1, Nom: 'Samedi', Debut: DEBUT, Fin: FIN}],
       // Un seul quart d'heure, un code d'indicatif assez long pour que même le
-      // candidat de secours (le code seul, sans le nom) ne tienne pas au plancher écran.
+      // candidat de secours (le code seul, sans le nom) ne tienne pas au plancher partagé.
       sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: 'Bloc', Debut: DEBUT, Fin: DEBUT + 900}],
       besoins: [{id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 1, Taille_groupe: 1}],
-      groupes: [{id: 1, Code: 'ZZZZZZZZZZ1', Taille: 1, Equipe: 1, Notes: ''}],
+      groupes: [{id: 1, Code: 'ZZZZZZZZZZZZZZZZ', Taille: 1, Equipe: 1, Notes: ''}],
       positionsGroupe: [{id: 1, Groupe: 1, Besoin: 1}],
       places: [{id: 1, Groupe: 1, Rang: 1, Benevole: 1, Origine: 'Manuel', Verrouillee: false, Score: 0}],
     });
@@ -155,9 +213,9 @@ describe('montrerEquipesImprimables à l’écran avec un créneau trop court m�
     expect(texte).not.toBeNull();
     expect(texte?.textContent).not.toBe('');
     expect(texte?.textContent?.endsWith('…')).toBe(true);
-    // Jamais en dessous du plancher écran (8px), contrairement à l'impression qui peut
-    // descendre à 6px.
-    expect(texte?.style.fontSize).toBe('8px');
+    // Plancher partagé écran/impression (unifié au cinquième passage) : 6px, jamais un
+    // plancher écran distinct plus haut.
+    expect(texte?.style.fontSize).toBe('6px');
   });
 });
 
@@ -171,8 +229,8 @@ describe('montrerEquipesImprimables avec plusieurs binômes sur la même mission
       ],
       missions: [{id: 1, Nom: 'Bar central', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []}],
       macroCreneaux: [{id: 1, Nom: 'Samedi', Debut: DEBUT, Fin: FIN}],
-      // Assez large (4 quarts) pour que « Marie (A1) » tienne à l'écran sans tomber
-      // sur le repli code-seul, qui n'est pas ce que ce test veut observer.
+      // Assez large (4 quarts, et une journée courte de 4h) pour que « Marie (A1) » tienne
+      // sans tomber sur le repli code-seul, qui n'est pas ce que ce test veut observer.
       sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: 'Bloc', Debut: DEBUT, Fin: DEBUT + 3600}],
       // Trois binômes positionnés sur le même besoin : un seul pourvu, deux encore vides.
       besoins: [{id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 6, Taille_groupe: 2}],
@@ -230,107 +288,5 @@ describe('montrerEquipesImprimables avec plusieurs binômes sur la même mission
     const bloc = container.querySelector('.impression-bloc--libre');
     expect(bloc?.querySelector('.impression-bloc__texte')?.textContent).toBe('A1');
     expect(bloc?.getAttribute('title')).toBe('A1');
-  });
-});
-
-describe('decouperBlocsEnPages (retour Antoine 2026-09-24, troisième passage : doubler le calibrage papier)', () => {
-  function bloc(macroId: number, nbQuarts: number, debut = DEBUT): BlocMacro {
-    return {
-      macro: {id: macroId, Nom: `Macro ${macroId}`, Debut: debut, Fin: debut + nbQuarts * 900},
-      quarts: Array.from({length: nbQuarts}, (_, i) => debut + i * 900),
-    };
-  }
-
-  it('renvoie tel quel pour une seule page ou aucun quart', () => {
-    const blocs = [bloc(1, 4)];
-    expect(decouperBlocsEnPages(blocs, 1)).toEqual([blocs]);
-    expect(decouperBlocsEnPages([bloc(1, 0)], 2)).toEqual([[bloc(1, 0)]]);
-  });
-
-  it('découpe en tranches chronologiques de taille à peu près égale, quitte à couper un bloc en deux', () => {
-    // 8 quarts sur un seul macro-créneau, 2 pages : 4 quarts chacune, le bloc coupé en deux
-    // sous-blocs qui gardent la même référence `macro`.
-    const pages = decouperBlocsEnPages([bloc(1, 8)], 2);
-    expect(pages).toHaveLength(2);
-    expect(pages[0]!.reduce((n, b) => n + b.quarts.length, 0)).toBe(4);
-    expect(pages[1]!.reduce((n, b) => n + b.quarts.length, 0)).toBe(4);
-    expect(pages[0]![0]!.macro.id).toBe(1);
-    expect(pages[1]![0]!.macro.id).toBe(1);
-    // Chronologique : la deuxième page commence où la première s'arrête.
-    expect(pages[1]![0]!.quarts[0]).toBe(pages[0]![0]!.quarts[pages[0]![0]!.quarts.length - 1]! + 900);
-  });
-
-  it('ne coupe pas un macro-créneau qui tient déjà dans une seule page', () => {
-    // Deux macro-créneaux de 4 quarts chacun, 2 pages : chaque page reçoit un macro-créneau entier.
-    const pages = decouperBlocsEnPages([bloc(1, 4), bloc(2, 4)], 2);
-    expect(pages).toHaveLength(2);
-    expect(pages[0]).toEqual([bloc(1, 4)]);
-    expect(pages[1]).toEqual([bloc(2, 4)]);
-  });
-});
-
-describe('plageHoraire', () => {
-  const MACRO_TEST = {id: 1, Nom: 'Macro', Debut: DEBUT, Fin: FIN};
-
-  it('couvre du début du premier quart à la fin du dernier (pas juste son horodatage de départ)', () => {
-    const blocs: BlocMacro[] = [{macro: MACRO_TEST, quarts: [DEBUT, DEBUT + 900, DEBUT + 1800]}];
-    // Le dernier quart commence à DEBUT+1800 et dure 900s de plus : la plage se termine donc
-    // 2700s après DEBUT, jamais 1800s (ce qui tronquerait le dernier quart d'heure affiché).
-    expect(plageHoraire(blocs)).toBe(libelleHeurePlage(DEBUT, DEBUT + 2700));
-  });
-
-  it('renvoie null sans aucun quart', () => {
-    expect(plageHoraire([{macro: MACRO_TEST, quarts: []}])).toBeNull();
-  });
-});
-
-describe('montrerEquipesImprimables : bouton d’impression, calibrage papier doublé (retour Antoine 2026-09-24)', () => {
-  it('découpe chaque équipe imprimée en plusieurs pages chronologiques avec sous-titre, sans toucher l’aperçu écran', () => {
-    const m = new Magasin({
-      ...modeleVide(),
-      equipes: [{id: 1, Nom: 'Bar', Couleur: '#000', Referent: null, Notes: ''}],
-      benevoles: [
-        {id: 1, Nom: 'Marie', Contact: '', Equipe: 1, Competences: [], Quota_heures_min: 0, Quota_heures_max: 99, Statut: 'Actif', Notes: ''},
-      ],
-      missions: [{id: 1, Nom: 'Bar central', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []}],
-      // Une journée assez longue pour que le découpage en 2 pages soit observable.
-      macroCreneaux: [{id: 1, Nom: 'Samedi', Debut: DEBUT, Fin: DEBUT + 8 * 3600}],
-      sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: 'Bloc', Debut: DEBUT, Fin: DEBUT + 8 * 3600}],
-      besoins: [{id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 1, Taille_groupe: 1}],
-      groupes: [{id: 1, Code: 'A1', Taille: 1, Equipe: 1, Notes: ''}],
-      positionsGroupe: [{id: 1, Groupe: 1, Besoin: 1}],
-      places: [{id: 1, Groupe: 1, Rang: 1, Benevole: 1, Origine: 'Manuel', Verrouillee: false, Score: 0}],
-    });
-    const container = document.createElement('div');
-    // `imprimer` (ui/impression.ts) cherche `#zone-impression`, posé par `app.ts` en dehors
-    // de cette vue — on le recrée ici pour observer ce qui est réellement envoyé à l'impression.
-    const zoneImpression = document.createElement('div');
-    zoneImpression.id = 'zone-impression';
-    document.body.append(zoneImpression);
-    // jsdom n'implémente pas `window.print` (bruit console sans intérêt pour ce test).
-    window.print = () => {};
-
-    try {
-      montrerEquipesImprimables(container, m);
-      const boutonImprimer = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
-        .find((b) => b.textContent?.startsWith('Imprimer'));
-      boutonImprimer?.click();
-
-      const sections = zoneImpression.querySelectorAll('.impression-equipes__equipe');
-      // Une équipe, deux pages chronologiques (NB_PAGES_IMPRESSION_EQUIPES = 2) : deux sections
-      // pour la même équipe, jamais une seule compressée pour tenir sur une page.
-      expect(sections.length).toBe(2);
-      const sousTitres = Array.from(zoneImpression.querySelectorAll('.impression-equipes__sous-titre'))
-        .map((s) => s.textContent);
-      expect(sousTitres).toHaveLength(2);
-      // Chaque page porte sa propre plage horaire, jamais la même sur les deux.
-      expect(new Set(sousTitres).size).toBe(2);
-
-      // L'aperçu écran, lui, reste une seule table non paginée pour cette équipe.
-      expect(container.querySelectorAll('.impression-equipes__equipe').length).toBe(1);
-      expect(container.querySelector('.impression-equipes__sous-titre')).toBeNull();
-    } finally {
-      zoneImpression.remove();
-    }
   });
 });
