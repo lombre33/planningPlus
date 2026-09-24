@@ -8,7 +8,7 @@
 
 import type {
   Affinite, Artiste, Benevole, Besoin, Disponibilite, Epoch, Equipe, Groupe, Id, Lieu, MacroCreneau,
-  Mission, Modele, OriginePlace, Place, PositionGroupe, SouhaitMission, SousCreneau,
+  Mission, Modele, OriginePlace, Place, PositionGroupe, Presence, SouhaitMission, SousCreneau,
 } from './domain/types';
 import {sousCreneauxApplicables} from './logic/derive';
 import type {ColonneTable, TableDocument} from './logic/parametres-benevoles';
@@ -221,6 +221,15 @@ export interface EcritureGrist {
    *  lignes créées, ids réels compris, pour que le `Magasin` les ajoute à
    *  son cache local sans les reconstruire à la main. */
   creerAffinites(paires: readonly {benevoleAId: Id; benevoleBId: Id}[]): Promise<Affinite[]>;
+  /** Pointe un bénévole présent ou absent pour un jour de festival donné
+   *  (`Jour.cle`, `logic/derive.ts`) — l'appel, vue Indicatifs. Upsert par
+   *  (Benevole, Jour) : `presenceIdExistante` est l'id déjà connu du
+   *  `Magasin` (`null` si ce couple n'a encore aucune ligne), rend l'id réel
+   *  de la ligne écrite (inchangé sur une mise à jour, attribué par Grist
+   *  sur une création) pour que `Magasin.definirPresence` mette à jour son
+   *  cache local sans le reconstruire. Ne touche jamais `Places` ni
+   *  `Groupes` — voir `Magasin.definirPresence`. */
+  definirPresence(benevoleId: Id, jour: string, present: boolean, presenceIdExistante: Id | null): Promise<Id>;
 }
 
 /** Levée par `EcritureGrist.remplacerSousCreneaux` quand la création des
@@ -320,6 +329,7 @@ export class Magasin {
   get disponibilites(): Disponibilite[] { return this.data.disponibilites; }
   get souhaitsMissions(): SouhaitMission[] { return this.data.souhaitsMissions; }
   get affinites(): Affinite[] { return this.data.affinites; }
+  get presences(): Presence[] { return this.data.presences; }
 
   /** Valeur d'un réglage scalaire de la table `Parametres` (`Cle`/`Valeur`),
    *  ou `undefined` si cette clé n'y a encore aucune ligne — à l'appelant de
@@ -404,6 +414,25 @@ export class Magasin {
     if (paires.length === 0 || !this.ecriture) { return; }
     const nouvelles = await this.ecriture.creerAffinites(paires);
     this.data.affinites.push(...nouvelles);
+    this.notifier();
+  }
+
+  /** Pointe un bénévole présent ou absent pour un jour de festival donné —
+   *  l'appel (vue Indicatifs, §8, demande d'Antoine du 2026-09-24). Upsert
+   *  local par (Benevole, Jour), comme `EcritureGrist.definirPresence`
+   *  ci-dessus : ne crée jamais une seconde ligne pour un couple déjà
+   *  pointé, la met à jour en place. Purement un pointage — ne lit ni ne
+   *  modifie jamais `places`/`groupes`, à la différence de `definirAbsence`. */
+  async definirPresence(benevoleId: Id, jour: string, present: boolean): Promise<void> {
+    const existante = this.data.presences.find((p) => p.Benevole === benevoleId && p.Jour === jour);
+    const id = this.ecriture
+      ? await this.ecriture.definirPresence(benevoleId, jour, present, existante?.id ?? null)
+      : existante?.id ?? prochainId(this.data.presences);
+    if (existante) {
+      existante.Present = present;
+    } else {
+      this.data.presences.push({id, Benevole: benevoleId, Jour: jour, Present: present});
+    }
     this.notifier();
   }
 

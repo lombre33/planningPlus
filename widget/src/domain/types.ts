@@ -158,6 +158,21 @@ export interface Affinite {
   Type: TypeAffinite;
 }
 
+/** Pointage d'un bénévole pour un jour de festival donné (`Jour.cle`,
+ *  `logic/derive.ts`) — l'appel (§8, demande d'Antoine du 2026-09-24, vue
+ *  Indicatifs). Une ligne par pointage explicite seulement : l'absence de
+ *  ligne pour un couple (Benevole, Jour) veut dire « pas encore pointé »,
+ *  jamais absent par défaut — distinct de `Benevole.Statut`
+ *  (`definirAbsence`), qui marque une absence pour tout le festival et
+ *  libère aussitôt les places non verrouillées du bénévole ; un pointage
+ *  d'appel ne touche jamais `Place` ni `Groupe`. */
+export interface Presence {
+  id: Id;
+  Benevole: Id;
+  Jour: string;
+  Present: boolean;
+}
+
 /** Le jeu de données complet, une fois décodé. */
 export interface Modele {
   equipes: Equipe[];
@@ -174,4 +189,5 @@ export interface Modele {
   disponibilites: Disponibilite[];
   souhaitsMissions: SouhaitMission[];
   affinites: Affinite[];
+  presences: Presence[];
 }

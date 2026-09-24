@@ -220,6 +220,17 @@ export const TABLES = [
   },
 
   {
+    id: 'Presences',
+    libelle: 'Présences',
+    description: "Pointage de l'appel, jour de festival par jour de festival (Jour = clé du jour, ex. « 2026-09-24 »). Absence de ligne pour un bénévole un jour donné = pas encore pointé, jamais absent par défaut. Ne touche jamais Places ni Groupes.",
+    colonnes: [
+      {id: 'Benevole', type: 'Ref:Benevoles', libelle: 'Bénévole', visibleCol: 'Nom'},
+      {id: 'Jour', type: 'Text', libelle: 'Jour', description: "Clé du jour de festival, ex. 2026-09-24."},
+      {id: 'Present', type: 'Bool', libelle: 'Présent'},
+    ],
+  },
+
+  {
     id: 'Versions',
     libelle: 'Versions',
     description: "Instantanés nommés du planning, pour comparer ou revenir en arrière. Table vide tant que le widget n'a pas encore écrit dedans.",

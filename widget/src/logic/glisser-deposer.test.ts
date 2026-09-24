@@ -57,7 +57,7 @@ function construireModele(): Modele {
       {Benevole: 2, Quart_heure: quart, Statut: 'Disponible' as const, Artiste: null},
     ])),
     souhaitsMissions: [],
-    affinites: [],
+    affinites: [], presences: [],
   };
 }
 

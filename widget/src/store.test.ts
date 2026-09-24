@@ -37,6 +37,7 @@ function ecritureDeTest(partielle: Partial<EcritureGrist> = {}): EcritureGrist {
     remplacerDisponibilites: nonBranchee('remplacerDisponibilites'),
     peuplerBenevoles: nonBranchee('peuplerBenevoles'),
     creerAffinites: nonBranchee('creerAffinites'),
+    definirPresence: nonBranchee('definirPresence'),
     ...partielle,
   };
 }
@@ -72,7 +73,7 @@ function modeleUnBesoin(codesGroupesExistants: readonly string[] = []): Modele {
     besoins: [{id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 2, Effectif_max: 2, Taille_groupe: 2}],
     groupes: codesGroupesExistants.map((code, i) => ({id: 100 + i, Code: code, Taille: 2, Equipe: 1, Notes: ''})),
     positionsGroupe: [], places: [],
-    disponibilites: [], souhaitsMissions: [], affinites: [],
+    disponibilites: [], souhaitsMissions: [], affinites: [], presences: [],
   };
 }
 
@@ -476,7 +477,7 @@ describe('Magasin.redecouperSousCreneaux', () => {
       equipes: [], lieux: [], benevoles: [], missions: [], artistes: [],
       macroCreneaux: [{id: 1, Nom: 'Journée', Debut: debut, Fin: fin}],
       sousCreneaux: [], besoins: [], groupes: [], positionsGroupe: [], places: [],
-      disponibilites: [], souhaitsMissions: [], affinites: [],
+      disponibilites: [], souhaitsMissions: [], affinites: [], presences: [],
     });
     return {m, macroId: 1, debut, fin};
   }
@@ -527,7 +528,7 @@ describe('Magasin.redecouperSousCreneaux', () => {
       macroCreneaux: [{id: 1, Nom: 'Journée', Debut: debut, Fin: fin}],
       sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: 1, Libelle: '10h-11h', Debut: debut, Fin: debut + 3600}],
       besoins: [], groupes: [], positionsGroupe: [], places: [],
-      disponibilites: [], souhaitsMissions: [], affinites: [],
+      disponibilites: [], souhaitsMissions: [], affinites: [], presences: [],
     });
     const avant = m.sousCreneaux;
 
@@ -614,7 +615,7 @@ describe('Magasin.supprimerMacroCreneau', () => {
       equipes: [], lieux: [], benevoles: [], missions: [], artistes: [],
       macroCreneaux: [{id: 1, Nom: 'Journée', Debut: debut, Fin: fin}],
       sousCreneaux: [], besoins: [], groupes: [], positionsGroupe: [], places: [],
-      disponibilites: [], souhaitsMissions: [], affinites: [],
+      disponibilites: [], souhaitsMissions: [], affinites: [], presences: [],
     });
     return {m, macroId: 1, debut, fin};
   }
@@ -655,7 +656,7 @@ describe('Magasin.supprimerMacroCreneau', () => {
       macroCreneaux: [{id: 1, Nom: 'Journée', Debut: debut, Fin: fin}],
       sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: 1, Libelle: '10h-11h', Debut: debut, Fin: debut + 3600}],
       besoins: [], groupes: [], positionsGroupe: [], places: [],
-      disponibilites: [], souhaitsMissions: [], affinites: [],
+      disponibilites: [], souhaitsMissions: [], affinites: [], presences: [],
     });
     const avantMacros = m.macroCreneaux;
     const avantSous = m.sousCreneaux;
@@ -785,7 +786,7 @@ describe('Magasin.creerSousCreneauMission', () => {
       }],
       macroCreneaux: [{id: 1, Nom: 'Journée', Debut: debut, Fin: fin}],
       sousCreneaux: [], besoins: [], groupes: [], positionsGroupe: [], places: [],
-      disponibilites: [], souhaitsMissions: [], affinites: [],
+      disponibilites: [], souhaitsMissions: [], affinites: [], presences: [],
     });
     return {m, macroId: 1, missionId: 1};
   }
@@ -903,7 +904,7 @@ describe('Magasin.copierCreneauxJour', () => {
         {id: 700, Groupe: 500, Rang: 1, Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0},
         {id: 701, Groupe: 500, Rang: 2, Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0},
       ],
-      disponibilites: [], souhaitsMissions: [], affinites: [],
+      disponibilites: [], souhaitsMissions: [], affinites: [], presences: [],
     });
     return {
       m, macroSource: 1, macroCible: 2, macroVide: 3,
@@ -1103,7 +1104,7 @@ describe('Magasin.deplacerCreneauxMission', () => {
         }],
         macroCreneaux: [{id: 1, Nom: 'Journée', Debut: debut, Fin: fin}],
         sousCreneaux: [], besoins: [], groupes: [], positionsGroupe: [], places: [],
-        disponibilites: [], souhaitsMissions: [], affinites: [],
+        disponibilites: [], souhaitsMissions: [], affinites: [], presences: [],
       });
       return {m: magasin, macroId: 1, missionId: 1};
     })();
@@ -1201,7 +1202,7 @@ describe('Magasin.deplacerCreneauxMission — conversion depuis un commun (retou
         {id: 2, Mission: 2, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 1, Taille_groupe: 1},
       ],
       groupes: [], positionsGroupe: [], places: [],
-      disponibilites: [], souhaitsMissions: [], affinites: [],
+      disponibilites: [], souhaitsMissions: [], affinites: [], presences: [],
     });
     return {m, mission1: 1, mission2: 2, c1: 1, c2: 2, b1: 1, b2: 2};
   }
@@ -1310,7 +1311,7 @@ describe('Magasin.redimensionnerCreneauMission', () => {
       }],
       macroCreneaux: [{id: 1, Nom: 'Journée', Debut: debut, Fin: fin}],
       sousCreneaux: [], besoins: [], groupes: [], positionsGroupe: [], places: [],
-      disponibilites: [], souhaitsMissions: [], affinites: [],
+      disponibilites: [], souhaitsMissions: [], affinites: [], presences: [],
     });
     const propreDebut = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 10});
     const propreFin = epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 11});
@@ -1377,7 +1378,7 @@ describe('Magasin.redimensionnerCreneauMission — conversion depuis un commun',
       macroCreneaux: [{id: 1, Nom: 'Journée', Debut: debut, Fin: fin}],
       sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: '10h-12h', Debut: debut, Fin: fin}],
       besoins: [], groupes: [], positionsGroupe: [], places: [],
-      disponibilites: [], souhaitsMissions: [], affinites: [],
+      disponibilites: [], souhaitsMissions: [], affinites: [], presences: [],
     });
 
     const resultat = await m.redimensionnerCreneauMission(1, 1, false, 900);

@@ -54,6 +54,7 @@ function construireModele(): Modele {
     ],
     souhaitsMissions: [{id: 1, Benevole: 1, Mission: 1, Preference: 'Souhaite fortement'}],
     affinites: [{id: 1, Benevole_A: 1, Benevole_B: 2, Type: 'Ensemble'}],
+    presences: [],
   };
 }
 
@@ -132,6 +133,7 @@ function construireModeleBinome(typeAffinite: 'Ensemble' | 'Éviter'): Modele {
     ]),
     souhaitsMissions: [],
     affinites: [{id: 1, Benevole_A: 1, Benevole_B: 2, Type: typeAffinite}],
+    presences: [],
   };
 }
 
@@ -196,6 +198,7 @@ function construireModeleRaisonVide(options: {
     )),
     souhaitsMissions: [],
     affinites: [],
+    presences: [],
   };
 }
 
@@ -349,6 +352,7 @@ describe('proposerPermutation (adaptateur)', () => {
       affinites: affiniteAvecZoe
         ? [{id: 1, Benevole_A: affiniteAvecZoe.benevoleId, Benevole_B: 4, Type: affiniteAvecZoe.type}]
         : [],
+      presences: [],
     };
   }
 

@@ -36,6 +36,7 @@ export const LIBELLE_PAR_TABLE: Record<string, string> = {
   Disponibilites: 'Disponibilités',
   Souhaits_missions: 'Souhaits de mission',
   Affinites: 'Affinités',
+  Presences: 'Présences',
   Versions: 'Versions',
   Parametres: 'Paramètres',
   Journal: 'Journal',

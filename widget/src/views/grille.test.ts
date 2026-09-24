@@ -13,7 +13,7 @@ function modeleVide(): Modele {
     equipes: [], lieux: [], benevoles: [], missions: [], artistes: [],
     macroCreneaux: [], sousCreneaux: [], besoins: [], groupes: [],
     positionsGroupe: [], places: [], disponibilites: [], souhaitsMissions: [],
-    affinites: [],
+    affinites: [], presences: [],
   };
 }
 
@@ -114,6 +114,7 @@ describe('montrerGrille sur un document vide', () => {
       remplacerDisponibilites: async () => {},
       peuplerBenevoles: async () => ({benevoles: [], crees: 0, actualises: 0}),
       creerAffinites: async () => [],
+      definirPresence: async () => 1,
     };
     m.brancherEcriture(ecriture);
     montrerGrille(container, m);
@@ -163,7 +164,7 @@ describe('montrerGrille — frise commune au quart d’heure et créneau propre 
       }],
       macroCreneaux: [{id: 1, Nom: 'Journée', Debut: debut, Fin: fin}],
       sousCreneaux: [], besoins: [], groupes: [], positionsGroupe: [], places: [],
-      disponibilites: [], souhaitsMissions: [], affinites: [],
+      disponibilites: [], souhaitsMissions: [], affinites: [], presences: [],
     });
     return {m, macroId: 1, missionId: 1};
   }

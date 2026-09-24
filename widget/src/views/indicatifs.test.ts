@@ -16,7 +16,7 @@ function modeleVide(): Modele {
   return {
     equipes: [], lieux: [], benevoles: [], missions: [], artistes: [],
     macroCreneaux: [], sousCreneaux: [], besoins: [], groupes: [],
-    positionsGroupe: [], places: [], disponibilites: [], souhaitsMissions: [], affinites: [],
+    positionsGroupe: [], places: [], disponibilites: [], souhaitsMissions: [], affinites: [], presences: [],
   };
 }
 
@@ -129,6 +129,7 @@ describe('planning complet : missions et besoin, mais zone volontairement vide',
         remplacerDisponibilites: refuse(),
         peuplerBenevoles: refuse(),
         creerAffinites: refuse(),
+        definirPresence: refuse(),
       };
     }
 
@@ -323,6 +324,7 @@ describe('panneau : supprimer une position (retour Antoine 2026-09-23 : jusqu’
       peuplerBenevoles: async () => ({benevoles: [], crees: 0, actualises: 0}),
       creerAffinites: async () => [],
       supprimerPosition: async () => { throw new Error('document indisponible'); },
+      definirPresence: async () => 1,
     });
     const nbPositionsAvant = m.positionsGroupe.length;
 
@@ -405,6 +407,138 @@ describe('couleur de la puce par créneau (retour Antoine 2026-09-23, point 3)',
 
     expect(classesPuce()[0]).toContain('groupe-chip--non-pourvu');
     expect(classesPuce()[0]).not.toContain('groupe-chip--pourvu');
+  });
+
+  it("un binôme pourvu dont un membre est pointé absent aujourd'hui : jaune (groupe-chip--absence), prime sur pourvu", async () => {
+    const m = new Magasin(modele());
+    await m.creerBesoin(1, 1);
+    const groupeId = await m.creerGroupeSurBesoin(m.besoins[0]!.id);
+    const [p1, p2] = m.places.filter((p) => p.Groupe === groupeId);
+    await m.assignerPlace(p1!.id, 1);
+    await m.assignerPlace(p2!.id, 2);
+    await m.definirPresence(1, '2023-11-14', false);
+    montrerIndicatifs(container, m);
+
+    expect(classesPuce()[0]).toContain('groupe-chip--absence');
+    expect(classesPuce()[0]).not.toContain('groupe-chip--pourvu');
+  });
+
+  it("un pointage absent pour un AUTRE jour ne colore pas le binôme (le pointage est par jour)", async () => {
+    const m = new Magasin(modele());
+    await m.creerBesoin(1, 1);
+    const groupeId = await m.creerGroupeSurBesoin(m.besoins[0]!.id);
+    const [p1, p2] = m.places.filter((p) => p.Groupe === groupeId);
+    await m.assignerPlace(p1!.id, 1);
+    await m.assignerPlace(p2!.id, 2);
+    await m.definirPresence(1, '2099-01-01', false);
+    montrerIndicatifs(container, m);
+
+    expect(classesPuce()[0]).toContain('groupe-chip--pourvu');
+    expect(classesPuce()[0]).not.toContain('groupe-chip--absence');
+  });
+
+  it("un pointage présent (pas encore pointé, ou pointé présent) ne colore jamais en jaune", async () => {
+    const m = new Magasin(modele());
+    await m.creerBesoin(1, 1);
+    const groupeId = await m.creerGroupeSurBesoin(m.besoins[0]!.id);
+    const [p1, p2] = m.places.filter((p) => p.Groupe === groupeId);
+    await m.assignerPlace(p1!.id, 1);
+    await m.assignerPlace(p2!.id, 2);
+    await m.definirPresence(1, '2023-11-14', true);
+    montrerIndicatifs(container, m);
+
+    expect(classesPuce()[0]).toContain('groupe-chip--pourvu');
+    expect(classesPuce()[0]).not.toContain('groupe-chip--absence');
+  });
+});
+
+describe('panneau d’appel (retour Antoine du 2026-09-24 : pointer les présences, sans toucher aux affectations)', () => {
+  function benevole(id: number, equipeId: number): Modele['benevoles'][number] {
+    return {
+      id, Nom: `Bénévole ${id}`, Contact: '', Equipe: equipeId, Competences: [],
+      Quota_heures_min: 0, Quota_heures_max: 40, Statut: 'Actif', Notes: '',
+    };
+  }
+
+  function modele(): Modele {
+    return {
+      ...modeleVide(),
+      equipes: [{id: 1, Nom: 'Bars', Couleur: '#c00', Referent: null, Notes: ''}],
+      benevoles: [benevole(1, 1), benevole(2, 1)],
+      missions: [{id: 1, Nom: 'Buvette', Description: '', Lieu: 1, Equipe: 1, Priorite: 'Normale', Competences_requises: []}],
+      lieux: [{id: 1, Nom: 'Scène A', Description: ''}],
+      macroCreneaux: [{id: 1, Nom: 'Vendredi', Debut: 1_700_000_000, Fin: 1_700_030_000}],
+      sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: '10h-11h', Debut: 1_700_000_000, Fin: 1_700_003_600}],
+    };
+  }
+
+  function boutonAppel(): HTMLButtonElement {
+    return Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find((b) => b.textContent === 'Faire l’appel')!;
+  }
+
+  it("n'ouvre rien tant qu'on ne clique pas le bouton, puis ouvre un panneau listant les bénévoles positionnés ce jour", async () => {
+    const m = new Magasin(modele());
+    await m.creerBesoin(1, 1);
+    const groupeId = await m.creerGroupeSurBesoin(m.besoins[0]!.id);
+    const [p1] = m.places.filter((p) => p.Groupe === groupeId);
+    await m.assignerPlace(p1!.id, 1);
+    montrerIndicatifs(container, m);
+    expect(document.getElementById('panneau-lateral')).toBeNull();
+
+    boutonAppel().click();
+    expect(document.getElementById('panneau-lateral')?.textContent).toContain('Bénévole 1');
+  });
+
+  it("ne liste jamais deux fois le même bénévole s'il tient plusieurs indicatifs ce jour", async () => {
+    const m = new Magasin(modele());
+    await m.creerBesoin(1, 1);
+    const g1 = await m.creerGroupeSurBesoin(m.besoins[0]!.id, 1);
+    await m.assignerPlace(m.places.find((p) => p.Groupe === g1)!.id, 1);
+    await m.ajouterPosition(g1, m.besoins[0]!.id);
+    montrerIndicatifs(container, m);
+
+    boutonAppel().click();
+    const lignes = document.querySelectorAll('#panneau-lateral .membre');
+    expect(lignes).toHaveLength(1);
+  });
+
+  it("marquer absent pointe la présence sans toucher à la place (pas de régression sur l'affectation)", async () => {
+    const m = new Magasin(modele());
+    await m.creerBesoin(1, 1);
+    const groupeId = await m.creerGroupeSurBesoin(m.besoins[0]!.id);
+    const [p1] = m.places.filter((p) => p.Groupe === groupeId);
+    await m.assignerPlace(p1!.id, 1);
+    montrerIndicatifs(container, m);
+
+    boutonAppel().click();
+    const boutonAbsent = Array.from(document.querySelectorAll<HTMLButtonElement>('#panneau-lateral .membre button'))
+      .find((b) => b.title === 'Marquer absent·e')!;
+    boutonAbsent.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(m.presences).toHaveLength(1);
+    expect(m.presences[0]).toMatchObject({Benevole: 1, Present: false});
+    expect(m.places.find((p) => p.id === p1!.id)?.Benevole).toBe(1);
+    expect(document.querySelector('#panneau-lateral .pill--danger')?.textContent).toBe('Absent·e');
+  });
+
+  it("aucun bénévole positionné ce jour : message plutôt qu'une liste vide", async () => {
+    const m = new Magasin(modele());
+    montrerIndicatifs(container, m);
+
+    boutonAppel().click();
+    expect(document.querySelector('#panneau-lateral .empty')?.textContent).toContain('Aucun bénévole positionné');
+  });
+
+  it('reclique le bouton pour fermer le panneau', async () => {
+    const m = new Magasin(modele());
+    montrerIndicatifs(container, m);
+
+    boutonAppel().click();
+    expect(document.getElementById('panneau-lateral')).not.toBeNull();
+    boutonAppel().click();
+    expect(document.getElementById('panneau-lateral')).toBeNull();
   });
 });
 

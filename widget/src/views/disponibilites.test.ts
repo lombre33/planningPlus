@@ -20,7 +20,7 @@ function modeleVide(): Modele {
   return {
     equipes: [], lieux: [], benevoles: [], missions: [], artistes: [],
     macroCreneaux: [], sousCreneaux: [], besoins: [], groupes: [],
-    positionsGroupe: [], places: [], disponibilites: [], souhaitsMissions: [], affinites: [],
+    positionsGroupe: [], places: [], disponibilites: [], souhaitsMissions: [], affinites: [], presences: [],
   };
 }
 
@@ -77,6 +77,7 @@ const ecritureMuette: EcritureGrist = {
   remplacerDisponibilites: async () => {},
   peuplerBenevoles: async () => ({benevoles: [], crees: 0, actualises: 0}),
   creerAffinites: async () => [],
+  definirPresence: async () => 1,
 };
 
 let container: HTMLElement;
