@@ -2,11 +2,21 @@
  * Vue « plannings équipes imprimables » (demande d'Antoine du 2026-09-23,
  * point 2) : une table par équipe, listant les missions de cette équipe qui
  * tournent ce jour-là, avec au quart d'heure qui les tient (nom + rappel de
- * l'indicatif). Toutes les équipes s'affichent à la suite (pas de
- * sélecteur : chacune devient sa propre page à l'impression). Lecture seule
- * stricte : aucune écriture, la seule interaction est le filtre par jour
- * (global, `Magasin.macroCreneauSelectionne`, posé par `app.ts`) et le
- * bouton d'impression.
+ * l'indicatif). Lecture seule stricte : aucune écriture, les seules
+ * interactions sont le filtre par jour (global, `Magasin.macroCreneauSelectionne`,
+ * posé par `app.ts`), le filtre par équipe (local à cette vue, voir plus
+ * bas) et le bouton d'impression.
+ *
+ * Retour d'Antoine du 2026-09-24 (« sans zoomer c'est inutilisable ») : la
+ * mise en page précédente (toutes les équipes empilées, pas de sélecteur,
+ * chacune devenant sa propre page à l'impression) était un choix tranché
+ * par le coordinateur faute de réponse la nuit précédente — jamais demandé
+ * par Antoine, donc pas préservé ici. Deux changements : un filtre par
+ * équipe (réduit d'un coup ce qui s'affiche à la fois, le principal levier
+ * de lisibilité) et un aperçu à l'écran désormais décorrélé de
+ * l'impression, avec sa propre largeur de quart d'heure et son propre
+ * plancher de police — l'écran affichait jusqu'ici la mise en page pensée
+ * pour une page A4 paysage, ce qui la rendait minuscule sur un moniteur.
  */
 
 import type {Epoch, Equipe, Id, Mission} from '../domain/types';
@@ -17,12 +27,30 @@ import {
 } from '../logic/impression';
 import type {Magasin} from '../store';
 import {
-  ajusterTexteBloc, cellulesEnTeteQuarts, imprimer, LARGEUR_QUART_ECRAN_PX, largeurQuartImpressionPx,
+  ajusterTexteBloc, ajusterTexteBlocAvecTroncature, cellulesEnTeteQuarts, imprimer, largeurQuartImpressionPx,
   PADDING_HORIZONTAL_BLOC_PX,
 } from '../ui/impression';
 import {h, vider} from '../ui/dom';
 
 const LARGEUR_COLONNE_MISSION_PX = 190;
+
+/** Largeur d'un quart d'heure à l'écran, PROPRE à cette vue — décorrélée de
+ *  `LARGEUR_QUART_ECRAN_PX` (`ui/impression.ts`, 22px, partagée avec le
+ *  roster imprimable, non touchée ici pour ne rien changer à une vue
+ *  distincte non signalée). Plus généreuse pour que l'en-tête d'heure
+ *  ("16:00") ne soit plus tronqué et qu'un nom tienne à une taille lisible
+ *  sans avoir à zoomer le navigateur (retour d'Antoine, 2026-09-24).
+ *  L'impression garde son propre calcul (`largeurQuartImpressionPx`), pensé
+ *  pour tenir sur une page A4 paysage — jamais touché ici. */
+const LARGEUR_QUART_ECRAN_PX = 34;
+
+/** Plancher de police à l'écran : plus haut que le plancher d'impression
+ *  (`TAILLES_POLICE_BLOC_PX` dans `ui/impression.ts`, qui descend à 6px —
+ *  lisible sur papier, pas sur un moniteur sans zoomer). Au-delà de ce
+ *  plancher, on tronque en ellipse plutôt que de continuer à rapetisser
+ *  (même principe que `ajusterTexteBlocAvecTroncature`, déjà appliqué
+ *  ailleurs — le projet a déjà réglé ce compromis une fois). */
+const TAILLES_POLICE_ECRAN_PX = [11, 10, 9, 8] as const;
 
 interface ContenuQuart {
   cle: string;
@@ -53,7 +81,7 @@ function construireColgroup(nbQuartsTotal: number, pxParQuart: number, totalPx: 
 
 function construireLigneMission(
   mission: Mission, lieuNom: string, blocs: readonly BlocMacro[],
-  parQuart: Map<Epoch, AffectationMissionQuart> | undefined, pxParQuart: number,
+  parQuart: Map<Epoch, AffectationMissionQuart> | undefined, pxParQuart: number, pourEcran: boolean,
 ): Node {
   const cellules: Node[] = [
     h('th', {
@@ -77,7 +105,16 @@ function construireLigneMission(
         entrees.map((e) => e.benevoleNom).join(', '),
         entrees.map((e) => e.groupeCode).join(', '),
       ] : [];
-      const ajuste = candidats.length > 0 ? ajusterTexteBloc(candidats, largeurDisponible) : null;
+      let ajuste = candidats.length > 0
+        ? ajusterTexteBloc(candidats, largeurDisponible, pourEcran ? TAILLES_POLICE_ECRAN_PX : undefined)
+        : null;
+      if (!ajuste && pourEcran && candidats.length > 0) {
+        // Même le plancher écran ne suffit pas pour le plus court candidat (le code
+        // d'indicatif) : tronque en ellipse plutôt que de laisser le bloc sans texte.
+        ajuste = ajusterTexteBlocAvecTroncature(
+          candidats[candidats.length - 1]!, largeurDisponible, TAILLES_POLICE_ECRAN_PX,
+        );
+      }
       const titre = entrees.length > 0 ? entrees.map((e) => `${e.benevoleNom} (${e.groupeCode})`).join(', ') : undefined;
       cellules.push(h('td', {
         class: `impression-bloc impression-bloc--${entrees.length > 0 ? 'assignee' : 'libre'}${limiteMacro ? ' impression-bloc--limite-macro' : ''}`,
@@ -96,7 +133,7 @@ function construireLigneMission(
 
 function construireTableEquipe(
   ix: Index, missions: readonly Mission[], blocs: readonly BlocMacro[],
-  affectationsParMission: Map<Id, Map<Epoch, AffectationMissionQuart>>, pxParQuart: number,
+  affectationsParMission: Map<Id, Map<Epoch, AffectationMissionQuart>>, pxParQuart: number, pourEcran: boolean,
 ): HTMLTableElement {
   const nbQuartsTotal = blocs.reduce((n, b) => n + b.quarts.length, 0);
   const totalPx = LARGEUR_COLONNE_MISSION_PX + nbQuartsTotal * pxParQuart;
@@ -108,15 +145,16 @@ function construireTableEquipe(
     )),
     h('tbody', null, ...missions.map((mission) => construireLigneMission(
       mission, ix.lieu.get(mission.Lieu)?.Nom ?? '', blocs, affectationsParMission.get(mission.id), pxParQuart,
+      pourEcran,
     ))),
   );
 }
 
 function construireSectionEquipe(
   ix: Index, equipe: Equipe, missions: readonly Mission[], blocs: readonly BlocMacro[],
-  affectationsParMission: Map<Id, Map<Epoch, AffectationMissionQuart>>, pxParQuart: number,
+  affectationsParMission: Map<Id, Map<Epoch, AffectationMissionQuart>>, pxParQuart: number, pourEcran: boolean,
 ): Node {
-  const table = construireTableEquipe(ix, missions, blocs, affectationsParMission, pxParQuart);
+  const table = construireTableEquipe(ix, missions, blocs, affectationsParMission, pxParQuart, pourEcran);
   return h('section', {class: 'impression-equipes__equipe'},
     h('h2', {class: 'impression-equipes__titre'}, equipe.Nom),
     h('div', {class: 'impression-scroll'}, table),
@@ -124,6 +162,11 @@ function construireSectionEquipe(
 }
 
 export function montrerEquipesImprimables(container: HTMLElement, m: Magasin): () => void {
+  // Filtre par équipe, local à cette vue (pas dans `Magasin` : rien d'autre n'en a besoin) —
+  // `null` veut dire « toutes les équipes ». Survit aux rafraîchissements déclenchés par
+  // `m.subscribe`, remis à `null` si l'équipe sélectionnée n'a plus de mission ce jour-là.
+  let equipeFiltreeId: Id | null = null;
+
   function rafraichir(): void {
     const ix = indexer(m);
     const jours = regrouperParJour(m.macroCreneaux);
@@ -164,6 +207,29 @@ export function montrerEquipesImprimables(container: HTMLElement, m: Magasin): (
       return;
     }
 
+    // L'équipe filtrée peut avoir disparu (changement de jour) : retombe sur « toutes »
+    // plutôt que d'afficher un écran vide sans expliquer pourquoi.
+    if (equipeFiltreeId != null && !equipesAvecMissions.some(({equipe}) => equipe.id === equipeFiltreeId)) {
+      equipeFiltreeId = null;
+    }
+    const equipeFiltree = equipeFiltreeId == null
+      ? null
+      : equipesAvecMissions.find(({equipe}) => equipe.id === equipeFiltreeId) ?? null;
+    const equipesAffichees = equipeFiltree ? [equipeFiltree] : equipesAvecMissions;
+
+    const filtreEquipe = h('div', {class: 'agenda__toolbar'},
+      h('button', {
+        class: `btn btn--sm${equipeFiltreeId == null ? ' btn--primary' : ''}`,
+        type: 'button',
+        onclick: () => { equipeFiltreeId = null; rafraichir(); },
+      }, 'Toutes les équipes'),
+      ...equipesAvecMissions.map(({equipe}) => h('button', {
+        class: `btn btn--sm${equipeFiltreeId === equipe.id ? ' btn--primary' : ''}`,
+        type: 'button',
+        onclick: () => { equipeFiltreeId = equipe.id; rafraichir(); },
+      }, equipe.Nom)),
+    );
+
     const barre = h('div', {class: 'impression-barre'},
       h('p', {class: 'view__intro', style: {margin: '0'}},
         `${equipesAvecMissions.length} équipe${equipesAvecMissions.length > 1 ? 's' : ''} avec mission ${jour.libelle.toLowerCase()}.`,
@@ -173,19 +239,19 @@ export function montrerEquipesImprimables(container: HTMLElement, m: Magasin): (
         onclick: () => {
           const nbQuartsTotal = blocs.reduce((n, b) => n + b.quarts.length, 0);
           const pxImpression = largeurQuartImpressionPx(nbQuartsTotal, LARGEUR_COLONNE_MISSION_PX);
-          const sections = equipesAvecMissions.map(({equipe, missions}) => construireSectionEquipe(
-            ix, equipe, missions, blocs, affectationsParMission, pxImpression,
+          const sections = equipesAffichees.map(({equipe, missions}) => construireSectionEquipe(
+            ix, equipe, missions, blocs, affectationsParMission, pxImpression, false,
           ));
           imprimer([h('h1', null, `Plannings équipes — ${jour.libelle}`), ...sections], 'impression-equipes');
         },
-      }, 'Imprimer tous les plannings équipe'),
+      }, equipeFiltree ? `Imprimer le planning ${equipeFiltree.equipe.Nom}` : 'Imprimer tous les plannings équipe'),
     );
 
-    const sectionsEcran = equipesAvecMissions.map(({equipe, missions}) => construireSectionEquipe(
-      ix, equipe, missions, blocs, affectationsParMission, LARGEUR_QUART_ECRAN_PX,
+    const sectionsEcran = equipesAffichees.map(({equipe, missions}) => construireSectionEquipe(
+      ix, equipe, missions, blocs, affectationsParMission, LARGEUR_QUART_ECRAN_PX, true,
     ));
 
-    container.append(barre, ...sectionsEcran);
+    container.append(filtreEquipe, barre, ...sectionsEcran);
   }
 
   const desabonner = m.subscribe(rafraichir);
