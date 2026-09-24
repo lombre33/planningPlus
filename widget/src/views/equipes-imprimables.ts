@@ -70,8 +70,8 @@ import {
 import {nomsCompletsDepuisSource} from '../logic/noms-complets';
 import type {Magasin} from '../store';
 import {
-  ajusterTexteBloc, ajusterTexteBlocAvecTroncature, cellulesEnTeteQuarts, imprimer, largeurQuartImpressionPx,
-  PADDING_HORIZONTAL_BLOC_PX,
+  type AjustementTexteBloc, ajusterTexteBloc, ajusterTexteBlocAvecEnveloppe, ajusterTexteBlocAvecTroncature,
+  cellulesEnTeteQuarts, imprimer, largeurQuartImpressionPx, PADDING_HORIZONTAL_BLOC_PX,
 } from '../ui/impression';
 import {h, vider} from '../ui/dom';
 
@@ -139,17 +139,25 @@ function construireLigneMission(
       const largeurDisponible = Math.max(0, segment.quarts.length * pxParQuart - PADDING_HORIZONTAL_BLOC_PX);
       const taillesPx = pourEcran ? TAILLES_POLICE_ECRAN_PX : undefined;
       // Une entrée (indicatif) = une ligne, jamais fondues en une seule (retour
-      // Antoine 2026-09-24) : le code reste toujours le candidat de secours, pour
-      // qu'il ne disparaisse jamais même si le nom ne tient pas — même le plancher
-      // de police (écran ou papier) ne suffit pas pour le code seul, tronque en
-      // ellipse plutôt que de laisser cette ligne du bloc sans texte.
-      const lignes = entrees.map((entree) => {
-        const candidats = entree.benevoleNoms.length > 0
-          ? [`${entree.benevoleNoms.join(', ')} (${entree.groupeCode})`, entree.groupeCode]
-          : [entree.groupeCode];
-        return ajusterTexteBloc(candidats, largeurDisponible, taillesPx)
-          ?? ajusterTexteBlocAvecTroncature(entree.groupeCode, largeurDisponible, taillesPx);
-      });
+      // Antoine 2026-09-24). Priorité absolue au nom du bénévole quand il y en
+      // a un : retour du 24/09 14h11-14h14, après que le code continuait à
+      // s'afficher à la place du nom dans les blocs étroits — « il me faut
+      // ABSOLUMENT les noms [...] quitte à ne pas afficher les indicatifs au
+      // pire », puis « si ça ne rentre pas on agrandit la hauteur ». Le nom ne
+      // se fait donc plus jamais évincer par le code : s'il ne tient pas sur
+      // une ligne même au plancher, il s'enveloppe sur plusieurs lignes (le
+      // bloc grandit en hauteur) plutôt que de céder la place au code. Sans
+      // bénévole, le code reste le seul candidat (rien d'autre à montrer),
+      // tronqué en ellipse en tout dernier recours.
+      const lignes: Array<AjustementTexteBloc | null> = entrees.map((entree) => (
+        entree.benevoleNoms.length > 0
+          ? ajusterTexteBlocAvecEnveloppe(
+            [`${entree.benevoleNoms.join(', ')} (${entree.groupeCode})`, entree.benevoleNoms.join(', ')],
+            largeurDisponible, taillesPx,
+          )
+          : ajusterTexteBloc([entree.groupeCode], largeurDisponible, taillesPx)
+            ?? ajusterTexteBlocAvecTroncature(entree.groupeCode, largeurDisponible, taillesPx)
+      ));
       const aBenevole = entrees.some((e) => e.benevoleNoms.length > 0);
       const titre = entrees.length > 0
         ? entrees.map((e) => (e.benevoleNoms.length > 0 ? `${e.benevoleNoms.join(', ')} (${e.groupeCode})` : e.groupeCode)).join(' · ')
@@ -161,7 +169,10 @@ function construireLigneMission(
       },
         ...lignes.map((ajuste) => (
           ajuste
-            ? h('span', {class: 'impression-bloc__texte', style: {fontSize: `${ajuste.taillePolicePx}px`}}, ajuste.texte)
+            ? h('span', {
+              class: `impression-bloc__texte${ajuste.enveloppe ? ' impression-bloc__texte--enveloppe' : ''}`,
+              style: {fontSize: `${ajuste.taillePolicePx}px`},
+            }, ajuste.texte)
             : null
         )),
       ));

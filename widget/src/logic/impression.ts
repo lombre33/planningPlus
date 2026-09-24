@@ -120,8 +120,13 @@ export function affectationsQuartParMission(
       for (const place of placesDuGroupe(m, groupe.id)) {
         if (place.Benevole == null) { continue; }
         const benevole = ix.benevole.get(place.Benevole);
-        if (!benevole) { continue; }
-        benevoleNoms.push(nomsComplets?.get(benevole.id) ?? benevole.Nom);
+        // Référence cassée (`m.places` est une photo prise à l'ouverture du
+        // document, jamais resynchronisée — un bénévole supprimé pendant que
+        // le widget est ouvert laisse une place qui pointe vers un id
+        // disparu) : montrer un repère plutôt que d'omettre silencieusement
+        // l'occupation, ce qui ferait croire l'indicatif libre alors qu'il
+        // est pourvu.
+        benevoleNoms.push(benevole ? (nomsComplets?.get(benevole.id) ?? benevole.Nom) : 'Bénévole introuvable');
       }
       entrees.push({groupeCode: groupe.Code, benevoleNoms});
     }

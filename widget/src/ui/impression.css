@@ -150,6 +150,18 @@ table.impression-table th, table.impression-table td {
   text-overflow: clip;
 }
 
+/* Un nom de bénévole qui ne tient pas sur une seule ligne, même au plancher
+   de police, s'enveloppe sur plusieurs lignes plutôt que de se faire
+   tronquer ou céder la place au code (retour Antoine 2026-09-24 14h14 :
+   « si ça ne rentre pas on agrandit la hauteur de la colonne ») — le bloc
+   n'a pas de hauteur fixée (voir plus haut), la ligne du tableau grandit
+   donc naturellement pour l'accueillir. */
+.impression-bloc__texte--enveloppe {
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: break-word;
+}
+
 /* Plusieurs indicatifs dans le même bloc (retour Antoine 2026-09-24) : une
    ligne chacun, léger espacement pour les distinguer sans les confondre. */
 .impression-bloc__texte + .impression-bloc__texte {
