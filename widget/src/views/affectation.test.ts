@@ -266,7 +266,7 @@ describe('montrerAffectation — colonne indicatif du roster (2026-09-24 5h02, e
 });
 
 describe('montrerAffectation — point 4 de la nuit (2026-09-24, 4h34) : voir/désaffecter depuis le roster', () => {
-  it("affiche la mission du jour d'un bénévole affecté quand on clique sur sa carte, et le désaffecte au clic sur « Désaffecter »", async () => {
+  it("ne montre plus de bandeau au clic sur une carte affectée (retiré le 2026-09-24 5h28, redondant et trompeur — voir la colonne indicatif)", async () => {
     const modele = construireModeleUnBesoin();
     modele.places = [{...modele.places[0]!, Benevole: 1, Origine: 'Manuel'}];
     const m = new Magasin(modele);
@@ -277,10 +277,20 @@ describe('montrerAffectation — point 4 de la nuit (2026-09-24, 4h34) : voir/d�
     roster.click();
     await tick();
 
-    expect(container.textContent).toContain('Affecté(e) : Accueil — ACC1');
+    expect(container.textContent).not.toContain('Affecté(e)');
+    expect(container.querySelector('.roster-card__detail')).toBeNull();
+  });
 
-    const bouton = Array.from(container.querySelectorAll('button')).find((b) => b.textContent === 'Désaffecter') as HTMLButtonElement;
-    bouton.click();
+  it('désaffecte et déverrouille via « Aucun » dans le menu déroulant (le bandeau ne le fait plus)', async () => {
+    const modele = construireModeleUnBesoin();
+    modele.places = [{...modele.places[0]!, Benevole: 1, Origine: 'Manuel'}];
+    const m = new Magasin(modele);
+    const container = document.createElement('div');
+    montrerAffectation(container, m);
+
+    const select = container.querySelector('.roster-card__indicatif') as HTMLSelectElement;
+    select.value = '';
+    select.dispatchEvent(new Event('change'));
     await tick();
 
     const place = m.places.find((p) => p.id === 1);

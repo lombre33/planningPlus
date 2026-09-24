@@ -516,6 +516,53 @@ describe('calculerAffectation — priorité de mission en cas de pénurie (§7.2
     expect(new Set(benevolesCritique)).toEqual(new Set([x.id, y.id])); // Critique couvert intégralement
     expect(resultat.anomalies.some((a) => a.code === 'sous_effectif' && a.besoinId === besoinConfort.id)).toBe(true); // Confort sacrifié
   });
+
+  it("couvre intégralement DEUX groupes Critique sur des créneaux différents quand une répartition complète existe, même si l'un vide le bassin partagé en premier (signalé par Antoine, 2026-09-24 5h28 : « des indicatifs prioritaires qui commencent sur le deuxième créneau ne sont pas pourvus »)", () => {
+    // G1 (1er créneau) a un candidat exclusif (D) + le bassin partagé (A,B).
+    // G2 (2e créneau, démarre plus tard) a son propre exclusif (C) + le même
+    // bassin partagé. Une répartition complète existe (G1: D+un partagé,
+    // G2: C+l'autre partagé) mais remplir un groupe JUSQU'AU BOUT avant de
+    // reconsidérer l'autre pouvait vider A ET B sur un seul groupe, laissant
+    // l'autre — same priorité, démarrant plus tard — sous-staffé alors que
+    // des bénévoles suffisaient. Root cause et correctif : voir le
+    // commentaire de `remplir` dans affectation.ts.
+    const mCritique1 = creerMission({priorite: 'Critique'});
+    const mCritique2 = creerMission({priorite: 'Critique'});
+    const slot1 = creerSousCreneau(h(0, 10), h(0, 11));
+    const slot2 = creerSousCreneau(h(0, 11), h(0, 12));
+    const besoin1 = creerBesoin(mCritique1.id, slot1.id, {effectifMin: 1, effectifMax: 2, tailleGroupe: 2});
+    const besoin2 = creerBesoin(mCritique2.id, slot2.id, {effectifMin: 1, effectifMax: 2, tailleGroupe: 2});
+    const g1 = creerGroupe({taille: 2});
+    const g2 = creerGroupe({taille: 2});
+    const pos1 = creerPositionGroupe(g1.id, besoin1.id);
+    const pos2 = creerPositionGroupe(g2.id, besoin2.id);
+    const places1 = [creerPlace(g1.id, 1), creerPlace(g1.id, 2)];
+    const places2 = [creerPlace(g2.id, 1), creerPlace(g2.id, 2)];
+
+    const partageA = creerBenevole(); // dispo les deux créneaux
+    const partageB = creerBenevole(); // dispo les deux créneaux
+    const exclusifG1 = creerBenevole(); // dispo slot1 seulement
+    const exclusifG2 = creerBenevole(); // dispo slot2 seulement
+
+    const resultat = calculerAffectation(donnees({
+      benevoles: [partageA, partageB, exclusifG1, exclusifG2],
+      missions: [mCritique1, mCritique2], sousCreneaux: [slot1, slot2],
+      besoins: [besoin1, besoin2], groupes: [g1, g2], positionsGroupe: [pos1, pos2],
+      places: [...places1, ...places2],
+      disponibilites: [
+        ...disponibilitesIntervalle(partageA.id, h(0, 10), h(0, 12)),
+        ...disponibilitesIntervalle(partageB.id, h(0, 10), h(0, 12)),
+        ...disponibilitesIntervalle(exclusifG1.id, h(0, 10), h(0, 11)),
+        ...disponibilitesIntervalle(exclusifG2.id, h(0, 11), h(0, 12)),
+      ],
+    }));
+
+    const rempliesG1 = places1.filter((p) => resultat.propositions.find((prop) => prop.placeId === p.id)?.benevoleIdApres != null).length;
+    const rempliesG2 = places2.filter((p) => resultat.propositions.find((prop) => prop.placeId === p.id)?.benevoleIdApres != null).length;
+    expect(rempliesG1).toBe(2);
+    expect(rempliesG2).toBe(2);
+    expect(resultat.anomalies.some((a) => a.code === 'sous_effectif')).toBe(false);
+  });
 });
 
 describe('appliquerPropositions', () => {

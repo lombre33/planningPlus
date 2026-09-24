@@ -146,7 +146,23 @@ function prioriteGroupe(ctx: Contexte, groupeId: Id): number {
   return missions.length ? Math.min(...missions.map((m) => RANG_PRIORITE[m.priorite])) : RANG_PRIORITE.Normale;
 }
 
-/** Remplit toutes les places vides du périmètre, un groupe à la fois (voir le commentaire d'en-tête). */
+/**
+ * Remplit toutes les places vides du périmètre, une place à la fois — le
+ * « groupe le plus contraint » (MRV, voir le commentaire d'en-tête) est
+ * réévalué après CHAQUE choix, pas seulement une fois par groupe.
+ *
+ * Bug corrigé le 2026-09-24 (signalé par Antoine : des indicatifs Critique
+ * commençant sur un créneau plus tardif restaient non pourvus) : remplir
+ * un groupe choisi JUSQU'AU BOUT avant de reconsidérer pouvait vider son
+ * bassin de candidats partagés au profit d'un groupe qui avait par ailleurs
+ * ses propres candidats exclusifs, alors qu'un AUTRE groupe de même
+ * priorité, plus tard dans la soirée, n'avait QUE ce bassin partagé et se
+ * retrouvait sous-staffé — alors qu'une répartition complète existait
+ * (reproduit dans `affectation.test.ts`, « deux groupes Critique de même
+ * priorité, chacun avec un candidat exclusif »). Réévaluer après chaque
+ * place laisse le groupe redevenu le plus contraint reprendre la main
+ * avant que ses seuls candidats ne soient épuisés ailleurs.
+ */
 function remplir(
   ctx: Contexte,
   etat: EtatOccupation,
@@ -215,57 +231,79 @@ function remplir(
       return;
     }
 
-    // Remplit chaque place vide de ce groupe, une par une (le domaine se réduit après chaque choix).
-    const rangsVides = (ctx.placesParGroupe.get(meilleurGroupeId) ?? [])
-      .filter((place) => perimetrePlaceIds.has(place.id) && decisionsParPlace.get(place.id) == null)
-      .sort((a, b) => a.rang - b.rang);
+    // Une seule place de ce groupe (la plus petite rang encore vide) : le
+    // reste attendra le prochain tour de boucle, qui réévalue le groupe le
+    // plus contraint à ce moment-là plutôt que de vider celui-ci d'un coup.
+    const place = (ctx.placesParGroupe.get(meilleurGroupeId) ?? [])
+      .filter((p) => perimetrePlaceIds.has(p.id) && decisionsParPlace.get(p.id) == null)
+      .sort((a, b) => a.rang - b.rang)[0];
+    if (!place) { continue; } // ne devrait pas arriver (groupesAVides l'a garanti vide) — filet, pas une boucle infinie
 
-    for (const place of rangsVides) {
-      // Un candidat en conflit artiste n'entre dans la compétition pour CETTE
-      // place que si le besoin en a encore effectivement besoin à cet
-      // instant précis (§7.2 objectif 7, inchangé : « violable seulement si
-      // nécessaire pour couvrir un besoin ») — recalculé place par place,
-      // pas une fois pour tout le groupe, pour qu'un groupe qui a plus de
-      // places que son minimum n'ouvre le conflit artiste qu'aux places qui
-      // en ont réellement besoin.
-      const secoursPermis = meilleurPool === 'secours'
-        || estNecessairePourMinimum(ctx, meilleurGroupeId, decisionsParPlace);
-      const candidats: CandidatEligible[] = [];
-      for (const benevole of ctx.donnees.benevoles) {
-        const statut = evaluerEligibilite(ctx, etat, meilleurGroupeId, benevole.id);
-        if (!statut.eligible) { continue; }
-        if (statut.conflitArtiste && !secoursPermis) { continue; }
-        candidats.push(calculerScore(
-          ctx, etat, parametres, meilleurGroupeId, benevole.id, statut.conflitArtiste, decisionsParPlace, place.id,
-        ));
-      }
-      // Classement à deux niveaux, pas un simple tri par score : depuis le
-      // 2026-09-23 (demande d'Antoine, « par défaut on va valider le binôme
-      // souhaité »), l'artiste souhaité (objectif 7, dernier de la liste)
-      // ne départage plus qu'à égalité sur tous les objectifs qui le
-      // précèdent (binôme, missions souhaitées, équipe, équité) — pas avant.
-      // Avec les poids par défaut (`affiniteEnsemble: 0.1` contre
-      // `conflitArtiste: -0.4`), un simple tri par score global ne
-      // suffirait pas à faire gagner le binôme sur l'artiste (voir la note
-      // du cahier des charges §7.2) ; `scoreSansConflitArtiste` classe donc
-      // en premier sur les objectifs 2 à 6, et seul un ex æquo strict sur ce
-      // plan se départage par la préférence artiste (propre bat conflit),
-      // puis par le score complet, comme avant.
-      const gagnant = [...candidats].sort((a, b) => (
-        b.scoreSansConflitArtiste - a.scoreSansConflitArtiste
-        || Number(a.explication.conflitArtiste) - Number(b.explication.conflitArtiste)
-        || b.score - a.score
-        || a.benevoleId - b.benevoleId
-      ))[0];
-      if (!gagnant) {
-        causeNonPourvueParPlace.set(place.id, 'aucun_candidat');
-        continue;
-      }
-      decisionsParPlace.set(place.id, gagnant.benevoleId);
-      scoreParPlace.set(place.id, gagnant.score);
-      causeNonPourvueParPlace.delete(place.id);
-      occuper(etat, ctx, meilleurGroupeId, gagnant.benevoleId);
+    // Un candidat en conflit artiste n'entre dans la compétition pour CETTE
+    // place que si le besoin en a encore effectivement besoin à cet
+    // instant précis (§7.2 objectif 7, inchangé : « violable seulement si
+    // nécessaire pour couvrir un besoin ») — recalculé place par place,
+    // pas une fois pour tout le groupe, pour qu'un groupe qui a plus de
+    // places que son minimum n'ouvre le conflit artiste qu'aux places qui
+    // en ont réellement besoin.
+    const secoursPermis = meilleurPool === 'secours'
+      || estNecessairePourMinimum(ctx, meilleurGroupeId, decisionsParPlace);
+    const candidats: CandidatEligible[] = [];
+    for (const benevole of ctx.donnees.benevoles) {
+      const statut = evaluerEligibilite(ctx, etat, meilleurGroupeId, benevole.id);
+      if (!statut.eligible) { continue; }
+      if (statut.conflitArtiste && !secoursPermis) { continue; }
+      candidats.push(calculerScore(
+        ctx, etat, parametres, meilleurGroupeId, benevole.id, statut.conflitArtiste, decisionsParPlace, place.id,
+      ));
     }
+    // Classement à deux niveaux, pas un simple tri par score : depuis le
+    // 2026-09-23 (demande d'Antoine, « par défaut on va valider le binôme
+    // souhaité »), l'artiste souhaité (objectif 7, dernier de la liste)
+    // ne départage plus qu'à égalité sur tous les objectifs qui le
+    // précèdent (binôme, missions souhaitées, équipe, équité) — pas avant.
+    // Avec les poids par défaut (`affiniteEnsemble: 0.1` contre
+    // `conflitArtiste: -0.4`), un simple tri par score global ne
+    // suffirait pas à faire gagner le binôme sur l'artiste (voir la note
+    // du cahier des charges §7.2) ; `scoreSansConflitArtiste` classe donc
+    // en premier sur les objectifs 2 à 6, et seul un ex æquo strict sur ce
+    // plan se départage par la préférence artiste (propre bat conflit),
+    // puis par le score complet, comme avant.
+    // Départage ultime, à stricte égalité sur tout ce qui précède (score,
+    // artiste, ordre d'Antoine) : privilégier le candidat qui a LE MOINS
+    // d'autres groupes vides où il serait aussi éligible à cet instant — un
+    // candidat qui ne peut aller nulle part ailleurs a davantage besoin de
+    // CETTE place qu'un généraliste qui pourra encore servir un autre
+    // groupe de même priorité au tour suivant. Corrige le bug du
+    // 2026-09-24 documenté sur `remplir` ci-dessus (un groupe généraliste
+    // vidait le bassin partagé avant qu'un groupe plus tardif, qui n'avait
+    // QUE ce bassin, ne soit reconsidéré) sans jamais l'emporter sur une
+    // vraie préférence d'Antoine : ce n'est qu'un dernier recours, à
+    // égalité stricte sur tout le reste.
+    const alternativesParBenevole = new Map<Id, number>();
+    for (const candidat of candidats) {
+      let alternatives = 0;
+      for (const autreGroupeId of groupesAVides) {
+        if (autreGroupeId === meilleurGroupeId) { continue; }
+        if (evaluerEligibilite(ctx, etat, autreGroupeId, candidat.benevoleId).eligible) { alternatives++; }
+      }
+      alternativesParBenevole.set(candidat.benevoleId, alternatives);
+    }
+    const gagnant = [...candidats].sort((a, b) => (
+      b.scoreSansConflitArtiste - a.scoreSansConflitArtiste
+      || Number(a.explication.conflitArtiste) - Number(b.explication.conflitArtiste)
+      || b.score - a.score
+      || (alternativesParBenevole.get(a.benevoleId) ?? 0) - (alternativesParBenevole.get(b.benevoleId) ?? 0)
+      || a.benevoleId - b.benevoleId
+    ))[0];
+    if (!gagnant) {
+      causeNonPourvueParPlace.set(place.id, 'aucun_candidat');
+      continue;
+    }
+    decisionsParPlace.set(place.id, gagnant.benevoleId);
+    scoreParPlace.set(place.id, gagnant.score);
+    causeNonPourvueParPlace.delete(place.id);
+    occuper(etat, ctx, meilleurGroupeId, gagnant.benevoleId);
   }
 }
 

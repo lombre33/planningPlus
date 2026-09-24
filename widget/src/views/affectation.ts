@@ -512,7 +512,9 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
       class: `roster-card${actif ? '' : ' roster-card--absent'}`,
       draggable: actif ? 'true' : 'false',
       title: actif
-        ? "Glissez sur une place pour affecter, cliquez pour voir son affectation du jour"
+        ? (placeCeJour
+          ? 'Glissez sur une place, ou changez son indicatif à droite pour le réaffecter'
+          : "Glissez sur une place pour affecter, cliquez pour voir pourquoi il n'est pas affecté")
         : 'Absent : non affectable',
       onclick: () => basculerRosterOuvert(benevole.id),
       ondragstart: actif ? (e: Event) => {
@@ -558,25 +560,25 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
         }, g.code)),
       ),
     );
-    if (!ouvert) { return carte; }
+    // Un bénévole affecté n'ouvre plus de bandeau : sa mission tournant
+    // d'un besoin à l'autre au fil de la soirée, en montrer une seule était
+    // trompeur (déjà corrigé une fois pour le dropdown, même défaut ici) et
+    // redondant avec la colonne indicatif — signalé par Antoine, 2026-09-24
+    // 5h28 : « on s'en fiche, à retirer proprement ». Désaffecter reste
+    // possible, via « Aucun » dans le menu déroulant ci-dessus
+    // (`changerIndicatifDepuisRoster`, qui appelle `desaffecterDepuisRoster`
+    // pour ce cas). Le panneau « pourquoi il n'est pas affecté » (point 1)
+    // n'est pas concerné, il reste.
+    if (!ouvert || placeCeJour) { return carte; }
 
     return h('div', {class: 'roster-card-wrap', style: {display: 'flex', flexDirection: 'column'}},
       carte,
       h('div', {
         class: 'roster-card__detail',
-        style: {
-          padding: '6px 10px', fontSize: '13px', display: 'flex', alignItems: 'center',
-          justifyContent: 'space-between', gap: '8px', background: 'var(--bg-subtle, #f4f4f5)', borderRadius: '4px',
-        },
+        style: {padding: '6px 10px', fontSize: '13px', background: 'var(--bg-subtle, #f4f4f5)', borderRadius: '4px'},
       },
-        placeCeJour
-          ? h('span', null, `Affecté(e) : ${placeCeJour.libelle}`)
-          : h('span', {class: 'view__intro', style: {margin: '0'}},
-            `Non affecté(e) aujourd'hui — ${raisonsNonAffecte(m, benevole.id, groupeIdsOuvertsCeJour).join(' ; ')}.`),
-        placeCeJour ? h('button', {
-          class: 'btn btn--sm btn--ghost', type: 'button',
-          onclick: (e: Event) => { e.stopPropagation(); void desaffecterDepuisRoster(placeCeJour.place); },
-        }, 'Désaffecter') : null,
+        h('span', {class: 'view__intro', style: {margin: '0'}},
+          `Non affecté(e) aujourd'hui — ${raisonsNonAffecte(m, benevole.id, groupeIdsOuvertsCeJour).join(' ; ')}.`),
       ),
     );
   }
