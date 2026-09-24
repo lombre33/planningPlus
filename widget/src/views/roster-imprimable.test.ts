@@ -28,6 +28,7 @@ const ecritureMuette: EcritureGrist = {
   definirAbsence: async () => {}, valeursColonneBrute: async () => new Map(), colonnesTable: async () => [],
   tablesDocument: async () => [], definirParametre: async () => {}, remplacerDisponibilites: async () => {},
   peuplerBenevoles: async () => ({benevoles: [], crees: 0, actualises: 0}), creerAffinites: async () => [],
+  definirPresence: async () => 1,
 };
 
 /** Attend un tour de micro-tâches : `nomsCompletsDepuisSource` est async,

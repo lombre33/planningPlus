@@ -194,7 +194,7 @@ function construireModeleTroisIndicatifs(): Modele {
       {Benevole: 2, Quart_heure: 0, Statut: 'Disponible', Artiste: null},
     ],
     souhaitsMissions: [],
-    affinites: [],
+    affinites: [], presences: [],
   };
 }
 
@@ -333,6 +333,7 @@ describe('montrerAffectation — colonne indicatif du roster (2026-09-24 5h02, e
         colonnesTable: async () => [], tablesDocument: async () => [], definirParametre: async () => {},
         remplacerDisponibilites: async () => {}, peuplerBenevoles: async () => ({benevoles: [], crees: 0, actualises: 0}),
         creerAffinites: async () => [],
+        definirPresence: async () => 1,
       };
       m.brancherEcriture(ecriture);
       const container = document.createElement('div');
