@@ -19,15 +19,17 @@ import {montrerArtistes} from './views/artistes';
 import {montrerBenevole} from './views/benevole';
 import {montrerDisponibilites} from './views/disponibilites';
 import {montrerEquipe} from './views/equipe';
+import {montrerEquipesImprimables} from './views/equipes-imprimables';
 import {montrerGrille} from './views/grille';
 import {montrerIndicatifs} from './views/indicatifs';
 import {montrerJourJ} from './views/jourJ';
+import {montrerRosterImprimable} from './views/roster-imprimable';
 import {montrerTerrain} from './views/terrain';
 
 type IdOnglet =
   | 'agenda' | 'grille' | 'affectation' | 'anomalies' | 'indicatifs'
   | 'disponibilites' | 'terrain' | 'jourj'
-  | 'benevole' | 'equipe' | 'artistes';
+  | 'benevole' | 'equipe' | 'artistes' | 'roster-imprimable' | 'equipes-imprimables';
 
 interface DefinitionOnglet {
   id: IdOnglet;
@@ -124,6 +126,20 @@ const ONGLETS: DefinitionOnglet[] = [
     titre: 'Artistes',
     sousTitre: 'Qui joue quand, et combien de bénévoles veulent le voir — et parmi eux, combien sont déjà en conflit.',
     montrer: montrerArtistes,
+    filtreJour: true,
+  },
+  {
+    id: 'roster-imprimable', libelle: 'Roster imprimable', icone: ICONES.imprimante,
+    titre: 'Roster bénévoles imprimable',
+    sousTitre: 'Une ligne par bénévole disponible ce jour, son indicatif et ses affectations au quart d’heure — lecture seule, pensé pour être imprimé et distribué.',
+    montrer: montrerRosterImprimable,
+    filtreJour: true,
+  },
+  {
+    id: 'equipes-imprimables', libelle: 'Plannings équipes', icone: ICONES.imprimante,
+    titre: 'Plannings équipes imprimables',
+    sousTitre: 'Une table par équipe : ses missions du jour au quart d’heure, qui les tient et leur indicatif — lecture seule, une page par équipe à l’impression.',
+    montrer: montrerEquipesImprimables,
     filtreJour: true,
   },
 ];
