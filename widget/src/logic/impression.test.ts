@@ -53,7 +53,7 @@ describe('affectationsQuartParBenevole et indicatifDuJour', () => {
 });
 
 describe('affectationsQuartParMission', () => {
-  it('agrège toutes les entrées d’un besoin pourvu, omet un besoin sans aucune place pourvue', () => {
+  it('regroupe les deux places d’un même binôme en une seule entrée, omet une mission sans aucun indicatif positionné', () => {
     const m = new Magasin({
       ...modeleVide(),
       equipes: [{id: 1, Nom: 'Bénévoles', Couleur: '#000', Referent: null, Notes: ''}],
@@ -82,9 +82,72 @@ describe('affectationsQuartParMission', () => {
     });
     const ix = indexer(m);
     const affectations = affectationsQuartParMission(m, ix, new Set([Q0, Q1]));
-    expect(affectations.get(1)?.get(Q0)?.entrees.map((e) => e.benevoleNom).sort()).toEqual(['Karim', 'Marie']);
-    // La mission 2 (besoin 2) n'a aucune place pourvue : rien à afficher.
+    const entrees = affectations.get(1)?.get(Q0)?.entrees;
+    expect(entrees).toHaveLength(1);
+    expect(entrees?.[0]?.groupeCode).toBe('A1');
+    expect(entrees?.[0]?.benevoleNoms.slice().sort()).toEqual(['Karim', 'Marie']);
+    // La mission 2 (besoin 2) n'a aucun indicatif positionné : rien à afficher.
     expect(affectations.has(2)).toBe(false);
+  });
+
+  it('affiche un indicatif positionné même sans aucun bénévole dessus (retour Antoine 2026-09-24)', () => {
+    const m = new Magasin({
+      ...modeleVide(),
+      equipes: [{id: 1, Nom: 'Bénévoles', Couleur: '#000', Referent: null, Notes: ''}],
+      missions: [{id: 1, Nom: 'Accueil', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []}],
+      sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: 'Bloc', Debut: Q0, Fin: Q2}],
+      besoins: [{id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 2, Taille_groupe: 2}],
+      groupes: [{id: 1, Code: 'A1', Taille: 2, Equipe: 1, Notes: ''}],
+      positionsGroupe: [{id: 1, Groupe: 1, Besoin: 1}],
+      // Les deux places du binôme existent (créées avec le groupe) mais aucune n'est pourvue.
+      places: [
+        {id: 1, Groupe: 1, Rang: 1, Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0},
+        {id: 2, Groupe: 1, Rang: 2, Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0},
+      ],
+    });
+    const ix = indexer(m);
+    const affectations = affectationsQuartParMission(m, ix, new Set([Q0, Q1]));
+    const entrees = affectations.get(1)?.get(Q0)?.entrees;
+    expect(entrees).toHaveLength(1);
+    expect(entrees?.[0]?.groupeCode).toBe('A1');
+    expect(entrees?.[0]?.benevoleNoms).toEqual([]);
+  });
+
+  it('garde un indicatif par binôme quand plusieurs couvrent le même besoin (retour Antoine 2026-09-24)', () => {
+    const m = new Magasin({
+      ...modeleVide(),
+      equipes: [{id: 1, Nom: 'Bénévoles', Couleur: '#000', Referent: null, Notes: ''}],
+      benevoles: [
+        {id: 1, Nom: 'Marie', Contact: '', Equipe: 1, Competences: [], Quota_heures_min: 0, Quota_heures_max: 99, Statut: 'Actif', Notes: ''},
+      ],
+      missions: [{id: 1, Nom: 'Accueil', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []}],
+      sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: 'Bloc', Debut: Q0, Fin: Q2}],
+      besoins: [{id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 6, Taille_groupe: 2}],
+      groupes: [
+        {id: 1, Code: 'A1', Taille: 2, Equipe: 1, Notes: ''},
+        {id: 2, Code: 'A2', Taille: 2, Equipe: 1, Notes: ''},
+        {id: 3, Code: 'A3', Taille: 2, Equipe: 1, Notes: ''},
+      ],
+      positionsGroupe: [
+        {id: 1, Groupe: 1, Besoin: 1},
+        {id: 2, Groupe: 2, Besoin: 1},
+        {id: 3, Groupe: 3, Besoin: 1},
+      ],
+      places: [
+        {id: 1, Groupe: 1, Rang: 1, Benevole: 1, Origine: 'Manuel', Verrouillee: false, Score: 0},
+        {id: 2, Groupe: 1, Rang: 2, Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0},
+        {id: 3, Groupe: 2, Rang: 1, Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0},
+        {id: 4, Groupe: 2, Rang: 2, Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0},
+        {id: 5, Groupe: 3, Rang: 1, Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0},
+        {id: 6, Groupe: 3, Rang: 2, Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0},
+      ],
+    });
+    const ix = indexer(m);
+    const affectations = affectationsQuartParMission(m, ix, new Set([Q0, Q1]));
+    const entrees = affectations.get(1)?.get(Q0)?.entrees;
+    expect(entrees?.map((e) => e.groupeCode).sort()).toEqual(['A1', 'A2', 'A3']);
+    expect(entrees?.find((e) => e.groupeCode === 'A1')?.benevoleNoms).toEqual(['Marie']);
+    expect(entrees?.find((e) => e.groupeCode === 'A2')?.benevoleNoms).toEqual([]);
   });
 });
 
