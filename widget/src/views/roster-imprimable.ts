@@ -3,9 +3,17 @@
  * une ligne par bénévole disponible ce jour-là — même partiellement,
  * affecté ou non —, son indicatif du jour, puis ses affectations au quart
  * d'heure. Pensée pour être imprimée et distribuée aux bénévoles : lecture
- * seule stricte, la seule interaction est le filtre par jour (global,
- * `Magasin.macroCreneauSelectionne`, posé par `app.ts`) et le bouton
- * d'impression.
+ * seule stricte, les seules interactions sont le filtre par jour (global,
+ * `Magasin.macroCreneauSelectionne`, posé par `app.ts`), la case à cocher
+ * ci-dessous et le bouton d'impression.
+ *
+ * Retour d'Antoine du 2026-09-24 : le rouge des créneaux à problème
+ * (`.impression-bloc--conflit`, voir plus bas) est un mode pour lui, pas
+ * pour les bénévoles — décoché par défaut, écran ET impression, pour
+ * qu'un roster imprimé sans y penser ne montre jamais ce diagnostic
+ * interne. Le bleu (affecté) et le violet (peut voir son artiste) restent
+ * visibles dans les deux états : ce sont des informations utiles au
+ * bénévole, la case ne les touche pas.
  */
 
 import type {Benevole, Disponibilite, Epoch, Id, StatutDisponibilite} from '../domain/types';
@@ -74,7 +82,8 @@ function construireLigneBenevole(
   blocs: readonly BlocMacro[], affectationsBenevole: Map<Epoch, AffectationQuart> | undefined,
   creneauxArtisteBenevole: Map<Epoch, string> | undefined,
   conflitArtisteBenevole: Map<Epoch, string> | undefined,
-  disponibleAuQuart: (q: Epoch) => boolean, horsDispoReelleAuQuart: (q: Epoch) => boolean, pxParQuart: number,
+  disponibleAuQuart: (q: Epoch) => boolean, horsDispoReelleAuQuart: (q: Epoch) => boolean,
+  afficherConflits: boolean, pxParQuart: number,
 ): Node {
   const cellules: Node[] = [
     h('th', {class: 'impression-table__entite', scope: 'row', title: benevole.Nom},
@@ -90,8 +99,11 @@ function construireLigneBenevole(
       (q) => ({
         missionNom: affectationsBenevole?.get(q)?.missionNom ?? null,
         artisteNom: creneauxArtisteBenevole?.get(q) ?? null,
-        conflitArtisteNom: conflitArtisteBenevole?.get(q) ?? null,
-        horsDispoReelle: affectationsBenevole?.get(q)?.missionNom != null && horsDispoReelleAuQuart(q),
+        // Motifs de conflit ignorés quand la case est décochée : le bloc redevient un
+        // simple « assignee » bleu, indiscernable d'un roster sans ce diagnostic interne.
+        conflitArtisteNom: afficherConflits ? conflitArtisteBenevole?.get(q) ?? null : null,
+        horsDispoReelle: afficherConflits
+          && affectationsBenevole?.get(q)?.missionNom != null && horsDispoReelleAuQuart(q),
         disponible: disponibleAuQuart(q),
       }),
       cleContenu,
@@ -132,7 +144,7 @@ function construireTable(
   affectations: Map<Id, Map<Epoch, AffectationQuart>>, creneauxArtiste: Map<Id, Map<Epoch, string>>,
   conflitArtiste: Map<Id, Map<Epoch, string>>,
   indexDispos: Map<Id, Map<Epoch, Disponibilite>>, indexDispoReelle: Map<string, StatutDisponibilite>,
-  pxParQuart: number,
+  afficherConflits: boolean, pxParQuart: number,
 ): HTMLTableElement {
   const nbQuartsTotal = blocs.reduce((n, b) => n + b.quarts.length, 0);
   const totalPx = LARGEUR_COLONNE_NOM_PX + LARGEUR_COLONNE_INDICATIF_PX + nbQuartsTotal * pxParQuart;
@@ -156,7 +168,7 @@ function construireTable(
           return d !== undefined && d.Statut !== 'Indisponible';
         },
         (q) => !estVraimentDisponibleAuQuart(indexDispoReelle, b.id, q),
-        pxParQuart,
+        afficherConflits, pxParQuart,
       );
     })),
   );
@@ -164,6 +176,10 @@ function construireTable(
 }
 
 export function montrerRosterImprimable(container: HTMLElement, m: Magasin): () => void {
+  // Mode diagnostic d'Antoine (case décochée par défaut, retour 2026-09-24) : local à
+  // cette vue, jamais dans `Magasin` — gouverne le rouge à l'écran ET à l'impression.
+  let afficherConflits = false;
+
   function rafraichir(): void {
     const ix = indexer(m);
     const jours = regrouperParJour(m.macroCreneaux);
@@ -207,13 +223,26 @@ export function montrerRosterImprimable(container: HTMLElement, m: Magasin): () 
       h('p', {class: 'view__intro', style: {margin: '0'}},
         `${benevoles.length} bénévole${benevoles.length > 1 ? 's' : ''} disponible${benevoles.length > 1 ? 's' : ''} ${jour.libelle.toLowerCase()}.`,
       ),
+      h('label', {
+        style: {display: 'inline-flex', alignItems: 'center', gap: '4px', marginLeft: '8px'},
+        title: 'Rouge visible à l’écran et à l’impression tant que la case est cochée — jamais pour les bénévoles par défaut.',
+      },
+        h('input', {
+          type: 'checkbox', checked: afficherConflits,
+          onchange: (e: Event) => {
+            afficherConflits = (e.target as HTMLInputElement).checked;
+            rafraichir();
+          },
+        }),
+        'Signaler les créneaux à problème',
+      ),
       h('button', {
         class: 'btn btn--primary btn--sm', type: 'button',
         onclick: () => {
           const pxImpression = largeurQuartImpressionPx(quartsDuJour.length, LARGEUR_COLONNE_NOM_PX + LARGEUR_COLONNE_INDICATIF_PX);
           const table = construireTable(
             ix, benevoles, blocs, affectations, creneauxArtiste, conflitArtiste, indexDispos, indexDispoReelle,
-            pxImpression,
+            afficherConflits, pxImpression,
           );
           imprimer(
             [h('h2', null, `Roster bénévoles — ${jour.libelle}`), table],
@@ -225,7 +254,7 @@ export function montrerRosterImprimable(container: HTMLElement, m: Magasin): () 
 
     const table = construireTable(
       ix, benevoles, blocs, affectations, creneauxArtiste, conflitArtiste, indexDispos, indexDispoReelle,
-      LARGEUR_QUART_ECRAN_PX,
+      afficherConflits, LARGEUR_QUART_ECRAN_PX,
     );
 
     container.append(barre, h('div', {class: 'impression-scroll'}, table));
