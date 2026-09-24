@@ -348,8 +348,13 @@ describe('montrerEquipesImprimables : priorité au nom du bénévole sur l’ind
 
     const bloc = container.querySelector('.impression-bloc--assignee');
     const texte = bloc?.querySelector<HTMLElement>('.impression-bloc__texte');
-    // Jamais tronqué (pas d'ellipse), jamais le code nu : le nom complet, à envelopper.
-    expect(texte?.textContent).toBe('Maximilienne-Christodoulopoulos (A1)');
+    // Jamais tronqué (pas d'ellipse), jamais le code nu : le nom, à envelopper.
+    // Le nom SEUL (sans le code) : envelopper le candidat le plus court limite le
+    // nombre de lignes nécessaires — vérifié sur un banc de stress (équipe chargée,
+    // 12h) où envelopper "Nom (Code)" systématiquement faisait déborder le planning
+    // d'une équipe sur une deuxième page. Antoine a déjà accepté que le code
+    // disparaisse avant le nom (« quitte à ne pas afficher les indicatifs au pire »).
+    expect(texte?.textContent).toBe('Maximilienne-Christodoulopoulos');
     expect(texte?.classList.contains('impression-bloc__texte--enveloppe')).toBe(true);
     expect(texte?.style.fontSize).toBe('8px');
   });

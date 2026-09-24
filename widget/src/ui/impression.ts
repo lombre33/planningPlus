@@ -151,13 +151,23 @@ export interface AjustementTexteBloc {
 /**
  * Comme `ajusterTexteBloc`, mais ne renvoie jamais `null` ni un texte
  * tronqué : quand aucun candidat ne tient sur une seule ligne même au
- * plancher, retourne le candidat le plus complet à envelopper sur
- * plusieurs lignes plutôt que de perdre de l'information (retour Antoine
- * 2026-09-24 14h11-14h14, sur les noms de bénévoles qui disparaissaient
- * encore derrière le code : « il me faut ABSOLUMENT les noms [...] quitte
- * à ne pas afficher les indicatifs au pire », puis « si ça ne rentre pas
- * on agrandit la hauteur »). Le bloc grandit donc en hauteur pour accueillir
- * le texte plutôt que le texte se faire rapetisser ou couper.
+ * plancher, retourne le candidat le plus COURT (dernier de la liste) à
+ * envelopper sur plusieurs lignes plutôt que de perdre de l'information
+ * (retour Antoine 2026-09-24 14h11-14h14, sur les noms de bénévoles qui
+ * disparaissaient encore derrière le code : « il me faut ABSOLUMENT les
+ * noms [...] quitte à ne pas afficher les indicatifs au pire », puis « si
+ * ça ne rentre pas on agrandit la hauteur »). Le bloc grandit donc en
+ * hauteur pour accueillir le texte plutôt que le texte se faire rapetisser
+ * ou couper.
+ *
+ * Le candidat le plus court plutôt que le plus complet (`candidats[0]`) :
+ * mesuré sur un banc réaliste (équipe chargée, 12h, huit missions), envelopper
+ * systématiquement "Nom (Code)" plutôt que "Nom" seul dans une colonne très
+ * étroite (un seul quart d'heure) fait déborder le planning d'une équipe sur
+ * une deuxième page — le nombre de lignes nécessaires double quasiment.
+ * Antoine a déjà tranché que le code peut disparaître avant le nom
+ * (« quitte à ne pas afficher les indicatifs au pire ») : envelopper le
+ * candidat le plus court sert donc à la fois sa préférence et la hauteur.
  */
 export function ajusterTexteBlocAvecEnveloppe(
   candidats: readonly string[], largeurDisponiblePx: number, taillesPx: readonly number[] = TAILLES_POLICE_BLOC_PX,
@@ -165,5 +175,5 @@ export function ajusterTexteBlocAvecEnveloppe(
   const surUneLigne = ajusterTexteBloc(candidats, largeurDisponiblePx, taillesPx);
   if (surUneLigne) { return surUneLigne; }
   const taillePlancher = taillesPx[taillesPx.length - 1]!;
-  return {texte: candidats[0]!, taillePolicePx: taillePlancher, enveloppe: true};
+  return {texte: candidats[candidats.length - 1]!, taillePolicePx: taillePlancher, enveloppe: true};
 }
