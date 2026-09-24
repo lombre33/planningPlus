@@ -21,7 +21,7 @@
  */
 
 import type {Epoch, Id, MacroCreneau} from '../domain/types';
-import {indexer} from '../logic/derive';
+import {benevolesDisponiblesCeJour, indexer, quartsDuJour} from '../logic/derive';
 import {regrouperParJour} from '../logic/derive';
 import {
   blocsDuJour, contraintesBenevole, estHeurePleine, graviteContraintes, indexerDisponibilitesParBenevole,
@@ -595,10 +595,20 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
       return;
     }
     const blocs = blocsDuJour(jour).filter((b) => b.quarts.length > 0);
+    // Bénévoles ayant une vraie disponibilité ce jour-là (§ prédicat commun,
+    // `logic/derive.ts` — un souhait « voir un artiste » n'en est pas une),
+    // même filtre que le roster Affectation et la feuille imprimable
+    // (Antoine, 2026-09-24 : la grille montrait tout le monde malgré le
+    // filtre par jour). Jamais en mode édition : sans ça, un bénévole tout
+    // juste importé ou dont la réponse du jour n'a pas été reconnue
+    // ("Manuelle", à saisir à la main) disparaîtrait de l'écran qui sert
+    // justement à le saisir.
+    const disposCeJour = benevolesDisponiblesCeJour(m, quartsDuJour(jour));
 
     const benevoles = m.benevoles
       .filter((b) => equipeFiltre === 'toutes' || b.Equipe === equipeFiltre)
       .filter((b) => recherche.trim() === '' || b.Nom.toLowerCase().includes(recherche.trim().toLowerCase()))
+      .filter((b) => modeEdition || disposCeJour.has(b.id))
       .sort((a, b) => a.Nom.localeCompare(b.Nom, 'fr'));
 
     if (blocs.length === 0) {
@@ -625,7 +635,10 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
     });
 
     const lignes = benevoles.map((b) => {
-      const equipe = ix.equipe.get(b.Equipe)!;
+      // Même défaut que `rosterCard` dans `views/affectation.ts`, corrigé le
+      // 2026-09-23/24 (équipe orpheline) : `equipe` peut être absente si le
+      // bénévole pointe vers une équipe qu'Antoine a depuis supprimée.
+      const equipe = ix.equipe.get(b.Equipe);
       const contraintes = contraintesBenevole(m, ix, b.id);
       const gravite = graviteContraintes(contraintes);
       const cellules = blocs.flatMap((bloc, iBloc) => bloc.quarts.map((q, iQuart) => {
@@ -646,7 +659,7 @@ export function montrerDisponibilites(container: HTMLElement, m: Magasin): () =>
       }));
       return h('tr', null,
         h('th', {class: 'dispos-table__benevole', scope: 'row'},
-          h('span', {class: 'dot', style: {background: equipe.Couleur}}),
+          h('span', {class: 'dot', style: {background: equipe?.Couleur ?? 'var(--text-faint)'}}),
           b.Nom,
           gravite ? h('span', {
             class: `contrainte-badge contrainte-badge--${gravite}`,

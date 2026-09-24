@@ -3,18 +3,30 @@
  * une ligne par bénévole disponible ce jour-là — même partiellement,
  * affecté ou non —, son indicatif du jour, puis ses affectations au quart
  * d'heure. Pensée pour être imprimée et distribuée aux bénévoles : lecture
- * seule stricte, la seule interaction est le filtre par jour (global,
- * `Magasin.macroCreneauSelectionne`, posé par `app.ts`) et le bouton
- * d'impression.
+ * seule stricte, les seules interactions sont le filtre par jour (global,
+ * `Magasin.macroCreneauSelectionne`, posé par `app.ts`), la case à cocher
+ * ci-dessous et le bouton d'impression.
+ *
+ * Retour d'Antoine du 2026-09-24 : le rouge des créneaux à problème
+ * (`.impression-bloc--conflit`, voir plus bas) est un mode pour lui, pas
+ * pour les bénévoles — décoché par défaut, écran ET impression, pour
+ * qu'un roster imprimé sans y penser ne montre jamais ce diagnostic
+ * interne. Le bleu (affecté) et le violet (peut voir son artiste) restent
+ * visibles dans les deux états : ce sont des informations utiles au
+ * bénévole, la case ne les touche pas.
  */
 
-import type {Benevole, Disponibilite, Epoch, Id} from '../domain/types';
-import {type Index, benevolesDisponiblesCeJour, indexer, regrouperParJour} from '../logic/derive';
+import type {Benevole, Disponibilite, Epoch, Groupe, Id, StatutDisponibilite} from '../domain/types';
+import {
+  type Index, benevolesDisponiblesCeJour, estVraimentDisponibleAuQuart, indexer, indexerDisponibilites,
+  regrouperParJour,
+} from '../logic/derive';
 import {type BlocMacro, blocsDuJour, indexerDisponibilitesParBenevole} from '../logic/dispos-terrain';
 import {
-  type AffectationQuart, affectationsQuartParBenevole, creneauxVoirArtisteParBenevole,
-  indicatifDuJour, segmenterQuarts,
+  type AffectationQuart, affectationsQuartParBenevole, creneauxConflitArtisteParBenevole,
+  creneauxVoirArtisteParBenevole, indicatifDuJour, segmenterQuarts,
 } from '../logic/impression';
+import {nomsCompletsDepuisSource} from '../logic/noms-complets';
 import type {Magasin} from '../store';
 import {
   ajusterTexteBlocAvecTroncature, cellulesEnTeteQuarts, imprimer, LARGEUR_QUART_ECRAN_PX, largeurQuartImpressionPx,
@@ -24,15 +36,22 @@ import {h, vider} from '../ui/dom';
 
 export const LARGEUR_COLONNE_NOM_PX = 150;
 export const LARGEUR_COLONNE_INDICATIF_PX = 50;
+export const LARGEUR_COLONNE_EQUIPE_PX = 100;
 
 interface ContenuQuart {
   missionNom: string | null;
   artisteNom: string | null;
+  conflitArtisteNom: string | null;
+  horsDispoReelle: boolean;
   disponible: boolean;
 }
 
 function cleContenu(c: ContenuQuart): string {
-  if (c.missionNom != null) { return `A:${c.missionNom}`; }
+  if (c.missionNom != null) {
+    return c.horsDispoReelle || c.conflitArtisteNom != null
+      ? `X:${c.missionNom}:${c.horsDispoReelle ? 1 : 0}:${c.conflitArtisteNom ?? ''}`
+      : `A:${c.missionNom}`;
+  }
   if (c.artisteNom != null) { return `V:${c.artisteNom}`; }
   return c.disponible ? 'L' : 'G';
 }
@@ -50,6 +69,7 @@ function construireColgroup(nbQuartsTotal: number, pxParQuart: number, totalPx: 
   const cols: Node[] = [
     h('col', {style: {width: pct(LARGEUR_COLONNE_NOM_PX)}}),
     h('col', {style: {width: pct(LARGEUR_COLONNE_INDICATIF_PX)}}),
+    h('col', {style: {width: pct(LARGEUR_COLONNE_EQUIPE_PX)}}),
   ];
   for (let i = 0; i < nbQuartsTotal; i++) { cols.push(h('col', {style: {width: pct(pxParQuart)}})); }
   return h('colgroup', null, ...cols);
@@ -59,19 +79,25 @@ function construireColgroup(nbQuartsTotal: number, pxParQuart: number, totalPx: 
  *  contigus de même contenu (même mission affectée, ou libre/indisponible),
  *  jamais fusionnés d'un bloc à l'autre — même limite qu'ailleurs (§6.2).
  *  `pxParQuart` choisit la taille de police visée (écran ou impression, voir
- *  `ui/impression.ts`). */
+ *  `ui/impression.ts`). `nomAffiche` et `nomEquipeIndicatif` sont déjà
+ *  résolus par l'appelant (noms complets, équipe de l'indicatif tenu) —
+ *  cette fonction ne fait que les poser, jamais de jointure ici. */
 function construireLigneBenevole(
-  benevole: Benevole, equipeCouleur: string, indicatif: string | null,
+  nomAffiche: string, equipeCouleur: string, indicatif: string | null,
+  nomEquipeIndicatif: string,
   blocs: readonly BlocMacro[], affectationsBenevole: Map<Epoch, AffectationQuart> | undefined,
   creneauxArtisteBenevole: Map<Epoch, string> | undefined,
-  disponibleAuQuart: (q: Epoch) => boolean, pxParQuart: number,
+  conflitArtisteBenevole: Map<Epoch, string> | undefined,
+  disponibleAuQuart: (q: Epoch) => boolean, horsDispoReelleAuQuart: (q: Epoch) => boolean,
+  afficherConflits: boolean, pxParQuart: number,
 ): Node {
   const cellules: Node[] = [
-    h('th', {class: 'impression-table__entite', scope: 'row', title: benevole.Nom},
+    h('th', {class: 'impression-table__entite', scope: 'row', title: nomAffiche},
       h('span', {class: 'dot', style: {background: equipeCouleur, marginRight: '6px'}}),
-      benevole.Nom,
+      nomAffiche,
     ),
     h('td', {class: 'impression-table__indicatif'}, indicatif ?? '—'),
+    h('td', {class: 'impression-table__equipe', title: nomEquipeIndicatif}, nomEquipeIndicatif),
   ];
 
   blocs.forEach((bloc, iBloc) => {
@@ -80,21 +106,35 @@ function construireLigneBenevole(
       (q) => ({
         missionNom: affectationsBenevole?.get(q)?.missionNom ?? null,
         artisteNom: creneauxArtisteBenevole?.get(q) ?? null,
+        // Motifs de conflit ignorés quand la case est décochée : le bloc redevient un
+        // simple « assignee » bleu, indiscernable d'un roster sans ce diagnostic interne.
+        conflitArtisteNom: afficherConflits ? conflitArtisteBenevole?.get(q) ?? null : null,
+        horsDispoReelle: afficherConflits
+          && affectationsBenevole?.get(q)?.missionNom != null && horsDispoReelleAuQuart(q),
         disponible: disponibleAuQuart(q),
       }),
       cleContenu,
     );
     segments.forEach((segment, iSegment) => {
-      const {missionNom, artisteNom, disponible} = segment.valeur;
-      const classeEtat = missionNom != null ? 'assignee' : artisteNom != null ? 'artiste' : (disponible ? 'libre' : 'indisponible');
+      const {missionNom, artisteNom, conflitArtisteNom, horsDispoReelle, disponible} = segment.valeur;
+      const enConflit = horsDispoReelle || conflitArtisteNom != null;
+      const classeEtat = missionNom != null
+        ? (enConflit ? 'conflit' : 'assignee')
+        : artisteNom != null ? 'artiste' : (disponible ? 'libre' : 'indisponible');
       const texteACaler = missionNom ?? artisteNom;
+      const motifs: string[] = [];
+      if (horsDispoReelle) { motifs.push('hors de sa disponibilité déclarée'); }
+      if (conflitArtisteNom != null) { motifs.push(`l'empêche de voir ${conflitArtisteNom}`); }
+      const titre = missionNom != null && motifs.length > 0
+        ? `${missionNom} — ${motifs.join(' · ')}`
+        : (texteACaler ?? undefined);
       const limiteMacro = iSegment === 0 && iBloc > 0;
       const largeurDisponible = Math.max(0, segment.quarts.length * pxParQuart - PADDING_HORIZONTAL_BLOC_PX);
       const ajuste = texteACaler != null ? ajusterTexteBlocAvecTroncature(texteACaler, largeurDisponible) : null;
       cellules.push(h('td', {
         class: `impression-bloc impression-bloc--${classeEtat}${limiteMacro ? ' impression-bloc--limite-macro' : ''}`,
         colspan: segment.quarts.length,
-        title: texteACaler ?? undefined,
+        title: titre,
       },
         ajuste
           ? h('span', {class: 'impression-bloc__texte', style: {fontSize: `${ajuste.taillePolicePx}px`}}, ajuste.texte)
@@ -107,17 +147,22 @@ function construireLigneBenevole(
 }
 
 function construireTable(
-  ix: Index, benevoles: readonly Benevole[], blocs: readonly BlocMacro[],
+  ix: Index, benevoles: readonly Benevole[], nomsComplets: ReadonlyMap<Id, string>, groupes: readonly Groupe[],
+  blocs: readonly BlocMacro[],
   affectations: Map<Id, Map<Epoch, AffectationQuart>>, creneauxArtiste: Map<Id, Map<Epoch, string>>,
-  indexDispos: Map<Id, Map<Epoch, Disponibilite>>, pxParQuart: number,
+  conflitArtiste: Map<Id, Map<Epoch, string>>,
+  indexDispos: Map<Id, Map<Epoch, Disponibilite>>, indexDispoReelle: Map<string, StatutDisponibilite>,
+  afficherConflits: boolean, pxParQuart: number,
 ): HTMLTableElement {
   const nbQuartsTotal = blocs.reduce((n, b) => n + b.quarts.length, 0);
-  const totalPx = LARGEUR_COLONNE_NOM_PX + LARGEUR_COLONNE_INDICATIF_PX + nbQuartsTotal * pxParQuart;
+  const totalPx = LARGEUR_COLONNE_NOM_PX + LARGEUR_COLONNE_INDICATIF_PX + LARGEUR_COLONNE_EQUIPE_PX
+    + nbQuartsTotal * pxParQuart;
   const table = h('table', {class: 'impression-table', style: {width: `${totalPx}px`}},
     construireColgroup(nbQuartsTotal, pxParQuart, totalPx),
     h('thead', null, h('tr', null,
       h('th', {class: 'impression-table__coin', scope: 'col'}, 'Bénévole'),
       h('th', {class: 'impression-table__entete', scope: 'col'}, 'Indicatif'),
+      h('th', {class: 'impression-table__entete', scope: 'col'}, 'Équipe'),
       ...cellulesEnTeteQuarts(blocs),
     )),
     h('tbody', null, ...benevoles.map((b) => {
@@ -125,14 +170,21 @@ function construireTable(
       const equipeCouleur = ix.equipe.get(b.Equipe)?.Couleur ?? 'var(--text-faint)';
       const affectationsBenevole = affectations.get(b.id);
       const dispoBenevole = indexDispos.get(b.id);
+      const indicatif = indicatifDuJour(affectationsBenevole);
+      // Équipe associée à l'indicatif tenu (retour Antoine 2026-09-24), pas forcément la même
+      // que l'équipe d'appartenance du bénévole (déjà montrée par le point de couleur) : un
+      // code d'indicatif est unique sur tout le document (nomenclature A1→Z1, §22/09).
+      const groupeIndicatif = indicatif != null ? groupes.find((g) => g.Code === indicatif) : undefined;
+      const nomEquipeIndicatif = groupeIndicatif ? ix.equipe.get(groupeIndicatif.Equipe)?.Nom ?? '—' : '—';
       return construireLigneBenevole(
-        b, equipeCouleur, indicatifDuJour(affectationsBenevole), blocs, affectationsBenevole,
-        creneauxArtiste.get(b.id),
+        nomsComplets.get(b.id) ?? b.Nom, equipeCouleur, indicatif, nomEquipeIndicatif, blocs, affectationsBenevole,
+        creneauxArtiste.get(b.id), conflitArtiste.get(b.id),
         (q) => {
           const d = dispoBenevole?.get(q);
           return d !== undefined && d.Statut !== 'Indisponible';
         },
-        pxParQuart,
+        (q) => !estVraimentDisponibleAuQuart(indexDispoReelle, b.id, q),
+        afficherConflits, pxParQuart,
       );
     })),
   );
@@ -140,6 +192,19 @@ function construireTable(
 }
 
 export function montrerRosterImprimable(container: HTMLElement, m: Magasin): () => void {
+  // Mode diagnostic d'Antoine (case décochée par défaut, retour 2026-09-24) : local à
+  // cette vue, jamais dans `Magasin` — gouverne le rouge à l'écran ET à l'impression.
+  let afficherConflits = false;
+  // Noms complets lus depuis la table externe d'Antoine (§ demande du 2026-09-24 : il refuse
+  // de relancer l'import, lecture seule à l'affichage) — mêmes règles que la vue équipes.
+  let nomsComplets: ReadonlyMap<Id, string> = new Map();
+  let vueActive = true;
+  nomsCompletsDepuisSource(m).then((trouves) => {
+    if (!vueActive || trouves.size === 0) { return; }
+    nomsComplets = trouves;
+    rafraichir();
+  }).catch(() => { /* jamais bloquant : la vue garde Benevole.Nom */ });
+
   function rafraichir(): void {
     const ix = indexer(m);
     const jours = regrouperParJour(m.macroCreneaux);
@@ -161,9 +226,13 @@ export function montrerRosterImprimable(container: HTMLElement, m: Magasin): () 
     // Seule source pour « qui est vraiment là ce jour » (logic/derive.ts) : un souhait
     // « voir un artiste » n'est pas une vraie disponibilité (retour d'Antoine, 2026-09-24).
     const idsDisponibles = benevolesDisponiblesCeJour(m, quartsDuJourSet);
+    // Même source, mais au quart d'heure précis (logic/derive.ts) : sert à signaler en
+    // rouge un créneau affecté qui dépasse la disponibilité réellement déclarée.
+    const indexDispoReelle = indexerDisponibilites(m);
+    const nomAffiche = (b: Benevole) => nomsComplets.get(b.id) ?? b.Nom;
     const benevoles = m.benevoles
       .filter((b) => idsDisponibles.has(b.id))
-      .sort((a, b) => a.Nom.localeCompare(b.Nom, 'fr'));
+      .sort((a, b) => nomAffiche(a).localeCompare(nomAffiche(b), 'fr'));
 
     if (benevoles.length === 0) {
       container.append(h('p', {class: 'empty'},
@@ -174,16 +243,35 @@ export function montrerRosterImprimable(container: HTMLElement, m: Magasin): () 
 
     const affectations = affectationsQuartParBenevole(m, ix, quartsDuJourSet);
     const creneauxArtiste = creneauxVoirArtisteParBenevole(m, ix, quartsDuJourSet, affectations);
+    const conflitArtiste = creneauxConflitArtisteParBenevole(m, ix, quartsDuJourSet, affectations);
 
     const barre = h('div', {class: 'impression-barre'},
       h('p', {class: 'view__intro', style: {margin: '0'}},
         `${benevoles.length} bénévole${benevoles.length > 1 ? 's' : ''} disponible${benevoles.length > 1 ? 's' : ''} ${jour.libelle.toLowerCase()}.`,
       ),
+      h('label', {
+        style: {display: 'inline-flex', alignItems: 'center', gap: '4px', marginLeft: '8px'},
+        title: 'Rouge visible à l’écran et à l’impression tant que la case est cochée — jamais pour les bénévoles par défaut.',
+      },
+        h('input', {
+          type: 'checkbox', checked: afficherConflits,
+          onchange: (e: Event) => {
+            afficherConflits = (e.target as HTMLInputElement).checked;
+            rafraichir();
+          },
+        }),
+        'Signaler les créneaux à problème',
+      ),
       h('button', {
         class: 'btn btn--primary btn--sm', type: 'button',
         onclick: () => {
-          const pxImpression = largeurQuartImpressionPx(quartsDuJour.length, LARGEUR_COLONNE_NOM_PX + LARGEUR_COLONNE_INDICATIF_PX);
-          const table = construireTable(ix, benevoles, blocs, affectations, creneauxArtiste, indexDispos, pxImpression);
+          const pxImpression = largeurQuartImpressionPx(
+            quartsDuJour.length, LARGEUR_COLONNE_NOM_PX + LARGEUR_COLONNE_INDICATIF_PX + LARGEUR_COLONNE_EQUIPE_PX,
+          );
+          const table = construireTable(
+            ix, benevoles, nomsComplets, m.groupes, blocs, affectations, creneauxArtiste, conflitArtiste,
+            indexDispos, indexDispoReelle, afficherConflits, pxImpression,
+          );
           imprimer(
             [h('h2', null, `Roster bénévoles — ${jour.libelle}`), table],
             'impression-roster',
@@ -192,12 +280,15 @@ export function montrerRosterImprimable(container: HTMLElement, m: Magasin): () 
       }, 'Imprimer ce roster'),
     );
 
-    const table = construireTable(ix, benevoles, blocs, affectations, creneauxArtiste, indexDispos, LARGEUR_QUART_ECRAN_PX);
+    const table = construireTable(
+      ix, benevoles, nomsComplets, m.groupes, blocs, affectations, creneauxArtiste, conflitArtiste,
+      indexDispos, indexDispoReelle, afficherConflits, LARGEUR_QUART_ECRAN_PX,
+    );
 
     container.append(barre, h('div', {class: 'impression-scroll'}, table));
   }
 
   const desabonner = m.subscribe(rafraichir);
   rafraichir();
-  return desabonner;
+  return () => { vueActive = false; desabonner(); };
 }

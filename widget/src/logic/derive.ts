@@ -5,7 +5,7 @@
  */
 
 import type {
-  Artiste, Benevole, Besoin, Groupe, Id, MacroCreneau, Mission, Place, SousCreneau, StatutDisponibilite,
+  Artiste, Benevole, Besoin, Groupe, Id, MacroCreneau, Mission, Place, PositionGroupe, SousCreneau, StatutDisponibilite,
 } from '../domain/types';
 import {
   cleJourFestival, epochDebutJourFestival, HEURE_COUPURE_JOUR_FESTIVAL, libelleJourLong, PAS_SECONDES,
@@ -87,6 +87,30 @@ export function benevolesDisponiblesCeJour(m: Magasin, quarts: Set<number>): Set
   return disponibles;
 }
 
+/**
+ * Index (bénévole, quart) -> statut, pour un test de vraie disponibilité
+ * répété sur toute une grille (feuille imprimable, 2026-09-24) sans relire
+ * `m.disponibilites` en boucle à chaque cellule. À construire une fois par
+ * rendu, à passer à `estVraimentDisponibleAuQuart`.
+ */
+export function indexerDisponibilites(m: Magasin): Map<string, StatutDisponibilite> {
+  const index = new Map<string, StatutDisponibilite>();
+  for (const d of m.disponibilites) { index.set(`${d.Benevole}:${d.Quart_heure}`, d.Statut); }
+  return index;
+}
+
+/**
+ * Vraie disponibilité à UN quart précis, même vérité que
+ * `benevolesDisponiblesCeJour` (un souhait « Artiste » n'en est pas une) et
+ * que le moteur (`moteur/eligibilite.ts`, `evaluerEligibilite` : une absence
+ * d'entrée vaut « Indisponible », jamais « Disponible » par défaut).
+ */
+export function estVraimentDisponibleAuQuart(
+  index: Map<string, StatutDisponibilite>, benevoleId: Id, quartHeure: number,
+): boolean {
+  return index.get(`${benevoleId}:${quartHeure}`) === 'Disponible';
+}
+
 // --- Créneaux et couverture ----------------------------------------------
 
 export function quartsDuSousCreneau(sc: SousCreneau): number[] {
@@ -109,16 +133,23 @@ export function sousCreneauxApplicables(mission: Mission, tousSousCreneaux: Sous
   return base.slice().sort((a, b) => a.Debut - b.Debut);
 }
 
-/** Les positions d'un groupe, triées par heure de début du sous-créneau. */
-export function positionsDuGroupe(m: Magasin, ix: Index, groupeId: Id) {
-  return m.positionsGroupe
-    .filter((p) => p.Groupe === groupeId)
-    .map((p) => {
-      const besoin = ix.besoin.get(p.Besoin)!;
-      const sousCreneau = ix.sousCreneau.get(besoin.Sous_creneau)!;
-      return {position: p, besoin, sousCreneau};
-    })
-    .sort((a, b) => a.sousCreneau.Debut - b.sousCreneau.Debut);
+/**
+ * Les positions d'un groupe, triées par heure de début du sous-créneau.
+ * Une position dont le besoin ou le sous-créneau référencé a disparu du
+ * document (édition manuelle) est ignorée plutôt que de faire planter tout
+ * le calcul : fonction centrale, utilisée par la couverture, les heures
+ * affectées, la feuille de route et les indicatifs.
+ */
+export function positionsDuGroupe(m: Magasin, ix: Index, groupeId: Id): {position: PositionGroupe; besoin: Besoin; sousCreneau: SousCreneau}[] {
+  const resultat: {position: PositionGroupe; besoin: Besoin; sousCreneau: SousCreneau}[] = [];
+  for (const p of m.positionsGroupe) {
+    if (p.Groupe !== groupeId) { continue; }
+    const besoin = ix.besoin.get(p.Besoin);
+    const sousCreneau = besoin ? ix.sousCreneau.get(besoin.Sous_creneau) : undefined;
+    if (!besoin || !sousCreneau) { continue; }
+    resultat.push({position: p, besoin, sousCreneau});
+  }
+  return resultat.sort((a, b) => a.sousCreneau.Debut - b.sousCreneau.Debut);
 }
 
 export function quartsCouvertsParGroupe(m: Magasin, ix: Index, groupeId: Id): Set<number> {
@@ -148,10 +179,12 @@ export interface Couverture {
 export function couvertureBesoin(m: Magasin, ix: Index, besoinId: Id): Couverture {
   const besoin = ix.besoin.get(besoinId)!;
   const positions = m.positionsGroupe.filter((p) => p.Besoin === besoinId);
-  const groupesPositionnes = positions.map((p) => {
-    const groupe = ix.groupe.get(p.Groupe)!;
-    return {groupe, places: placesDuGroupe(m, groupe.id)};
-  });
+  const groupesPositionnes: {groupe: Groupe; places: Place[]}[] = [];
+  for (const p of positions) {
+    const groupe = ix.groupe.get(p.Groupe);
+    if (!groupe) { continue; } // groupe orphelin : position ignorée
+    groupesPositionnes.push({groupe, places: placesDuGroupe(m, groupe.id)});
+  }
   const places = groupesPositionnes.reduce((n, g) => n + g.groupe.Taille, 0);
   const pourvues = groupesPositionnes.reduce((n, g) => n + g.places.filter((pl) => pl.Benevole != null).length, 0);
   // Une zone sans aucun indicatif positionné n'est pas encore construite : ce
@@ -218,19 +251,22 @@ export function calculerAnomalies(m: Magasin, ix: Index): Anomalie[] {
   const anomalies: Anomalie[] = [];
 
   for (const besoin of m.besoins) {
+    const mission = ix.mission.get(besoin.Mission);
+    const sousCreneau = ix.sousCreneau.get(besoin.Sous_creneau);
+    if (!mission || !sousCreneau) { continue; } // référence pendante : besoin ignoré
     const c = couvertureBesoin(m, ix, besoin.id);
     if (c.statut === 'sous') {
       anomalies.push({
         type: 'sous-effectif', gravite: 'danger', besoin,
-        missionNom: ix.mission.get(besoin.Mission)!.Nom,
-        sousCreneauLibelle: ix.sousCreneau.get(besoin.Sous_creneau)!.Libelle,
+        missionNom: mission.Nom,
+        sousCreneauLibelle: sousCreneau.Libelle,
         manque: besoin.Effectif_min - c.pourvues,
       });
     } else if (c.pourvues > besoin.Effectif_max) {
       anomalies.push({
         type: 'sur-effectif', gravite: 'warn', besoin,
-        missionNom: ix.mission.get(besoin.Mission)!.Nom,
-        sousCreneauLibelle: ix.sousCreneau.get(besoin.Sous_creneau)!.Libelle,
+        missionNom: mission.Nom,
+        sousCreneauLibelle: sousCreneau.Libelle,
         surplus: c.pourvues - besoin.Effectif_max,
       });
     }
@@ -238,9 +274,12 @@ export function calculerAnomalies(m: Magasin, ix: Index): Anomalie[] {
 
   for (const place of m.places) {
     if (place.Benevole == null) { continue; }
-    const benevole = ix.benevole.get(place.Benevole)!;
-    const groupe = ix.groupe.get(place.Groupe)!;
-    const missions = missionsCouvertesParGroupe(m, ix, groupe.id).map((id) => ix.mission.get(id)!);
+    const benevole = ix.benevole.get(place.Benevole);
+    const groupe = ix.groupe.get(place.Groupe);
+    if (!benevole || !groupe) { continue; } // référence pendante : place ignorée
+    const missions = missionsCouvertesParGroupe(m, ix, groupe.id)
+      .map((id) => ix.mission.get(id))
+      .filter((mi): mi is Mission => mi != null);
     const quarts = [...quartsCouvertsParGroupe(m, ix, groupe.id)];
 
     const refus = missions.find((mi) => m.souhaitsMissions.some(
@@ -294,13 +333,14 @@ export function calculerAnomalies(m: Magasin, ix: Index): Anomalie[] {
 /** Les places actuellement tenues par un bénévole, avec leur groupe et un
  *  aperçu de ce qu'elles couvrent. */
 export function placesDuBenevole(m: Magasin, ix: Index, benevoleId: Id) {
-  return m.places
-    .filter((p) => p.Benevole === benevoleId)
-    .map((place) => {
-      const groupe = ix.groupe.get(place.Groupe)!;
-      const positions = positionsDuGroupe(m, ix, groupe.id);
-      return {place, groupe, positions};
-    });
+  const resultat: {place: Place; groupe: Groupe; positions: ReturnType<typeof positionsDuGroupe>}[] = [];
+  for (const place of m.places) {
+    if (place.Benevole !== benevoleId) { continue; }
+    const groupe = ix.groupe.get(place.Groupe);
+    if (!groupe) { continue; } // groupe orphelin : place ignorée
+    resultat.push({place, groupe, positions: positionsDuGroupe(m, ix, groupe.id)});
+  }
+  return resultat;
 }
 
 // `EtapePermutation`/`proposerPermutation` ont déménagé dans
@@ -378,20 +418,23 @@ export function feuilleBenevole(m: Magasin, ix: Index, benevoleId: Id): FeuilleB
   );
 
   const brutes = [...groupeIds].flatMap((groupeId) => {
-    const groupe = ix.groupe.get(groupeId)!;
+    const groupe = ix.groupe.get(groupeId);
+    if (!groupe) { return []; } // groupe orphelin : ignoré dans la feuille de route
+
     const coequipiers = placesDuGroupe(m, groupeId)
       .filter((p) => p.Benevole != null && p.Benevole !== benevoleId)
       .map((p) => ix.benevole.get(p.Benevole!)?.Nom)
       .filter((nom): nom is string => nom != null);
 
-    return positionsDuGroupe(m, ix, groupeId).map(({besoin, sousCreneau}) => {
-      const mission = ix.mission.get(besoin.Mission)!;
+    return positionsDuGroupe(m, ix, groupeId).flatMap(({besoin, sousCreneau}) => {
+      const mission = ix.mission.get(besoin.Mission);
+      if (!mission) { return []; } // mission orpheline : étape ignorée
       const lieu = ix.lieu.get(mission.Lieu);
-      return {
+      return [{
         sousCreneauId: sousCreneau.id, debut: sousCreneau.Debut, fin: sousCreneau.Fin,
         libelle: sousCreneau.Libelle, missionNom: mission.Nom, lieuNom: lieu?.Nom ?? '',
         groupeCode: groupe.Code, coequipiers,
-      };
+      }];
     });
   }).sort((a, b) => a.debut - b.debut);
 
@@ -446,16 +489,17 @@ export function indicatifsDeLEquipe(m: Magasin, ix: Index, equipeId: Id): Indica
         rang: p.Rang, nom: p.Benevole != null ? ix.benevole.get(p.Benevole)?.Nom ?? null : null,
       }));
 
-      const positions: PositionIndicatifEquipe[] = positionsDuGroupe(m, ix, groupe.id).map(
+      const positions: PositionIndicatifEquipe[] = positionsDuGroupe(m, ix, groupe.id).flatMap(
         ({besoin, sousCreneau}) => {
-          const mission = ix.mission.get(besoin.Mission)!;
+          const mission = ix.mission.get(besoin.Mission);
+          if (!mission) { return []; } // mission orpheline : position ignorée
           const lieu = ix.lieu.get(mission.Lieu);
-          return {
+          return [{
             besoinId: besoin.id, sousCreneauId: sousCreneau.id,
             debut: sousCreneau.Debut, fin: sousCreneau.Fin, libelle: sousCreneau.Libelle,
             missionNom: mission.Nom, lieuNom: lieu?.Nom ?? '',
             couverture: couvertureBesoin(m, ix, besoin.id),
-          };
+          }];
         },
       );
 

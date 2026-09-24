@@ -189,9 +189,22 @@ button {
   align-items: center;
   padding-block: 16px;
   gap: 4px;
-  position: sticky;
+  /* Fixe plutôt que sticky : avec `position: sticky`, tant que la page
+     (au-delà de `.rail`) est plus haute que l'écran, le rail ne se
+     détache de son ancrage qu'au tout dernier moment du défilement de la
+     page, révélant alors seulement ses entrées en trop-plein — donc
+     inatteignable avant le bas de page sur une vue longue (signalé par
+     Antoine, 2026-09-24). `position: fixed` le sort du flux : toujours à
+     la même place à l'écran, avec son propre défilement (overflow-y),
+     quel que soit le défilement de la page. `.main` compense la largeur
+     qu'il ne réserve plus dans le flux. */
+  position: fixed;
   top: 0;
+  left: 0;
   height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  z-index: 20;
 }
 
 .rail__brand {
@@ -280,6 +293,9 @@ button {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  /* .rail est en position fixed (sorti du flux) : la largeur qu'il ne
+     réserve plus doit être compensée ici pour ne pas passer dessous. */
+  margin-left: 84px;
 }
 
 .topbar {
@@ -1600,6 +1616,9 @@ table.grille .mission-cell .lieu {
     overflow-x: auto;
     padding: 8px 10px;
   }
+  /* .rail redevient un élément du flux (barre horizontale) ici : plus
+     besoin que `.main` lui réserve sa largeur en desktop. */
+  .main { margin-left: 0; }
   .rail__brand { display: none; }
   .rail__item { flex-direction: row; width: auto; padding: 8px 10px; }
   .rail__section {

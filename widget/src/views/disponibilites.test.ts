@@ -40,8 +40,13 @@ function modeleDeTest(): Modele {
     // pas sur le second (10h15–10h30) : sert à distinguer un quart avec/sans artiste.
     artistes: [{id: 1, Nom: 'Marée Haute', Lieu: 1, Debut: debut, Fin: debut + 900}],
     macroCreneaux: [{id: 1, Nom: 'Vendredi matin', Debut: debut, Fin: fin}],
+    // Alice ET Bob disponibles ce jour-là : la vue ne montre plus, depuis le
+    // 2026-09-24, que les bénévoles ayant une vraie disponibilité le jour
+    // affiché (hors mode édition) — sans ça, la plupart des tests de ce
+    // fichier devraient chacun fournir leur propre disponibilité pour rien.
     disponibilites: [
       {Benevole: 1, Quart_heure: debut, Statut: 'Disponible', Artiste: null},
+      {Benevole: 2, Quart_heure: debut, Statut: 'Disponible', Artiste: null},
     ],
   };
 }
@@ -94,6 +99,15 @@ describe('comportement d’origine (consultation), inchangé', () => {
     expect(container.textContent).toContain('Aucun macro-créneau');
   });
 
+  it("ne plante pas quand un bénévole porte une référence d'équipe orpheline (même défaut qu'Affectation, Jour J, Missions et Indicatifs, corrigé le 2026-09-24) : pastille neutre plutôt qu'une exception", () => {
+    const modele = modeleDeTest();
+    modele.benevoles[0]!.Equipe = 99; // Alice — aucune équipe 99 dans ce modèle
+    const m = new Magasin(modele);
+    expect(() => montrerDisponibilites(container, m)).not.toThrow();
+    expect(container.textContent).toContain('Alice');
+    expect(container.querySelector('.dot')).toHaveProperty('style.background', 'var(--text-faint)');
+  });
+
   it("sans sélection globale, affiche le premier jour (retombe sur `m.macroCreneauSelectionne` nul)", () => {
     const m = new Magasin(modeleDeTest());
     montrerDisponibilites(container, m);
@@ -105,6 +119,7 @@ describe('comportement d’origine (consultation), inchangé', () => {
     const debutSamedi = epochDepuisHeureLocale({...VENDREDI, jour: VENDREDI.jour + 1, heures: 10});
     const modele = modeleDeTest();
     modele.macroCreneaux.push({id: 2, Nom: 'Samedi matin', Debut: debutSamedi, Fin: debutSamedi + 1800});
+    modele.disponibilites.push({Benevole: 1, Quart_heure: debutSamedi, Statut: 'Disponible', Artiste: null});
     const m = new Magasin(modele);
     m.selectionnerMacroCreneau(2);
     montrerDisponibilites(container, m);
@@ -121,6 +136,7 @@ describe('comportement d’origine (consultation), inchangé', () => {
     const debutSamedi = epochDepuisHeureLocale({...VENDREDI, jour: VENDREDI.jour + 1, heures: 10});
     const modele = modeleDeTest();
     modele.macroCreneaux.push({id: 2, Nom: 'Samedi matin', Debut: debutSamedi, Fin: debutSamedi + 1800});
+    modele.disponibilites.push({Benevole: 1, Quart_heure: debutSamedi, Statut: 'Disponible', Artiste: null});
     const m = new Magasin(modele);
     montrerDisponibilites(container, m);
     expect(container.querySelector('th[title="Vendredi matin"]')).not.toBeNull();
@@ -150,6 +166,9 @@ describe('comportement d’origine (consultation), inchangé', () => {
     modele.benevoles.push({
       id: 3, Nom: 'Chloé', Contact: '', Equipe: 2, Competences: [],
       Quota_heures_min: 0, Quota_heures_max: 40, Statut: 'Actif', Notes: '',
+    });
+    modele.disponibilites.push({
+      Benevole: 3, Quart_heure: epochDepuisHeureLocale({...VENDREDI, heures: 10}), Statut: 'Disponible', Artiste: null,
     });
     const m = new Magasin(modele);
     montrerDisponibilites(container, m);
@@ -208,6 +227,51 @@ describe('comportement d’origine (consultation), inchangé', () => {
     const m = new Magasin(modeleDeTest());
     montrerDisponibilites(container, m);
     expect(container.textContent).toContain('2 bénévoles affichés');
+  });
+});
+
+describe('filtre par jour restreint aux bénévoles vraiment disponibles (nouveau, 2026-09-24)', () => {
+  it("cache, hors mode édition, un bénévole sans aucune disponibilité déclarée ce jour-là (retour d'Antoine : « on voit quand même tous les bénévoles »)", () => {
+    const modele = modeleDeTest();
+    modele.benevoles.push({
+      id: 3, Nom: 'Chloé', Contact: '', Equipe: 1, Competences: [],
+      Quota_heures_min: 0, Quota_heures_max: 40, Statut: 'Actif', Notes: '',
+    });
+    const m = new Magasin(modele);
+    montrerDisponibilites(container, m);
+    expect(container.textContent).toContain('Alice');
+    expect(container.textContent).toContain('Bob');
+    expect(container.textContent).not.toContain('Chloé');
+  });
+
+  it("un souhait « voir un artiste » seul ne suffit pas à compter comme disponible (même prédicat que le roster Affectation)", () => {
+    const modele = modeleDeTest();
+    const debut = epochDepuisHeureLocale({...VENDREDI, heures: 10});
+    modele.benevoles.push({
+      id: 3, Nom: 'Chloé', Contact: '', Equipe: 1, Competences: [],
+      Quota_heures_min: 0, Quota_heures_max: 40, Statut: 'Actif', Notes: '',
+    });
+    modele.disponibilites.push({Benevole: 3, Quart_heure: debut, Statut: 'Artiste', Artiste: 1});
+    const m = new Magasin(modele);
+    montrerDisponibilites(container, m);
+    expect(container.textContent).not.toContain('Chloé');
+  });
+
+  it('en mode édition, le bénévole sans disponibilité ce jour-là reste visible (pour pouvoir la saisir)', () => {
+    const modele = modeleDeTest();
+    modele.benevoles.push({
+      id: 3, Nom: 'Chloé', Contact: '', Equipe: 1, Competences: [],
+      Quota_heures_min: 0, Quota_heures_max: 40, Statut: 'Actif', Notes: '',
+    });
+    const m = new Magasin(modele);
+    montrerDisponibilites(container, m);
+    expect(container.textContent).not.toContain('Chloé');
+
+    const case_ = container.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    case_.checked = true;
+    case_.dispatchEvent(new Event('change'));
+
+    expect(container.textContent).toContain('Chloé');
   });
 });
 

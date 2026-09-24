@@ -14,7 +14,7 @@
 import {describe, expect, it} from 'vitest';
 import type {Modele} from '../domain/types';
 import {TYPE_BENEVOLE_DRAG} from '../logic/dnd-types';
-import {Magasin} from '../store';
+import {type EcritureGrist, Magasin} from '../store';
 import {epochDepuisHeureLocale} from '../temps';
 import {montrerAffectation} from './affectation';
 
@@ -157,8 +157,206 @@ function construireModeleDeuxJours(): Modele {
   };
 }
 
+function construireModeleTroisIndicatifs(): Modele {
+  return {
+    equipes: [{id: 1, Nom: 'Bar', Couleur: '#c00', Referent: null, Notes: ''}],
+    lieux: [],
+    benevoles: [
+      {id: 1, Nom: 'Alix', Contact: '', Equipe: 1, Competences: [], Quota_heures_min: 0, Quota_heures_max: 40, Statut: 'Actif', Notes: ''},
+      {id: 2, Nom: 'Bao', Contact: '', Equipe: 1, Competences: [], Quota_heures_min: 0, Quota_heures_max: 40, Statut: 'Actif', Notes: ''},
+    ],
+    missions: [
+      {id: 1, Nom: 'Accueil', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []},
+      {id: 2, Nom: 'Bar', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []},
+      {id: 3, Nom: 'Entrée', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []},
+    ],
+    artistes: [],
+    macroCreneaux: [{id: 1, Nom: 'Samedi', Debut: 0, Fin: 900}],
+    sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: 'Cible', Debut: 0, Fin: 900}],
+    besoins: [
+      {id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 1, Taille_groupe: 1},
+      {id: 2, Mission: 2, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 1, Taille_groupe: 1},
+      {id: 3, Mission: 3, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 1, Taille_groupe: 1},
+    ],
+    groupes: [
+      {id: 1, Code: 'ACC1', Taille: 1, Equipe: 1, Notes: ''},
+      {id: 2, Code: 'BAR1', Taille: 1, Equipe: 1, Notes: ''},
+      {id: 3, Code: 'ENT1', Taille: 1, Equipe: 1, Notes: ''},
+    ],
+    positionsGroupe: [{id: 1, Groupe: 1, Besoin: 1}, {id: 2, Groupe: 2, Besoin: 2}, {id: 3, Groupe: 3, Besoin: 3}],
+    places: [
+      {id: 1, Groupe: 1, Rang: 1, Benevole: 1, Origine: 'Manuel', Verrouillee: false, Score: 0}, // Alix sur ACC1
+      {id: 2, Groupe: 2, Rang: 1, Benevole: 2, Origine: 'Manuel', Verrouillee: false, Score: 0}, // Bao sur BAR1 (complet)
+      {id: 3, Groupe: 3, Rang: 1, Benevole: null, Origine: 'Algorithme', Verrouillee: false, Score: 0}, // ENT1 ouvert
+    ],
+    disponibilites: [
+      {Benevole: 1, Quart_heure: 0, Statut: 'Disponible', Artiste: null},
+      {Benevole: 2, Quart_heure: 0, Statut: 'Disponible', Artiste: null},
+    ],
+    souhaitsMissions: [],
+    affinites: [],
+  };
+}
+
+describe('montrerAffectation — colonne indicatif du roster (2026-09-24 5h02, en plus du point 4)', () => {
+  function selectAlix(container: HTMLElement): HTMLSelectElement {
+    const carte = Array.from(container.querySelectorAll('.roster-card')).find((c) => c.textContent?.includes('Alix'))!;
+    return carte.querySelector('select') as HTMLSelectElement;
+  }
+
+  it('liste Aucun puis les indicatifs du jour par ordre alphabétique, indicatif courant présélectionné', () => {
+    const m = new Magasin(construireModeleTroisIndicatifs());
+    const container = document.createElement('div');
+    montrerAffectation(container, m);
+
+    const select = selectAlix(container);
+    const options = Array.from(select.options).map((o) => o.textContent);
+    // Juste le code, jamais la mission (régression visuelle du 2026-09-24 :
+    // un indicatif tourne d'une mission à l'autre au fil de la soirée).
+    expect(options).toEqual(['Aucun', 'ACC1', 'BAR1', 'ENT1']);
+    expect(select.value).toBe('1'); // ACC1, l'indicatif actuel d'Alix
+  });
+
+  it('« Aucun » désaffecte et déverrouille (même comportement que le bouton Désaffecter)', async () => {
+    const m = new Magasin(construireModeleTroisIndicatifs());
+    const container = document.createElement('div');
+    montrerAffectation(container, m);
+
+    const select = selectAlix(container);
+    select.value = '';
+    select.dispatchEvent(new Event('change'));
+    await tick();
+
+    const placeAcc1 = m.places.find((p) => p.id === 1);
+    expect(placeAcc1?.Benevole).toBeNull();
+    expect(placeAcc1?.Verrouillee).toBe(false);
+  });
+
+  it('un indicatif complet refuse avec un message clair, sans évincer son occupant', async () => {
+    const m = new Magasin(construireModeleTroisIndicatifs());
+    const container = document.createElement('div');
+    montrerAffectation(container, m);
+
+    const select = selectAlix(container);
+    select.value = '2'; // BAR1, déjà pris par Bao
+    select.dispatchEvent(new Event('change'));
+    await tick();
+
+    expect(container.textContent).toContain('Indicatif complet');
+    expect(m.places.find((p) => p.id === 1)?.Benevole).toBe(1); // Alix toujours sur ACC1
+    expect(m.places.find((p) => p.id === 2)?.Benevole).toBe(2); // Bao pas évincée
+  });
+
+  it('un indicatif ouvert réaffecte : libère et déverrouille l\'ancienne place, occupe la nouvelle', async () => {
+    const m = new Magasin(construireModeleTroisIndicatifs());
+    const container = document.createElement('div');
+    montrerAffectation(container, m);
+
+    const select = selectAlix(container);
+    select.value = '3'; // ENT1, ouvert
+    select.dispatchEvent(new Event('change'));
+    await tick();
+
+    const placeAcc1 = m.places.find((p) => p.id === 1);
+    const placeEnt1 = m.places.find((p) => p.id === 3);
+    expect(placeAcc1?.Benevole).toBeNull();
+    expect(placeAcc1?.Verrouillee).toBe(false);
+    expect(placeEnt1?.Benevole).toBe(1);
+  });
+
+  it(
+    "un indicatif dont la place vide est verrouillée (déjà vidée à la main plus tôt) reste choisissable, " +
+    "pas « complet » (bug bloquant confirmé le 2026-09-24 6h42 sur une vraie instance : la recherche de " +
+    "placeCible excluait aussi les places vides verrouillées, donc le geste s'arrêtait sans même tenter " +
+    "d'écrire, sans message compréhensible)",
+    async () => {
+      const modele = construireModeleTroisIndicatifs();
+      modele.places = modele.places.map((p) => (p.id === 3 ? {...p, Verrouillee: true} : p));
+      const m = new Magasin(modele);
+      const container = document.createElement('div');
+      montrerAffectation(container, m);
+
+      const select = selectAlix(container);
+      select.value = '3'; // ENT1, vide mais verrouillée
+      select.dispatchEvent(new Event('change'));
+      await tick();
+
+      expect(container.textContent).not.toContain('Indicatif complet');
+      const placeAcc1 = m.places.find((p) => p.id === 1);
+      const placeEnt1 = m.places.find((p) => p.id === 3);
+      expect(placeAcc1?.Benevole).toBeNull();
+      expect(placeEnt1?.Benevole).toBe(1);
+      expect(placeEnt1?.Verrouillee).toBe(true); // reste verrouillée (origine Manuel)
+    },
+  );
+
+  it(
+    'une exception inattendue pendant le geste affiche un message clair plutôt que de se terminer en ' +
+    "silence (filet ajouté le 2026-09-24 6h56 : Antoine toujours bloqué après deux correctifs, aucune " +
+    "branche connue ne suffisait à expliquer ce qu'il voyait)",
+    async () => {
+      const m = new Magasin(construireModeleTroisIndicatifs());
+      const echec = 'panne réseau simulée'; // valeur non-Error, pour couvrir le repli String(erreur)
+      m.assignerPlace = () => { throw echec; };
+      const container = document.createElement('div');
+      montrerAffectation(container, m);
+
+      const select = selectAlix(container);
+      select.value = '3'; // ENT1, ouvert
+      select.dispatchEvent(new Event('change'));
+      await tick();
+
+      expect(container.textContent).toContain('Erreur inattendue');
+      expect(container.textContent).toContain(echec);
+      // La carte doit rester interactive (pas de rendu figé) : un
+      // rafraîchissement a bien eu lieu malgré l'exception.
+      expect(container.querySelector('.roster-card__indicatif')).not.toBeNull();
+    },
+  );
+
+  it(
+    "si l'écriture Grist de la nouvelle place échoue, l'ancienne reste intacte plutôt que de finir sur Aucun " +
+    '(bug bloquant signalé par Antoine le 2026-09-24 5h52 : « je change l\'indicatif, ça remet à Aucun, ça ne ' +
+    "prend pas en compte » — l'ancienne place était libérée AVANT que la nouvelle ne soit confirmée)",
+    async () => {
+      const m = new Magasin(construireModeleTroisIndicatifs());
+      let echecEcriture = true;
+      const ecriture: EcritureGrist = {
+        creerEquipe: async () => 1, creerMission: async () => 1, creerMacroCreneau: async () => 1,
+        modifierMacroCreneau: async () => {}, supprimerMacroCreneau: async () => {}, creerArtiste: async () => 1,
+        modifierArtiste: async () => {}, remplacerSousCreneaux: async () => [], modifierSousCreneaux: async () => {},
+        repointerBesoins: async () => {}, creerBesoin: async () => 1, creerGroupe: async () => 1,
+        positionnerGroupe: async () => {}, definirPlaces: async () => {}, deplacerPosition: async () => {},
+        ajouterPosition: async () => 1,
+        modifierPlaces: async () => { if (echecEcriture) { throw new Error('document indisponible'); } },
+        supprimerPosition: async () => {}, definirAbsence: async () => {}, valeursColonneBrute: async () => new Map(),
+        colonnesTable: async () => [], tablesDocument: async () => [], definirParametre: async () => {},
+        remplacerDisponibilites: async () => {}, peuplerBenevoles: async () => ({benevoles: [], crees: 0, actualises: 0}),
+        creerAffinites: async () => [],
+      };
+      m.brancherEcriture(ecriture);
+      const container = document.createElement('div');
+      montrerAffectation(container, m);
+
+      const select = selectAlix(container);
+      select.value = '3'; // ENT1, ouvert
+      select.dispatchEvent(new Event('change'));
+      await tick();
+      await tick();
+
+      const placeAcc1 = m.places.find((p) => p.id === 1);
+      const placeEnt1 = m.places.find((p) => p.id === 3);
+      expect(placeAcc1?.Benevole).toBe(1); // Alix reste sur ACC1, jamais sans indicatif
+      expect(placeEnt1?.Benevole).toBeNull();
+      expect(container.textContent).toContain("Échec de l'écriture dans le document Grist connecté");
+
+      echecEcriture = false;
+    },
+  );
+});
+
 describe('montrerAffectation — point 4 de la nuit (2026-09-24, 4h34) : voir/désaffecter depuis le roster', () => {
-  it("affiche la mission du jour d'un bénévole affecté quand on clique sur sa carte, et le désaffecte au clic sur « Désaffecter »", async () => {
+  it("ne montre plus de bandeau au clic sur une carte affectée (retiré le 2026-09-24 5h28, redondant et trompeur — voir la colonne indicatif)", async () => {
     const modele = construireModeleUnBesoin();
     modele.places = [{...modele.places[0]!, Benevole: 1, Origine: 'Manuel'}];
     const m = new Magasin(modele);
@@ -169,10 +367,20 @@ describe('montrerAffectation — point 4 de la nuit (2026-09-24, 4h34) : voir/d�
     roster.click();
     await tick();
 
-    expect(container.textContent).toContain('Affecté(e) : Accueil — ACC1');
+    expect(container.textContent).not.toContain('Affecté(e)');
+    expect(container.querySelector('.roster-card__detail')).toBeNull();
+  });
 
-    const bouton = Array.from(container.querySelectorAll('button')).find((b) => b.textContent === 'Désaffecter') as HTMLButtonElement;
-    bouton.click();
+  it('désaffecte et déverrouille via « Aucun » dans le menu déroulant (le bandeau ne le fait plus)', async () => {
+    const modele = construireModeleUnBesoin();
+    modele.places = [{...modele.places[0]!, Benevole: 1, Origine: 'Manuel'}];
+    const m = new Magasin(modele);
+    const container = document.createElement('div');
+    montrerAffectation(container, m);
+
+    const select = container.querySelector('.roster-card__indicatif') as HTMLSelectElement;
+    select.value = '';
+    select.dispatchEvent(new Event('change'));
     await tick();
 
     const place = m.places.find((p) => p.id === 1);

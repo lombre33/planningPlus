@@ -179,85 +179,226 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
     );
   }
 
+  // Filet du 2026-09-24 6h56 (Antoine bloqué depuis 6h34, demandé par le
+  // coordinateur) : `deposerBenevoleSurPlace`, `deposerPlaceSurPlace` et
+  // `viderPlace` sont toutes appelées depuis un gestionnaire d'événement
+  // DOM sans `await` ni `.catch()` (un dépôt glisser-déposer ne peut pas
+  // attendre) — jusqu'ici, une exception inattendue n'importe où dans leur
+  // chemin (par ex. `apercuAffectation`, qui traverse tout le modèle)
+  // devenait une promesse rejetée MUETTE : rien à l'écran, rien écrit,
+  // aucune piste. Chacune tourne maintenant dans un try/catch/finally qui
+  // garantit un message ET un rafraîchissement sur toute issue.
   async function deposerBenevoleSurPlace(benevoleId: Id, placeId: Id): Promise<void> {
-    const verdict = verifierDepot(m, benevoleId, placeId);
-    if (!verdict.ok) { dernierMessage = {texte: verdict.motif, ton: 'danger'}; rafraichir(); return; }
-    const diff = apercuAffectation(m, placeId, benevoleId);
-    const groupeId = m.places.find((p) => p.id === placeId)?.Groupe;
-    const resultat = await m.assignerPlace(placeId, benevoleId, 'Manuel');
-    if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; rafraichir(); return; }
-    if (groupeId != null) { besoinsIdsGardesVisibles = new Set(besoinIdsDuGroupe(groupeId)); }
-    const nom = indexer(m).benevole.get(benevoleId)?.Nom ?? 'Bénévole';
-    dernierMessage = messageDepuisDiff(`${nom} affecté(e).`, diff);
-    rafraichir();
+    try {
+      const verdict = verifierDepot(m, benevoleId, placeId);
+      if (!verdict.ok) { dernierMessage = {texte: verdict.motif, ton: 'danger'}; return; }
+      const diff = apercuAffectation(m, placeId, benevoleId);
+      const groupeId = m.places.find((p) => p.id === placeId)?.Groupe;
+      const resultat = await m.assignerPlace(placeId, benevoleId, 'Manuel');
+      if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; return; }
+      if (groupeId != null) { besoinsIdsGardesVisibles = new Set(besoinIdsDuGroupe(groupeId)); }
+      const nom = indexer(m).benevole.get(benevoleId)?.Nom ?? 'Bénévole';
+      dernierMessage = messageDepuisDiff(`${nom} affecté(e).`, diff);
+    } catch (erreur) {
+      dernierMessage = {
+        texte: `Erreur inattendue en affectant : ${erreur instanceof Error ? erreur.message : String(erreur)}`,
+        ton: 'danger',
+      };
+    } finally {
+      rafraichir();
+    }
   }
 
   async function deposerPlaceSurPlace(placeSourceId: Id, placeCibleId: Id): Promise<void> {
-    const source = m.places.find((p) => p.id === placeSourceId);
-    const cible = m.places.find((p) => p.id === placeCibleId);
-    if (!source || !cible || source.Benevole == null) { return; }
-    if (source.Verrouillee || cible.Verrouillee) {
-      dernierMessage = {texte: 'Place verrouillée : déverrouillez-la avant de la modifier.', ton: 'danger'};
-      rafraichir();
-      return;
-    }
-    if (source.Benevole != null) {
-      const verdict = verifierDepot(m, source.Benevole, placeCibleId, [placeSourceId]);
-      if (!verdict.ok) { dernierMessage = {texte: verdict.motif, ton: 'danger'}; rafraichir(); return; }
-    }
-    if (cible.Benevole != null) {
-      const verdict = verifierDepot(m, cible.Benevole, placeSourceId, [placeCibleId]);
-      if (!verdict.ok) { dernierMessage = {texte: verdict.motif, ton: 'danger'}; rafraichir(); return; }
-    }
+    try {
+      const source = m.places.find((p) => p.id === placeSourceId);
+      const cible = m.places.find((p) => p.id === placeCibleId);
+      if (!source || !cible || source.Benevole == null) { return; }
+      if (source.Verrouillee || cible.Verrouillee) {
+        dernierMessage = {texte: 'Place verrouillée : déverrouillez-la avant de la modifier.', ton: 'danger'};
+        return;
+      }
+      if (source.Benevole != null) {
+        const verdict = verifierDepot(m, source.Benevole, placeCibleId, [placeSourceId]);
+        if (!verdict.ok) { dernierMessage = {texte: verdict.motif, ton: 'danger'}; return; }
+      }
+      if (cible.Benevole != null) {
+        const verdict = verifierDepot(m, cible.Benevole, placeSourceId, [placeCibleId]);
+        if (!verdict.ok) { dernierMessage = {texte: verdict.motif, ton: 'danger'}; return; }
+      }
 
-    const diff = apercuEchange(m, placeSourceId, placeCibleId);
-    const benevoleSource = source.Benevole;
-    const benevoleCible = cible.Benevole;
-    const resultat1 = await m.assignerPlace(placeSourceId, benevoleCible, 'Manuel');
-    if (!resultat1.ok) { dernierMessage = {texte: resultat1.raison, ton: 'danger'}; rafraichir(); return; }
-    const resultat2 = await m.assignerPlace(placeCibleId, benevoleSource, 'Manuel');
-    if (!resultat2.ok) { dernierMessage = {texte: resultat2.raison, ton: 'danger'}; rafraichir(); return; }
-    besoinsIdsGardesVisibles = new Set([...besoinIdsDuGroupe(source.Groupe), ...besoinIdsDuGroupe(cible.Groupe)]);
-    dernierMessage = messageDepuisDiff(benevoleCible != null ? 'Échange effectué.' : 'Déplacé.', diff);
-    rafraichir();
+      const diff = apercuEchange(m, placeSourceId, placeCibleId);
+      const benevoleSource = source.Benevole;
+      const benevoleCible = cible.Benevole;
+      const resultat1 = await m.assignerPlace(placeSourceId, benevoleCible, 'Manuel');
+      if (!resultat1.ok) { dernierMessage = {texte: resultat1.raison, ton: 'danger'}; return; }
+      const resultat2 = await m.assignerPlace(placeCibleId, benevoleSource, 'Manuel');
+      if (!resultat2.ok) { dernierMessage = {texte: resultat2.raison, ton: 'danger'}; return; }
+      besoinsIdsGardesVisibles = new Set([...besoinIdsDuGroupe(source.Groupe), ...besoinIdsDuGroupe(cible.Groupe)]);
+      dernierMessage = messageDepuisDiff(benevoleCible != null ? 'Échange effectué.' : 'Déplacé.', diff);
+    } catch (erreur) {
+      dernierMessage = {
+        texte: `Erreur inattendue en échangeant : ${erreur instanceof Error ? erreur.message : String(erreur)}`,
+        ton: 'danger',
+      };
+    } finally {
+      rafraichir();
+    }
   }
 
   async function viderPlace(place: Place): Promise<void> {
-    if (place.Verrouillee) {
-      dernierMessage = {texte: 'Place verrouillée : déverrouillez-la avant de la modifier.', ton: 'danger'};
+    try {
+      if (place.Verrouillee) {
+        dernierMessage = {texte: 'Place verrouillée : déverrouillez-la avant de la modifier.', ton: 'danger'};
+        return;
+      }
+      const diff = apercuAffectation(m, place.id, null);
+      const resultat = await m.assignerPlace(place.id, null);
+      if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; return; }
+      dernierMessage = messageDepuisDiff('Place vidée.', diff);
+    } catch (erreur) {
+      dernierMessage = {
+        texte: `Erreur inattendue en vidant la place : ${erreur instanceof Error ? erreur.message : String(erreur)}`,
+        ton: 'danger',
+      };
+    } finally {
       rafraichir();
-      return;
     }
-    const diff = apercuAffectation(m, place.id, null);
-    const resultat = await m.assignerPlace(place.id, null);
-    if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; rafraichir(); return; }
-    dernierMessage = messageDepuisDiff('Place vidée.', diff);
-    rafraichir();
   }
 
   /**
-   * Désaffecter depuis le roster (point 4 de la nuit, 2026-09-24) : à la
-   * différence de `viderPlace` (le « vider » du tableau, qui verrouille
-   * volontairement une place laissée vide à la main — un choix voulu, voir
-   * `corrigerPlace` dans le moteur), ce geste vise à libérer le bénévole
-   * pour le réaffecter « facilement » ailleurs (mot d'Antoine). La place ne
-   * doit donc pas rester verrouillée-vide : ni un glisser-déposer, ni un
-   * nouveau lancement de l'algorithme ne pourraient plus jamais la
-   * reprendre — même piège que celui qu'évite déjà `executerReinitialisation`
-   * en déverrouillant, signalé par le coordinateur avant que ça atterrisse.
+   * Vide une place puis la déverrouille aussitôt — à la différence de
+   * `viderPlace` (le « vider » du tableau, qui verrouille volontairement une
+   * place laissée vide à la main, un choix voulu, voir `corrigerPlace` dans
+   * le moteur), tout geste du roster (point 4 de la nuit, 2026-09-24 : voir/
+   * désaffecter/réaffecter) vise à libérer le bénévole pour le réaffecter
+   * « facilement » ailleurs (mot d'Antoine). La place ne doit donc jamais
+   * rester verrouillée-vide : ni un glisser-déposer, ni un nouveau lancement
+   * de l'algorithme ne pourraient plus la reprendre — même piège que celui
+   * qu'évite déjà `executerReinitialisation` en déverrouillant, signalé par
+   * le coordinateur avant que ça atterrisse. Une seule fonction pour ce
+   * comportement : `desaffecterDepuisRoster` et `changerIndicatifDepuisRoster`
+   * (choix « Aucun » du dropdown) s'appuient toutes les deux dessus plutôt
+   * que de le répéter chacune à sa façon.
    */
-  async function desaffecterDepuisRoster(place: Place): Promise<void> {
-    if (place.Verrouillee) {
-      dernierMessage = {texte: 'Place verrouillée : déverrouillez-la avant de la modifier.', ton: 'danger'};
-      rafraichir();
-      return;
-    }
-    const diff = apercuAffectation(m, place.id, null);
+  async function libererPlaceEtDeverrouiller(place: Place): Promise<{ok: true} | {ok: false; raison: string}> {
     const resultat = await m.assignerPlace(place.id, null);
-    if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; rafraichir(); return; }
-    await m.basculerVerrouillage(place.id);
-    dernierMessage = messageDepuisDiff('Désaffecté(e), place libre pour un glisser-déposer ou un nouveau lancement.', diff);
-    rafraichir();
+    if (!resultat.ok) { return resultat; }
+    return m.basculerVerrouillage(place.id);
+  }
+
+  async function desaffecterDepuisRoster(place: Place): Promise<void> {
+    try {
+      if (place.Verrouillee) {
+        dernierMessage = {texte: 'Place verrouillée : déverrouillez-la avant de la modifier.', ton: 'danger'};
+        return;
+      }
+      const diff = apercuAffectation(m, place.id, null);
+      const resultat = await libererPlaceEtDeverrouiller(place);
+      if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; return; }
+      dernierMessage = messageDepuisDiff('Désaffecté(e), place libre pour un glisser-déposer ou un nouveau lancement.', diff);
+    } catch (erreur) {
+      // Filet du 2026-09-24 6h56 (demandé par le coordinateur, Antoine
+      // toujours bloqué après deux correctifs) : sans ça, une exception
+      // inattendue ici (donnée manuelle qui ne respecte pas la forme que le
+      // code suppose, par exemple) interrompait le geste EN SILENCE — rien
+      // à l'écran, rien écrit, aucune piste. Voir le même filet sur
+      // `changerIndicatifDepuisRoster` juste en dessous.
+      dernierMessage = {
+        texte: `Erreur inattendue en désaffectant : ${erreur instanceof Error ? erreur.message : String(erreur)}`,
+        ton: 'danger',
+      };
+    } finally {
+      rafraichir();
+    }
+  }
+
+  /**
+   * Colonne indicatif du roster, demandée par Antoine en plus du point 4
+   * (2026-09-24 5h02) : choisir « Aucun » désaffecte (même chemin que
+   * `desaffecterDepuisRoster` ci-dessus, un seul comportement pour les
+   * deux — demandé explicitement par le coordinateur) ; choisir un autre
+   * indicatif du jour affiché y cherche une place encore ouverte (vide, non
+   * verrouillée). Un indicatif déjà complet reste dans la liste (pour rester
+   * visible) mais refuse avec un message clair plutôt qu'échouer en
+   * silence ou évincer quelqu'un d'autre à sa place.
+   *
+   * Bug bloquant corrigé le 2026-09-24 (5h52, signalé par Antoine : « je
+   * change l'indicatif, ça remet à Aucun, ça ne prend pas en compte ») :
+   * l'ancienne place était libérée AVANT que la nouvelle ne soit assignée.
+   * Si l'écriture Grist de la nouvelle affectation échouait (l'ancienne,
+   * elle, ayant réussi), le bénévole se retrouvait sans aucune place —
+   * exactement le symptôme observé — malgré un message d'erreur affiché.
+   * On assigne maintenant la nouvelle place D'ABORD ; l'ancienne n'est
+   * libérée qu'une fois la nouvelle confirmée, donc un échec laisse le
+   * bénévole sur son affectation de départ plutôt que sans aucune.
+   *
+   * Filet du 2026-09-24 6h56 (Antoine toujours bloqué après deux
+   * correctifs, demandé par le coordinateur) : toute la fonction tourne
+   * maintenant dans un try/catch qui garantit un message ET un
+   * rafraîchissement sur CHAQUE issue, y compris une exception qu'aucune
+   * branche ci-dessous ne prévoyait explicitement — jusqu'ici, une telle
+   * exception interrompait le geste sans rien montrer à l'écran ni rien
+   * écrire, un vrai échec devenant indiscernable d'un geste qui n'aurait
+   * simplement rien eu à faire.
+   */
+  async function changerIndicatifDepuisRoster(
+    benevole: Benevole, placeActuelle: Place | undefined, nouveauGroupeId: Id | null,
+  ): Promise<void> {
+    try {
+      if (placeActuelle?.Verrouillee) {
+        dernierMessage = {texte: 'Place verrouillée : déverrouillez-la avant de la modifier.', ton: 'danger'};
+        return;
+      }
+      if (nouveauGroupeId == null) {
+        if (placeActuelle) { await desaffecterDepuisRoster(placeActuelle); }
+        return;
+      }
+      // Une place vide reste candidate même verrouillée : le verrou protège
+      // un occupant (`Benevole == null` l'exclut déjà) contre une éviction
+      // silencieuse, pas une place vide contre CE geste-ci — choisir un
+      // indicatif dans ce menu déroulant EST la correction manuelle que le
+      // verrou existe pour laisser passer (`assignerPlace` la reverrouille
+      // de toute façon, origine Manuel). Exclure aussi les places vides
+      // verrouillées bloquait tout indicatif déjà touché à la main cette
+      // nuit — sans aucun message d'erreur visible, puisque le geste
+      // s'arrêtait avant même de tenter une écriture (bug bloquant
+      // confirmé le 2026-09-24 6h42 sur une vraie instance : l'écriture
+      // qui part persiste bien, celle-ci ne partait jamais).
+      const placeCible = m.places.find((p) => p.Groupe === nouveauGroupeId && p.Benevole == null);
+      if (!placeCible) {
+        // Message plus précis (2026-09-24 7h05) : le nombre de places
+        // réellement trouvées pour ce groupe, pour distinguer un vrai
+        // complet d'un décompte inattendu plutôt qu'un « complet » générique.
+        const placesDeCeGroupe = m.places.filter((p) => p.Groupe === nouveauGroupeId);
+        dernierMessage = {
+          texte: `Indicatif complet (${placesDeCeGroupe.length} place${placesDeCeGroupe.length > 1 ? 's' : ''}, toutes occupées ou verrouillées) : libérez-y une place avant de le choisir.`,
+          ton: 'danger',
+        };
+        return;
+      }
+      const diff = apercuAffectation(m, placeCible.id, benevole.id);
+      const resultat = await m.assignerPlace(placeCible.id, benevole.id);
+      if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; return; }
+      if (placeActuelle) {
+        const resultatLiberation = await libererPlaceEtDeverrouiller(placeActuelle);
+        if (!resultatLiberation.ok) {
+          dernierMessage = {
+            texte: `Réaffecté(e), mais l'ancienne place n'a pas pu être libérée : ${resultatLiberation.raison}`,
+            ton: 'danger',
+          };
+          return;
+        }
+      }
+      dernierMessage = messageDepuisDiff(`${benevole.Nom} réaffecté(e).`, diff);
+    } catch (erreur) {
+      dernierMessage = {
+        texte: `Erreur inattendue en changeant l'indicatif : ${erreur instanceof Error ? erreur.message : String(erreur)}`,
+        ton: 'danger',
+      };
+    } finally {
+      rafraichir();
+    }
   }
 
   function accepteDepot(e: DragEvent): boolean {
@@ -448,7 +589,7 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
 
   function rosterCard(
     ix: Index, benevole: Benevole, placeCeJour: {place: Place; libelle: string} | undefined,
-    groupeIdsOuvertsCeJour: readonly Id[],
+    groupeIdsOuvertsCeJour: readonly Id[], groupesDuJourTries: readonly {id: Id; code: string}[],
   ): Node {
     // `ix.equipe.get(...)` peut renvoyer `undefined` si l'équipe du bénévole
     // ne correspond plus à aucune équipe existante (référence orpheline,
@@ -463,7 +604,9 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
       class: `roster-card${actif ? '' : ' roster-card--absent'}`,
       draggable: actif ? 'true' : 'false',
       title: actif
-        ? "Glissez sur une place pour affecter, cliquez pour voir son affectation du jour"
+        ? (placeCeJour
+          ? 'Glissez sur une place, ou changez son indicatif à droite pour le réaffecter'
+          : "Glissez sur une place pour affecter, cliquez pour voir pourquoi il n'est pas affecté")
         : 'Absent : non affectable',
       onclick: () => basculerRosterOuvert(benevole.id),
       ondragstart: actif ? (e: Event) => {
@@ -472,29 +615,62 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
         if (dt) { dt.effectAllowed = 'move'; }
       } : undefined,
     },
-      h('span', {class: 'dot', style: {background: equipe?.Couleur ?? 'var(--text-faint)'}}),
-      h('span', {class: 'roster-card__nom'}, benevole.Nom),
-      h('span', {class: 'roster-card__meta mono'}, `${formatHeures(heures)}/${benevole.Quota_heures_max} h`),
+      h('span', {class: 'dot', style: {background: equipe?.Couleur ?? 'var(--text-faint)', flexShrink: '0'}}),
+      // `minWidth: '0'` indispensable sur un enfant flex à côté d'un
+      // `<select>` : sans lui, le nom peut se faire écraser à rien plutôt
+      // que de laisser le sélecteur prendre sa vraie taille (piège déjà
+      // rencontré sur Indicatifs, voir la mémoire de ce fil-là — régression
+      // visuelle signalée par Antoine le 2026-09-24 avant ce correctif).
+      h('span', {
+        class: 'roster-card__nom',
+        style: {flex: '1 1 auto', minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'},
+      }, benevole.Nom),
+      h('span', {class: 'roster-card__meta mono', style: {flexShrink: '0'}}, `${formatHeures(heures)}/${benevole.Quota_heures_max} h`),
+      // Colonne indicatif (demande d'Antoine, 2026-09-24 5h02, en plus du
+      // clic-pour-voir ci-dessus) : « Aucun » en tête, puis les indicatifs
+      // du jour affiché par ordre alphabétique — stopPropagation partout
+      // pour ne pas aussi basculer le panneau du clic sur la carte, et sur
+      // mousedown en plus de click : une carte `draggable` peut sinon voler
+      // l'interaction avant qu'un <select> imbriqué ne la reçoive. Largeur
+      // fixe et étroite (le code fait 2-3 caractères) : jamais dépendante
+      // du contenu, sans quoi le sélecteur peut redevenir large et écraser
+      // le nom si une option plus longue s'y glisse un jour.
+      h('select', {
+        class: 'roster-card__indicatif',
+        title: 'Changer son indicatif du jour affiché',
+        style: {flexShrink: '0', width: '56px', fontSize: '12px'},
+        onclick: (e: Event) => e.stopPropagation(),
+        onmousedown: (e: Event) => e.stopPropagation(),
+        onchange: (e: Event) => {
+          const valeur = (e.target as HTMLSelectElement).value;
+          void changerIndicatifDepuisRoster(benevole, placeCeJour?.place, valeur === '' ? null : Number(valeur));
+        },
+      },
+        h('option', {value: '', selected: placeCeJour == null}, 'Aucun'),
+        ...groupesDuJourTries.map((g) => h('option', {
+          value: String(g.id), selected: placeCeJour?.place.Groupe === g.id,
+        }, g.code)),
+      ),
     );
-    if (!ouvert) { return carte; }
+    // Un bénévole affecté n'ouvre plus de bandeau : sa mission tournant
+    // d'un besoin à l'autre au fil de la soirée, en montrer une seule était
+    // trompeur (déjà corrigé une fois pour le dropdown, même défaut ici) et
+    // redondant avec la colonne indicatif — signalé par Antoine, 2026-09-24
+    // 5h28 : « on s'en fiche, à retirer proprement ». Désaffecter reste
+    // possible, via « Aucun » dans le menu déroulant ci-dessus
+    // (`changerIndicatifDepuisRoster`, qui appelle `desaffecterDepuisRoster`
+    // pour ce cas). Le panneau « pourquoi il n'est pas affecté » (point 1)
+    // n'est pas concerné, il reste.
+    if (!ouvert || placeCeJour) { return carte; }
 
     return h('div', {class: 'roster-card-wrap', style: {display: 'flex', flexDirection: 'column'}},
       carte,
       h('div', {
         class: 'roster-card__detail',
-        style: {
-          padding: '6px 10px', fontSize: '13px', display: 'flex', alignItems: 'center',
-          justifyContent: 'space-between', gap: '8px', background: 'var(--bg-subtle, #f4f4f5)', borderRadius: '4px',
-        },
+        style: {padding: '6px 10px', fontSize: '13px', background: 'var(--bg-subtle, #f4f4f5)', borderRadius: '4px'},
       },
-        placeCeJour
-          ? h('span', null, `Affecté(e) : ${placeCeJour.libelle}`)
-          : h('span', {class: 'view__intro', style: {margin: '0'}},
-            `Non affecté(e) aujourd'hui — ${raisonsNonAffecte(m, benevole.id, groupeIdsOuvertsCeJour).join(' ; ')}.`),
-        placeCeJour ? h('button', {
-          class: 'btn btn--sm btn--ghost', type: 'button',
-          onclick: (e: Event) => { e.stopPropagation(); void desaffecterDepuisRoster(placeCeJour.place); },
-        }, 'Désaffecter') : null,
+        h('span', {class: 'view__intro', style: {margin: '0'}},
+          `Non affecté(e) aujourd'hui — ${raisonsNonAffecte(m, benevole.id, groupeIdsOuvertsCeJour).join(' ; ')}.`),
       ),
     );
   }
@@ -562,6 +738,24 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
         .filter((p) => positionsDuGroupe(m, ix, p.Groupe).some(({sousCreneau}) => sousCreneauxDuJour.has(sousCreneau.id)))
         .map((p) => p.Groupe),
     )];
+
+    // Colonne indicatif du roster (2026-09-24 5h02) : tous les indicatifs du
+    // jour affiché, complets ou non (voir changerIndicatifDepuisRoster pour
+    // ce qui se passe si l'un d'eux est complet), triés par code.
+    const groupeIdsDuJour = [...new Set(
+      m.places
+        .filter((p) => positionsDuGroupe(m, ix, p.Groupe).some(({sousCreneau}) => sousCreneauxDuJour.has(sousCreneau.id)))
+        .map((p) => p.Groupe),
+    )];
+    // Juste le code (pas la mission, corrigé le 2026-09-24 : un même
+    // indicatif tourne d'une mission à l'autre au fil de la soirée — lui
+    // accoler une mission arbitraire n'a pas de sens et cassait la mise en
+    // page en plus, régression signalée par Antoine).
+    const groupesDuJourTries = groupeIdsDuJour
+      .map((id) => ix.groupe.get(id))
+      .filter((g): g is Groupe => g != null)
+      .map((g) => ({id: g.id, code: g.Code}))
+      .sort((a, b) => a.code.localeCompare(b.code, 'fr'));
     const rosterFiltreEquipeRecherche = m.benevoles
       .filter((b) => equipeFiltre === 'toutes' || b.Equipe === equipeFiltre)
       .filter((b) => rechercheRoster.trim() === '' || b.Nom.toLowerCase().includes(rechercheRoster.trim().toLowerCase()))
@@ -640,7 +834,9 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
                 : rosterFiltreEquipeRecherche.length === 0
                   ? 'Aucun bénévole ne correspond à ce filtre.'
                   : `Aucun bénévole disponible ${jour ? jour.libelle.toLowerCase() : 'ce jour'} : le roster n'affiche que ceux qui ont déclaré au moins une disponibilité ce jour-là.`)
-              : roster.map((b) => rosterCard(ix, b, placeCeJourParBenevole.get(b.id), groupeIdsOuvertsCeJour)),
+              : roster.map((b) => rosterCard(
+                ix, b, placeCeJourParBenevole.get(b.id), groupeIdsOuvertsCeJour, groupesDuJourTries,
+              )),
           ),
         ),
         h('div', {class: 'affectation__board'},

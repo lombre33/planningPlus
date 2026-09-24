@@ -8,7 +8,7 @@ import {Magasin} from '../store';
 import {indexer} from './derive';
 import {
   affectationsQuartParBenevole, affectationsQuartParMission,
-  creneauxVoirArtisteParBenevole, indicatifDuJour, segmenterQuarts,
+  creneauxConflitArtisteParBenevole, creneauxVoirArtisteParBenevole, indicatifDuJour, segmenterQuarts,
 } from './impression';
 
 function modeleVide(): Modele {
@@ -53,7 +53,7 @@ describe('affectationsQuartParBenevole et indicatifDuJour', () => {
 });
 
 describe('affectationsQuartParMission', () => {
-  it('agrège toutes les entrées d’un besoin pourvu, omet un besoin sans aucune place pourvue', () => {
+  it('regroupe les deux places d’un même binôme en une seule entrée, omet une mission sans aucun indicatif positionné', () => {
     const m = new Magasin({
       ...modeleVide(),
       equipes: [{id: 1, Nom: 'Bénévoles', Couleur: '#000', Referent: null, Notes: ''}],
@@ -82,9 +82,92 @@ describe('affectationsQuartParMission', () => {
     });
     const ix = indexer(m);
     const affectations = affectationsQuartParMission(m, ix, new Set([Q0, Q1]));
-    expect(affectations.get(1)?.get(Q0)?.entrees.map((e) => e.benevoleNom).sort()).toEqual(['Karim', 'Marie']);
-    // La mission 2 (besoin 2) n'a aucune place pourvue : rien à afficher.
+    const entrees = affectations.get(1)?.get(Q0)?.entrees;
+    expect(entrees).toHaveLength(1);
+    expect(entrees?.[0]?.groupeCode).toBe('A1');
+    expect(entrees?.[0]?.benevoleNoms.slice().sort()).toEqual(['Karim', 'Marie']);
+    // La mission 2 (besoin 2) n'a aucun indicatif positionné : rien à afficher.
     expect(affectations.has(2)).toBe(false);
+  });
+
+  it('affiche un indicatif positionné même sans aucun bénévole dessus (retour Antoine 2026-09-24)', () => {
+    const m = new Magasin({
+      ...modeleVide(),
+      equipes: [{id: 1, Nom: 'Bénévoles', Couleur: '#000', Referent: null, Notes: ''}],
+      missions: [{id: 1, Nom: 'Accueil', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []}],
+      sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: 'Bloc', Debut: Q0, Fin: Q2}],
+      besoins: [{id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 2, Taille_groupe: 2}],
+      groupes: [{id: 1, Code: 'A1', Taille: 2, Equipe: 1, Notes: ''}],
+      positionsGroupe: [{id: 1, Groupe: 1, Besoin: 1}],
+      // Les deux places du binôme existent (créées avec le groupe) mais aucune n'est pourvue.
+      places: [
+        {id: 1, Groupe: 1, Rang: 1, Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0},
+        {id: 2, Groupe: 1, Rang: 2, Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0},
+      ],
+    });
+    const ix = indexer(m);
+    const affectations = affectationsQuartParMission(m, ix, new Set([Q0, Q1]));
+    const entrees = affectations.get(1)?.get(Q0)?.entrees;
+    expect(entrees).toHaveLength(1);
+    expect(entrees?.[0]?.groupeCode).toBe('A1');
+    expect(entrees?.[0]?.benevoleNoms).toEqual([]);
+  });
+
+  it('signale un bénévole introuvable plutôt que de faire disparaître silencieusement l’occupation de la place (référence cassée)', () => {
+    const m = new Magasin({
+      ...modeleVide(),
+      equipes: [{id: 1, Nom: 'Bénévoles', Couleur: '#000', Referent: null, Notes: ''}],
+      benevoles: [], // aucun bénévole indexé : place.Benevole pointe vers un id disparu
+      missions: [{id: 1, Nom: 'Accueil', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []}],
+      sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: 'Bloc', Debut: Q0, Fin: Q2}],
+      besoins: [{id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 1, Taille_groupe: 1}],
+      groupes: [{id: 1, Code: 'A1', Taille: 1, Equipe: 1, Notes: ''}],
+      positionsGroupe: [{id: 1, Groupe: 1, Besoin: 1}],
+      places: [{id: 1, Groupe: 1, Rang: 1, Benevole: 999, Origine: 'Manuel', Verrouillee: false, Score: 0}],
+    });
+    const ix = indexer(m);
+    const affectations = affectationsQuartParMission(m, ix, new Set([Q0, Q1]));
+    const entrees = affectations.get(1)?.get(Q0)?.entrees;
+    // Jamais un tableau vide (ce qui ferait croire l'indicatif libre) : la place est
+    // bien pourvue, seul le bénévole référencé n'existe plus.
+    expect(entrees?.[0]?.benevoleNoms).toEqual(['Bénévole introuvable']);
+  });
+
+  it('garde un indicatif par binôme quand plusieurs couvrent le même besoin (retour Antoine 2026-09-24)', () => {
+    const m = new Magasin({
+      ...modeleVide(),
+      equipes: [{id: 1, Nom: 'Bénévoles', Couleur: '#000', Referent: null, Notes: ''}],
+      benevoles: [
+        {id: 1, Nom: 'Marie', Contact: '', Equipe: 1, Competences: [], Quota_heures_min: 0, Quota_heures_max: 99, Statut: 'Actif', Notes: ''},
+      ],
+      missions: [{id: 1, Nom: 'Accueil', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []}],
+      sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: 'Bloc', Debut: Q0, Fin: Q2}],
+      besoins: [{id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 6, Taille_groupe: 2}],
+      groupes: [
+        {id: 1, Code: 'A1', Taille: 2, Equipe: 1, Notes: ''},
+        {id: 2, Code: 'A2', Taille: 2, Equipe: 1, Notes: ''},
+        {id: 3, Code: 'A3', Taille: 2, Equipe: 1, Notes: ''},
+      ],
+      positionsGroupe: [
+        {id: 1, Groupe: 1, Besoin: 1},
+        {id: 2, Groupe: 2, Besoin: 1},
+        {id: 3, Groupe: 3, Besoin: 1},
+      ],
+      places: [
+        {id: 1, Groupe: 1, Rang: 1, Benevole: 1, Origine: 'Manuel', Verrouillee: false, Score: 0},
+        {id: 2, Groupe: 1, Rang: 2, Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0},
+        {id: 3, Groupe: 2, Rang: 1, Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0},
+        {id: 4, Groupe: 2, Rang: 2, Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0},
+        {id: 5, Groupe: 3, Rang: 1, Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0},
+        {id: 6, Groupe: 3, Rang: 2, Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0},
+      ],
+    });
+    const ix = indexer(m);
+    const affectations = affectationsQuartParMission(m, ix, new Set([Q0, Q1]));
+    const entrees = affectations.get(1)?.get(Q0)?.entrees;
+    expect(entrees?.map((e) => e.groupeCode).sort()).toEqual(['A1', 'A2', 'A3']);
+    expect(entrees?.find((e) => e.groupeCode === 'A1')?.benevoleNoms).toEqual(['Marie']);
+    expect(entrees?.find((e) => e.groupeCode === 'A2')?.benevoleNoms).toEqual([]);
   });
 });
 
@@ -135,6 +218,69 @@ describe('creneauxVoirArtisteParBenevole', () => {
     });
     const ix = indexer(m);
     const resultat = creneauxVoirArtisteParBenevole(m, ix, new Set([Q0, Q1, Q2, Q3]), new Map());
+    expect(resultat.has(1)).toBe(false);
+  });
+});
+
+describe('creneauxConflitArtisteParBenevole', () => {
+  it('signale les quarts affectés qui empêchent d’atteindre 30 minutes libres pendant le passage souhaité', () => {
+    const m = new Magasin({
+      ...modeleVide(),
+      benevoles: [
+        {id: 1, Nom: 'Marie', Contact: '', Equipe: 0, Competences: [], Quota_heures_min: 0, Quota_heures_max: 99, Statut: 'Actif', Notes: ''},
+      ],
+      artistes: [{id: 1, Nom: 'Grand Concert', Lieu: 0, Debut: Q0, Fin: Q0 + 3600}],
+      disponibilites: [{Benevole: 1, Quart_heure: Q0, Statut: 'Artiste', Artiste: 1}],
+    });
+    const ix = indexer(m);
+    const quartsDuJour = new Set([Q0, Q1, Q2, Q3]);
+    // 3 des 4 quarts du passage sont affectés : il ne reste que 15 min libres (< 30 min).
+    const affectations = new Map([[1, new Map([
+      [Q0, {missionNom: 'Accueil', groupeCode: 'A1'}],
+      [Q1, {missionNom: 'Accueil', groupeCode: 'A1'}],
+      [Q2, {missionNom: 'Accueil', groupeCode: 'A1'}],
+    ])]]);
+    const resultat = creneauxConflitArtisteParBenevole(m, ix, quartsDuJour, affectations);
+    expect(resultat.get(1)?.get(Q0)).toBe('Grand Concert');
+    expect(resultat.get(1)?.get(Q1)).toBe('Grand Concert');
+    expect(resultat.get(1)?.get(Q2)).toBe('Grand Concert');
+    // Q3 n'est pas affecté : jamais un trou du planning marqué en conflit.
+    expect(resultat.get(1)?.has(Q3)).toBe(false);
+  });
+
+  it('ne signale rien quand 30 minutes libres restent possibles malgré les affectations', () => {
+    const m = new Magasin({
+      ...modeleVide(),
+      benevoles: [
+        {id: 1, Nom: 'Marie', Contact: '', Equipe: 0, Competences: [], Quota_heures_min: 0, Quota_heures_max: 99, Statut: 'Actif', Notes: ''},
+      ],
+      artistes: [{id: 1, Nom: 'Grand Concert', Lieu: 0, Debut: Q0, Fin: Q0 + 3600}],
+      disponibilites: [{Benevole: 1, Quart_heure: Q0, Statut: 'Artiste', Artiste: 1}],
+    });
+    const ix = indexer(m);
+    const quartsDuJour = new Set([Q0, Q1, Q2, Q3]);
+    const affectations = new Map([[1, new Map([[Q0, {missionNom: 'Accueil', groupeCode: 'A1'}]])]]);
+    const resultat = creneauxConflitArtisteParBenevole(m, ix, quartsDuJour, affectations);
+    expect(resultat.has(1)).toBe(false);
+  });
+
+  it('ne signale rien pour un artiste que le bénévole n’a pas déclaré vouloir voir', () => {
+    const m = new Magasin({
+      ...modeleVide(),
+      benevoles: [
+        {id: 1, Nom: 'Marie', Contact: '', Equipe: 0, Competences: [], Quota_heures_min: 0, Quota_heures_max: 99, Statut: 'Actif', Notes: ''},
+      ],
+      artistes: [{id: 1, Nom: 'Grand Concert', Lieu: 0, Debut: Q0, Fin: Q0 + 3600}],
+      disponibilites: [{Benevole: 1, Quart_heure: Q0, Statut: 'Disponible', Artiste: null}],
+    });
+    const ix = indexer(m);
+    const quartsDuJour = new Set([Q0, Q1, Q2, Q3]);
+    const affectations = new Map([[1, new Map([
+      [Q0, {missionNom: 'Accueil', groupeCode: 'A1'}],
+      [Q1, {missionNom: 'Accueil', groupeCode: 'A1'}],
+      [Q2, {missionNom: 'Accueil', groupeCode: 'A1'}],
+    ])]]);
+    const resultat = creneauxConflitArtisteParBenevole(m, ix, quartsDuJour, affectations);
     expect(resultat.has(1)).toBe(false);
   });
 });

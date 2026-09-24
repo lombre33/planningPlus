@@ -203,7 +203,9 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
     const axe = axeJour(jour);
     const lignes = missions.map((mission) => {
       const lieu = ix.lieu.get(mission.Lieu);
-      const equipe = ix.equipe.get(mission.Equipe)!;
+      // Même défaut que `rosterCard` dans `views/affectation.ts`, corrigé
+      // le 2026-09-23 (équipe orpheline) : `equipe` peut être absente.
+      const equipe = ix.equipe.get(mission.Equipe);
       const blocs: BlocIndicatif[] = sousCreneauxApplicables(mission, tousSousCreneaux).map((sc) => {
         const besoin = m.besoins.find((b) => b.Mission === mission.id && b.Sous_creneau === sc.id) ?? null;
         return {
@@ -220,7 +222,7 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
       return {
         id: mission.id,
         libelle: h('span', null,
-          h('span', {class: 'dot', style: {background: equipe.Couleur, marginRight: '6px'}}),
+          h('span', {class: 'dot', style: {background: equipe?.Couleur ?? 'var(--text-faint)', marginRight: '6px'}}),
           h('span', {class: 'nom'}, mission.Nom),
           h('span', {class: 'lieu'}, lieu?.Nom ?? ''),
         ),
@@ -355,7 +357,9 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
    *  violet (déjà pris par `--accent-2`, « veut voir un artiste »,
    *  `.dispos-cellule--artiste`) — voir `--absence` dans `style.css`. */
   function puceGroupe(ix: Index, groupe: Groupe, besoinId: Id, jourCle: string): HTMLElement {
-    const equipe = ix.equipe.get(groupe.Equipe)!;
+    // Même défaut que `rosterCard` dans `views/affectation.ts`, corrigé
+    // le 2026-09-23 (équipe orpheline) : `equipe` peut être absente.
+    const equipe = ix.equipe.get(groupe.Equipe);
     const places = placesDuGroupe(m, groupe.id);
     const vide = places.every((p) => p.Benevole == null);
     const pourvu = places.every((p) => p.Benevole != null);
@@ -384,9 +388,9 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
       // elle-même (retour Antoine 2026-09-23 : un bloc de frise au quart
       // d'heure n'a pas la place d'un nom en clair) — cliquer la puce ouvre
       // toujours le panneau complet, inchangé.
-      title: `${groupe.Code} · ${equipe.Nom} · ${noms}`,
+      title: `${groupe.Code} · ${equipe?.Nom ?? '?'} · ${noms}`,
     },
-      h('span', {class: 'dot', style: {background: equipe.Couleur}}),
+      h('span', {class: 'dot', style: {background: equipe?.Couleur ?? 'var(--text-faint)'}}),
       h('span', {class: 'groupe-chip__code mono'}, groupe.Code),
       ordre != null ? h('span', {class: 'groupe-chip__ordre'}, String(ordre)) : null,
     );
@@ -466,7 +470,9 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
 
   function panneauIndicatif(ix: Index, groupeId: Id, jour: Jour | undefined): void {
     const groupe = ix.groupe.get(groupeId)!;
-    const equipe = ix.equipe.get(groupe.Equipe)!;
+    // Même défaut que `rosterCard` dans `views/affectation.ts`, corrigé
+    // le 2026-09-23 (équipe orpheline) : `equipe` peut être absente.
+    const equipe = ix.equipe.get(groupe.Equipe);
     const places = placesDuGroupe(m, groupeId);
     const positions = positionsDuGroupe(m, ix, groupeId);
     const tailleLibelle = groupe.Taille === 2 ? 'binôme' : groupe.Taille === 1 ? 'place seule' : `${groupe.Taille}-uplet`;
@@ -475,7 +481,7 @@ export function montrerIndicatifs(container: HTMLElement, m: Magasin): () => voi
       h('div', {class: 'side-panel__head'},
         h('div', null,
           h('h3', {class: 'mono'}, groupe.Code),
-          h('p', {class: 'topbar__subtitle'}, `${equipe.Nom} · ${tailleLibelle}`),
+          h('p', {class: 'topbar__subtitle'}, `${equipe?.Nom ?? '?'} · ${tailleLibelle}`),
         ),
         h('button', {
           class: 'btn btn--ghost btn--sm', type: 'button',

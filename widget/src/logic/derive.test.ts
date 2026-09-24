@@ -1,8 +1,9 @@
 import {describe, expect, it} from 'vitest';
 import type {Mission, Modele, SousCreneau} from '../domain/types';
 import {
-  benevolesDisponiblesCeJour, feuilleBenevole, indexer, indicatifsDeLEquipe, ligneArtistes, lignesGroupeesParArtiste,
-  quartsDuJour, regrouperParJour, regrouperParJourFestival, sousCreneauxApplicables,
+  benevolesDisponiblesCeJour, estVraimentDisponibleAuQuart, feuilleBenevole, indexer, indexerDisponibilites,
+  indicatifsDeLEquipe, ligneArtistes, lignesGroupeesParArtiste, quartsDuJour, regrouperParJour,
+  regrouperParJourFestival, sousCreneauxApplicables,
 } from './derive';
 import {epochDepuisHeureLocale} from '../temps';
 import {Magasin} from '../store';
@@ -99,6 +100,24 @@ describe('benevolesDisponiblesCeJour', () => {
     expect(disponibles.has(1)).toBe(true); // vraie dispo
     expect(disponibles.has(2)).toBe(false); // veut voir un artiste, mais aucune vraie dispo ce jour-là
     expect(disponibles.has(3)).toBe(false); // indisponible
+  });
+});
+
+describe('estVraimentDisponibleAuQuart', () => {
+  it("même vérité qu'au jour, mais quart par quart : Artiste et l'absence d'entrée ne comptent pas", () => {
+    const modele: Modele = {
+      ...modeleDeTest(),
+      disponibilites: [
+        {Benevole: 1, Quart_heure: 0, Statut: 'Disponible', Artiste: null},
+        {Benevole: 1, Quart_heure: 900, Statut: 'Artiste', Artiste: 1},
+      ],
+    };
+    const m = new Magasin(modele);
+    const index = indexerDisponibilites(m);
+
+    expect(estVraimentDisponibleAuQuart(index, 1, 0)).toBe(true);
+    expect(estVraimentDisponibleAuQuart(index, 1, 900)).toBe(false); // Artiste, pas une vraie dispo
+    expect(estVraimentDisponibleAuQuart(index, 1, 1800)).toBe(false); // aucune entrée
   });
 });
 
