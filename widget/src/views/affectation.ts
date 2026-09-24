@@ -301,7 +301,18 @@ export function montrerAffectation(container: HTMLElement, m: Magasin): () => vo
       if (placeActuelle) { await desaffecterDepuisRoster(placeActuelle); }
       return;
     }
-    const placeCible = m.places.find((p) => p.Groupe === nouveauGroupeId && p.Benevole == null && !p.Verrouillee);
+    // Une place vide reste candidate même verrouillée : le verrou protège un
+    // occupant (`Benevole == null` l'exclut déjà) contre une éviction
+    // silencieuse, pas une place vide contre CE geste-ci — choisir un
+    // indicatif dans ce menu déroulant EST la correction manuelle que le
+    // verrou existe pour laisser passer (`assignerPlace` la reverrouille de
+    // toute façon, origine Manuel). Exclure aussi les places vides
+    // verrouillées bloquait tout indicatif déjà touché à la main cette nuit
+    // — sans aucun message d'erreur visible, puisque le geste s'arrêtait
+    // avant même de tenter une écriture (bug bloquant confirmé le
+    // 2026-09-24 6h42 sur une vraie instance : l'écriture qui part persiste
+    // bien, celle-ci ne partait jamais).
+    const placeCible = m.places.find((p) => p.Groupe === nouveauGroupeId && p.Benevole == null);
     if (!placeCible) {
       dernierMessage = {texte: 'Indicatif complet : libérez-y une place avant de le choisir.', ton: 'danger'};
       rafraichir();

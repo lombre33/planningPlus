@@ -265,6 +265,32 @@ describe('montrerAffectation — colonne indicatif du roster (2026-09-24 5h02, e
   });
 
   it(
+    "un indicatif dont la place vide est verrouillée (déjà vidée à la main plus tôt) reste choisissable, " +
+    "pas « complet » (bug bloquant confirmé le 2026-09-24 6h42 sur une vraie instance : la recherche de " +
+    "placeCible excluait aussi les places vides verrouillées, donc le geste s'arrêtait sans même tenter " +
+    "d'écrire, sans message compréhensible)",
+    async () => {
+      const modele = construireModeleTroisIndicatifs();
+      modele.places = modele.places.map((p) => (p.id === 3 ? {...p, Verrouillee: true} : p));
+      const m = new Magasin(modele);
+      const container = document.createElement('div');
+      montrerAffectation(container, m);
+
+      const select = selectAlix(container);
+      select.value = '3'; // ENT1, vide mais verrouillée
+      select.dispatchEvent(new Event('change'));
+      await tick();
+
+      expect(container.textContent).not.toContain('Indicatif complet');
+      const placeAcc1 = m.places.find((p) => p.id === 1);
+      const placeEnt1 = m.places.find((p) => p.id === 3);
+      expect(placeAcc1?.Benevole).toBeNull();
+      expect(placeEnt1?.Benevole).toBe(1);
+      expect(placeEnt1?.Verrouillee).toBe(true); // reste verrouillée (origine Manuel)
+    },
+  );
+
+  it(
     "si l'écriture Grist de la nouvelle place échoue, l'ancienne reste intacte plutôt que de finir sur Aucun " +
     '(bug bloquant signalé par Antoine le 2026-09-24 5h52 : « je change l\'indicatif, ça remet à Aucun, ça ne ' +
     "prend pas en compte » — l'ancienne place était libérée AVANT que la nouvelle ne soit confirmée)",
