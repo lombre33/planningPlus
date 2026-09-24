@@ -127,3 +127,36 @@ describe('montrerRosterImprimable avec un bénévole pouvant aller voir son arti
     expect(container.querySelector('.impression-bloc--assignee')).toBeNull();
   });
 });
+
+describe('montrerRosterImprimable avec une affectation qui empêche de voir un artiste souhaité', () => {
+  it('colore en rouge les créneaux affectés concernés, avec le nom de l’artiste dans le titre (retour Antoine 2026-09-24)', () => {
+    const m = new Magasin({
+      ...modeleVide(),
+      equipes: [{id: 1, Nom: 'Bénévoles', Couleur: '#000', Referent: null, Notes: ''}],
+      benevoles: [
+        {id: 1, Nom: 'Marie', Contact: '', Equipe: 1, Competences: [], Quota_heures_min: 0, Quota_heures_max: 99, Statut: 'Actif', Notes: ''},
+      ],
+      missions: [{id: 1, Nom: 'Accueil', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []}],
+      artistes: [{id: 1, Nom: 'Grand Concert', Lieu: 0, Debut: DEBUT, Fin: DEBUT + 900 * 4}],
+      macroCreneaux: [{id: 1, Nom: 'Samedi', Debut: DEBUT, Fin: FIN}],
+      // Le passage de l'artiste dure 4 quarts (1h) : affecter 3 de ces 4 quarts ne
+      // laisse que 15 min libres, sous le seuil de 30 min.
+      sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: 'Bloc', Debut: DEBUT, Fin: DEBUT + 900 * 3}],
+      besoins: [{id: 1, Mission: 1, Sous_creneau: 1, Effectif_min: 1, Effectif_max: 1, Taille_groupe: 1}],
+      groupes: [{id: 1, Code: 'A1', Taille: 1, Equipe: 1, Notes: ''}],
+      positionsGroupe: [{id: 1, Groupe: 1, Besoin: 1}],
+      places: [{id: 1, Groupe: 1, Rang: 1, Benevole: 1, Origine: 'Manuel', Verrouillee: false, Score: 0}],
+      disponibilites: [
+        {Benevole: 1, Quart_heure: DEBUT, Statut: 'Disponible', Artiste: null},
+        {Benevole: 1, Quart_heure: DEBUT, Statut: 'Artiste', Artiste: 1},
+      ],
+    });
+    const container = document.createElement('div');
+    montrerRosterImprimable(container, m);
+
+    const bloc = container.querySelector('.impression-bloc--conflit');
+    expect(bloc).not.toBeNull();
+    expect(bloc?.getAttribute('title')).toBe("Accueil — l'empêche de voir Grand Concert");
+    expect(container.querySelector('.impression-bloc--assignee')).toBeNull();
+  });
+});

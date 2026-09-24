@@ -8,7 +8,7 @@ import {Magasin} from '../store';
 import {indexer} from './derive';
 import {
   affectationsQuartParBenevole, affectationsQuartParMission,
-  creneauxVoirArtisteParBenevole, indicatifDuJour, segmenterQuarts,
+  creneauxConflitArtisteParBenevole, creneauxVoirArtisteParBenevole, indicatifDuJour, segmenterQuarts,
 } from './impression';
 
 function modeleVide(): Modele {
@@ -135,6 +135,69 @@ describe('creneauxVoirArtisteParBenevole', () => {
     });
     const ix = indexer(m);
     const resultat = creneauxVoirArtisteParBenevole(m, ix, new Set([Q0, Q1, Q2, Q3]), new Map());
+    expect(resultat.has(1)).toBe(false);
+  });
+});
+
+describe('creneauxConflitArtisteParBenevole', () => {
+  it('signale les quarts affectés qui empêchent d’atteindre 30 minutes libres pendant le passage souhaité', () => {
+    const m = new Magasin({
+      ...modeleVide(),
+      benevoles: [
+        {id: 1, Nom: 'Marie', Contact: '', Equipe: 0, Competences: [], Quota_heures_min: 0, Quota_heures_max: 99, Statut: 'Actif', Notes: ''},
+      ],
+      artistes: [{id: 1, Nom: 'Grand Concert', Lieu: 0, Debut: Q0, Fin: Q0 + 3600}],
+      disponibilites: [{Benevole: 1, Quart_heure: Q0, Statut: 'Artiste', Artiste: 1}],
+    });
+    const ix = indexer(m);
+    const quartsDuJour = new Set([Q0, Q1, Q2, Q3]);
+    // 3 des 4 quarts du passage sont affectés : il ne reste que 15 min libres (< 30 min).
+    const affectations = new Map([[1, new Map([
+      [Q0, {missionNom: 'Accueil', groupeCode: 'A1'}],
+      [Q1, {missionNom: 'Accueil', groupeCode: 'A1'}],
+      [Q2, {missionNom: 'Accueil', groupeCode: 'A1'}],
+    ])]]);
+    const resultat = creneauxConflitArtisteParBenevole(m, ix, quartsDuJour, affectations);
+    expect(resultat.get(1)?.get(Q0)).toBe('Grand Concert');
+    expect(resultat.get(1)?.get(Q1)).toBe('Grand Concert');
+    expect(resultat.get(1)?.get(Q2)).toBe('Grand Concert');
+    // Q3 n'est pas affecté : jamais un trou du planning marqué en conflit.
+    expect(resultat.get(1)?.has(Q3)).toBe(false);
+  });
+
+  it('ne signale rien quand 30 minutes libres restent possibles malgré les affectations', () => {
+    const m = new Magasin({
+      ...modeleVide(),
+      benevoles: [
+        {id: 1, Nom: 'Marie', Contact: '', Equipe: 0, Competences: [], Quota_heures_min: 0, Quota_heures_max: 99, Statut: 'Actif', Notes: ''},
+      ],
+      artistes: [{id: 1, Nom: 'Grand Concert', Lieu: 0, Debut: Q0, Fin: Q0 + 3600}],
+      disponibilites: [{Benevole: 1, Quart_heure: Q0, Statut: 'Artiste', Artiste: 1}],
+    });
+    const ix = indexer(m);
+    const quartsDuJour = new Set([Q0, Q1, Q2, Q3]);
+    const affectations = new Map([[1, new Map([[Q0, {missionNom: 'Accueil', groupeCode: 'A1'}]])]]);
+    const resultat = creneauxConflitArtisteParBenevole(m, ix, quartsDuJour, affectations);
+    expect(resultat.has(1)).toBe(false);
+  });
+
+  it('ne signale rien pour un artiste que le bénévole n’a pas déclaré vouloir voir', () => {
+    const m = new Magasin({
+      ...modeleVide(),
+      benevoles: [
+        {id: 1, Nom: 'Marie', Contact: '', Equipe: 0, Competences: [], Quota_heures_min: 0, Quota_heures_max: 99, Statut: 'Actif', Notes: ''},
+      ],
+      artistes: [{id: 1, Nom: 'Grand Concert', Lieu: 0, Debut: Q0, Fin: Q0 + 3600}],
+      disponibilites: [{Benevole: 1, Quart_heure: Q0, Statut: 'Disponible', Artiste: null}],
+    });
+    const ix = indexer(m);
+    const quartsDuJour = new Set([Q0, Q1, Q2, Q3]);
+    const affectations = new Map([[1, new Map([
+      [Q0, {missionNom: 'Accueil', groupeCode: 'A1'}],
+      [Q1, {missionNom: 'Accueil', groupeCode: 'A1'}],
+      [Q2, {missionNom: 'Accueil', groupeCode: 'A1'}],
+    ])]]);
+    const resultat = creneauxConflitArtisteParBenevole(m, ix, quartsDuJour, affectations);
     expect(resultat.has(1)).toBe(false);
   });
 });
