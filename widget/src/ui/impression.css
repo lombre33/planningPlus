@@ -164,20 +164,6 @@ table.impression-table th, table.impression-table td {
   margin: 0 0 8px;
 }
 
-/* Retour d'Antoine 2026-09-24, cinquième passage : l'écran doit montrer une
-   vraie page (mêmes dimensions et calibrage que l'impression), pas un
-   tableau étiré à la largeur du navigateur — c'est ça, son WYSIWYG. La
-   largeur du tableau vient déjà de son style inline (`totalPx`, calculé
-   pour tenir sur une page A4 paysage) ; cette marge verticale généreuse
-   (garder du blanc pour corriger au stylo, troisième/quatrième passage)
-   s'applique donc désormais À L'ÉCRAN AUSSI, pas seulement à l'impression
-   — jamais au roster bénévoles, qui n'a pas reçu cette demande et partage
-   la même classe de base `.impression-bloc`. */
-.impression-equipes .impression-bloc {
-  padding-top: 45px;
-  padding-bottom: 45px;
-}
-
 /* ---------- Impression ---------- */
 
 @media print {
@@ -229,6 +215,18 @@ table.impression-table th, table.impression-table td {
   .impression-equipes__equipe {
     break-after: page;
     margin-bottom: 0;
+  }
+
+  /* Retour d'Antoine 2026-09-24, troisième/quatrième passage : garder du
+     blanc dans les cases pour corriger au stylo après impression — jamais
+     à l'écran (redécouplé au sixième passage, WYSIWYG abandonné). Sixième
+     passage (« à l'export pdf c'est trop gros, on divise par deux la
+     hauteur ») : moitié du dernier réglage (45px → 22px). Seule la vue
+     équipes est concernée — le roster bénévoles (même classe de base
+     `.impression-bloc`) n'a jamais reçu cette demande. */
+  .impression-equipes .impression-bloc {
+    padding-top: 22px;
+    padding-bottom: 22px;
   }
 
   .impression-equipes__equipe:last-child {
