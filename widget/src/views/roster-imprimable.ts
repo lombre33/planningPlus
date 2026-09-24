@@ -9,10 +9,10 @@
  */
 
 import type {Benevole, Disponibilite, Epoch, Id} from '../domain/types';
-import {type Index, indexer, regrouperParJour} from '../logic/derive';
+import {type Index, benevolesDisponiblesCeJour, indexer, regrouperParJour} from '../logic/derive';
 import {type BlocMacro, blocsDuJour, indexerDisponibilitesParBenevole} from '../logic/dispos-terrain';
 import {
-  type AffectationQuart, affectationsQuartParBenevole, benevolesDisponiblesCeJour, creneauxVoirArtisteParBenevole,
+  type AffectationQuart, affectationsQuartParBenevole, creneauxVoirArtisteParBenevole,
   indicatifDuJour, segmenterQuarts,
 } from '../logic/impression';
 import type {Magasin} from '../store';
@@ -156,8 +156,13 @@ export function montrerRosterImprimable(container: HTMLElement, m: Magasin): () 
       return;
     }
     const quartsDuJour = blocs.flatMap((b) => b.quarts);
+    const quartsDuJourSet = new Set(quartsDuJour);
     const indexDispos = indexerDisponibilitesParBenevole(m.disponibilites);
-    const benevoles = benevolesDisponiblesCeJour(m.benevoles, indexDispos, quartsDuJour)
+    // Seule source pour « qui est vraiment là ce jour » (logic/derive.ts) : un souhait
+    // « voir un artiste » n'est pas une vraie disponibilité (retour d'Antoine, 2026-09-24).
+    const idsDisponibles = benevolesDisponiblesCeJour(m, quartsDuJourSet);
+    const benevoles = m.benevoles
+      .filter((b) => idsDisponibles.has(b.id))
       .sort((a, b) => a.Nom.localeCompare(b.Nom, 'fr'));
 
     if (benevoles.length === 0) {
@@ -167,8 +172,8 @@ export function montrerRosterImprimable(container: HTMLElement, m: Magasin): () 
       return;
     }
 
-    const affectations = affectationsQuartParBenevole(m, ix, new Set(quartsDuJour));
-    const creneauxArtiste = creneauxVoirArtisteParBenevole(m, ix, new Set(quartsDuJour), affectations);
+    const affectations = affectationsQuartParBenevole(m, ix, quartsDuJourSet);
+    const creneauxArtiste = creneauxVoirArtisteParBenevole(m, ix, quartsDuJourSet, affectations);
 
     const barre = h('div', {class: 'impression-barre'},
       h('p', {class: 'view__intro', style: {margin: '0'}},

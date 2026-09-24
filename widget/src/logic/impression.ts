@@ -8,7 +8,7 @@
  * imprimables) : ce module n'appelle que ce qui y est déjà exporté.
  */
 
-import type {Disponibilite, Epoch, Id} from '../domain/types';
+import type {Epoch, Id} from '../domain/types';
 import {
   type Index, placesDuGroupe, positionsDuGroupe, quartsDuSousCreneau,
 } from './derive';
@@ -66,26 +66,6 @@ export function indicatifDuJour(
   return [...affectationsBenevole.values()][0]!.groupeCode;
 }
 
-/**
- * Bénévoles ayant au moins un quart d'heure déclaré disponible (« Disponible »
- * ou « Artiste » — vouloir voir un artiste reste une disponibilité de fait,
- * cf. `moteur/eligibilite.ts` : seule « Indisponible » bloque) ce jour-là.
- * Une disponibilité même partielle suffit — demande explicite d'Antoine :
- * « y compris sur des créneaux réduits ». Une absence totale de ligne vaut
- * indisponible partout, comme ailleurs dans le widget (§6.4).
- */
-export function benevolesDisponiblesCeJour<B extends {id: Id}>(
-  benevoles: readonly B[], indexDispos: Map<Id, Map<Epoch, Disponibilite>>, quartsDuJour: readonly Epoch[],
-): B[] {
-  return benevoles.filter((b) => {
-    const parQuart = indexDispos.get(b.id);
-    if (!parQuart) { return false; }
-    return quartsDuJour.some((q) => {
-      const d = parQuart.get(q);
-      return d !== undefined && d.Statut !== 'Indisponible';
-    });
-  });
-}
 
 export interface EntreeAffectationMission {
   benevoleNom: string;

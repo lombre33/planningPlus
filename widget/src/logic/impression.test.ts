@@ -3,11 +3,11 @@
  * bénévoles, plannings équipe — demande d'Antoine du 2026-09-23).
  */
 import {describe, expect, it} from 'vitest';
-import type {Disponibilite, Id, Modele} from '../domain/types';
+import type {Modele} from '../domain/types';
 import {Magasin} from '../store';
 import {indexer} from './derive';
 import {
-  affectationsQuartParBenevole, affectationsQuartParMission, benevolesDisponiblesCeJour,
+  affectationsQuartParBenevole, affectationsQuartParMission,
   creneauxVoirArtisteParBenevole, indicatifDuJour, segmenterQuarts,
 } from './impression';
 
@@ -23,22 +23,6 @@ const Q0 = 1000 * 900; // un quart d'heure arbitraire, aligné sur le pas (900s)
 const Q1 = Q0 + 900;
 const Q2 = Q0 + 1800;
 const Q3 = Q0 + 2700;
-
-describe('benevolesDisponiblesCeJour', () => {
-  it('inclut un bénévole disponible sur un seul quart (créneau réduit), exclut celui sans aucune ligne', () => {
-    const benevoles = [
-      {id: 1, Nom: 'Partiel'}, {id: 2, Nom: 'Sans donnée'}, {id: 3, Nom: 'Veut voir un artiste'},
-      {id: 4, Nom: 'Indisponible partout'},
-    ];
-    const index = new Map<Id, Map<number, Disponibilite>>([
-      [1, new Map([[Q0, {Benevole: 1, Quart_heure: Q0, Statut: 'Disponible', Artiste: null}]])],
-      [3, new Map([[Q0, {Benevole: 3, Quart_heure: Q0, Statut: 'Artiste', Artiste: null}]])],
-      [4, new Map([[Q0, {Benevole: 4, Quart_heure: Q0, Statut: 'Indisponible', Artiste: null}]])],
-    ]);
-    const resultat = benevolesDisponiblesCeJour(benevoles, index, [Q0, Q1]);
-    expect(resultat.map((b) => b.id)).toEqual([1, 3]);
-  });
-});
 
 describe('affectationsQuartParBenevole et indicatifDuJour', () => {
   it('retrouve la mission et l’indicatif d’un bénévole affecté, ignore un groupe orphelin sans planter', () => {

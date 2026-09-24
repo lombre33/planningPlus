@@ -110,8 +110,13 @@ describe('montrerRosterImprimable avec un bénévole pouvant aller voir son arti
       ],
       artistes: [{id: 1, Nom: 'Grand Concert', Lieu: 0, Debut: DEBUT, Fin: DEBUT + 3600}],
       macroCreneaux: [{id: 1, Nom: 'Samedi', Debut: DEBUT, Fin: FIN}],
-      // Aucune mission : Marie est libre tout le passage de l'artiste (1h >= 30 min).
-      disponibilites: [{Benevole: 1, Quart_heure: DEBUT, Statut: 'Artiste', Artiste: 1}],
+      // Une vraie disponibilité (sinon absente du roster, logic/derive.ts benevolesDisponiblesCeJour)
+      // et, séparément, le souhait de voir l'artiste. Aucune mission : Marie est libre tout le
+      // passage de l'artiste (1h >= 30 min).
+      disponibilites: [
+        {Benevole: 1, Quart_heure: DEBUT, Statut: 'Disponible', Artiste: null},
+        {Benevole: 1, Quart_heure: DEBUT + 900, Statut: 'Artiste', Artiste: 1},
+      ],
     });
     const container = document.createElement('div');
     montrerRosterImprimable(container, m);
