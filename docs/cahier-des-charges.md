@@ -1,6 +1,8 @@
 # PlanningPlus — Cahier des charges
 
-**Version :** v1.14 (§7.1 : l'exclusivité « un indicatif par jour » est
+**Version :** v1.15 (§6.3 : sémantique des couleurs de la puce Indicatifs
+— pourvu exige les deux places, tranché définitivement par Antoine le
+2026-09-24 — v1.14 avait posé §7.1 : l'exclusivité « un indicatif par jour » est
 câblée (commit `7fc0b30`) ; §7.5 : bouton de réinitialisation complète et
 listing bénévoles limité aux dispos du jour, tous deux livrés le
 2026-09-23 par le fil Algorithme ; historique des versions précédentes
@@ -410,6 +412,17 @@ l'effectif maximum ne bloque plus rien — un renfort ponctuel reste possible �
 mais remonte comme anomalie « sur-effectif » plutôt que d'être empêché. Ce
 n'est donc plus une contrainte dure de l'algorithme (§7.1, révisé en
 conséquence).
+
+**Couleur de la puce, vue Indicatifs (tranché par Antoine, carte de décision,
+2026-09-24).** Verte si l'indicatif est pourvu, rouge s'il ne l'est pas sur
+une mission `Critique`, orange s'il ne l'est pas sur une mission `Normale` ou
+`Confort` — évalué créneau par créneau : une même puce peut être verte sur un
+besoin et rouge sur un autre, puisque c'est le créneau (donc son besoin, donc
+sa mission) qui porte la priorité, pas l'indicatif dans l'absolu. **Pourvu**
+exige que toutes les `Places` du binôme (ou *n*-uplet) soient occupées ; une
+seule place manquante reste un trou, jamais une nuance de vert. *(Livré le
+2026-09-23 22h17, `1db04d4` ; provisoire jusqu'à confirmation, tranché
+définitivement par Antoine le 2026-09-24 — rien à changer dans le code.)*
 
 **Révision du modèle initial (décision Antoine, 2026-09-21).** Un indicatif
 (`Groupes`) n'est plus rattaché à un seul besoin : il est positionné à l'avance
