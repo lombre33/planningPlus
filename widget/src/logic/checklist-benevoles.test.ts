@@ -56,7 +56,7 @@ describe('calculerChecklistBenevoles', () => {
       ...a,
     });
     const ix = indexer(m);
-    const lignes = calculerChecklistBenevoles(m, ix, jourUnique(m), new Map());
+    const {lignes} = calculerChecklistBenevoles(m, ix, jourUnique(m), new Map());
     expect(lignes.map((l) => l.nom)).toEqual(['Marie']);
   });
 
@@ -67,7 +67,7 @@ describe('calculerChecklistBenevoles', () => {
         ...modeleVide(), macroCreneaux: [MACRO], equipes: [EQUIPE], benevoles: [benevole(1, 'Marie')], ...a,
       });
       const ix = indexer(m);
-      const [ligne] = calculerChecklistBenevoles(m, ix, jourUnique(m), new Map());
+      const [ligne] = calculerChecklistBenevoles(m, ix, jourUnique(m), new Map()).lignes;
       expect(ligne!.disponibilite.etat).toBe('sans-donnee');
     });
 
@@ -78,7 +78,7 @@ describe('calculerChecklistBenevoles', () => {
         disponibilites: [{Benevole: 1, Quart_heure: Q0, Statut: 'Disponible', Artiste: null}],
       });
       const ix = indexer(m);
-      const [ligne] = calculerChecklistBenevoles(m, ix, jourUnique(m), new Map());
+      const [ligne] = calculerChecklistBenevoles(m, ix, jourUnique(m), new Map()).lignes;
       expect(ligne!.disponibilite.etat).toBe('respecte');
     });
 
@@ -90,7 +90,7 @@ describe('calculerChecklistBenevoles', () => {
         disponibilites: [{Benevole: 1, Quart_heure: Q0, Statut: 'Disponible', Artiste: null}],
       });
       const ix = indexer(m);
-      const [ligne] = calculerChecklistBenevoles(m, ix, jourUnique(m), new Map());
+      const [ligne] = calculerChecklistBenevoles(m, ix, jourUnique(m), new Map()).lignes;
       expect(ligne!.disponibilite.etat).toBe('viole');
       expect(ligne!.disponibilite.detail).toContain('1 quart');
     });
@@ -103,7 +103,7 @@ describe('calculerChecklistBenevoles', () => {
         ...modeleVide(), macroCreneaux: [MACRO], equipes: [EQUIPE], benevoles: [benevole(1, 'Marie')], ...a,
       });
       const ix = indexer(m);
-      const [ligne] = calculerChecklistBenevoles(m, ix, jourUnique(m), new Map());
+      const [ligne] = calculerChecklistBenevoles(m, ix, jourUnique(m), new Map()).lignes;
       expect(ligne!.binome.etat).toBe('sans-objet');
     });
 
@@ -120,11 +120,51 @@ describe('calculerChecklistBenevoles', () => {
         affinites: [{id: 1, Benevole_A: 1, Benevole_B: 2, Type: 'Ensemble'}],
       });
       const ix = indexer(m);
-      const lignes = calculerChecklistBenevoles(m, ix, jourUnique(m), new Map());
+      const {lignes} = calculerChecklistBenevoles(m, ix, jourUnique(m), new Map());
       expect(lignes.find((l) => l.nom === 'Marie')!.binome.etat).toBe('respecte');
     });
 
-    it('viole et distingue "affecté ailleurs" d’un binôme non affecté du tout', () => {
+    it('viole quand le binôme souhaité est réellement affecté ailleurs aujourd’hui', () => {
+      const a1 = fixtureAssignation(1, 1, Q0, Q1);
+      const a2 = fixtureAssignation(2, 2, Q0, Q1); // Karim affecté ailleurs, pas avec Marie
+      const m = new Magasin({
+        ...modeleVide(), macroCreneaux: [MACRO], equipes: [EQUIPE],
+        benevoles: [benevole(1, 'Marie'), benevole(2, 'Karim')],
+        missions: [...a1.missions, ...a2.missions],
+        sousCreneaux: [...a1.sousCreneaux, ...a2.sousCreneaux],
+        besoins: [...a1.besoins, ...a2.besoins],
+        groupes: [...a1.groupes, ...a2.groupes],
+        positionsGroupe: [...a1.positionsGroupe, ...a2.positionsGroupe],
+        places: [...a1.places, ...a2.places],
+        affinites: [{id: 1, Benevole_A: 1, Benevole_B: 2, Type: 'Ensemble'}],
+      });
+      const ix = indexer(m);
+      const {lignes, pairesBinomeCassees} = calculerChecklistBenevoles(m, ix, jourUnique(m), new Map());
+      const marie = lignes.find((l) => l.nom === 'Marie')!;
+      expect(marie.binome.etat).toBe('viole');
+      expect(marie.binome.detail).toContain('Karim est affecté ailleurs');
+      expect(pairesBinomeCassees).toBe(1);
+    });
+
+    it('"partenaire-absent" (jamais "viole") quand le binôme souhaité n’est affecté à rien aujourd’hui — pas un raté de l’algo', () => {
+      const a = fixtureAssignation(1, 1, Q0, Q1);
+      const m = new Magasin({
+        ...modeleVide(), macroCreneaux: [MACRO], equipes: [EQUIPE],
+        // Alex existe mais n'a aucune place nulle part : structurellement absent du plan.
+        benevoles: [benevole(1, 'Marie'), benevole(2, 'Alex')], ...a,
+        affinites: [{id: 1, Benevole_A: 1, Benevole_B: 2, Type: 'Ensemble'}],
+      });
+      const ix = indexer(m);
+      const {lignes, pairesBinomeCassees} = calculerChecklistBenevoles(m, ix, jourUnique(m), new Map());
+      const marie = lignes.find((l) => l.nom === 'Marie')!;
+      expect(marie.binome.etat).toBe('partenaire-absent');
+      expect(marie.binome.detail).toContain('Alex');
+      expect(marie.binome.detail).toContain('rien que ce planning aurait pu changer');
+      // Une paire dont un membre est absent du plan n'est jamais comptée comme cassée.
+      expect(pairesBinomeCassees).toBe(0);
+    });
+
+    it('un vrai écart avec un partenaire l’emporte sur un partenaire simplement absent (plusieurs binômes souhaités)', () => {
       const a1 = fixtureAssignation(1, 1, Q0, Q1);
       const a2 = fixtureAssignation(2, 2, Q0, Q1); // Karim affecté ailleurs, pas avec Marie
       const m = new Magasin({
@@ -136,17 +176,17 @@ describe('calculerChecklistBenevoles', () => {
         groupes: [...a1.groupes, ...a2.groupes],
         positionsGroupe: [...a1.positionsGroupe, ...a2.positionsGroupe],
         places: [...a1.places, ...a2.places],
-        // Marie souhaite être avec Karim ET Alex ; ni l'un ni l'autre n'est avec elle.
+        // Marie souhaite être avec Karim (affecté ailleurs) ET Alex (pas affecté du tout).
         affinites: [
           {id: 1, Benevole_A: 1, Benevole_B: 2, Type: 'Ensemble'},
           {id: 2, Benevole_A: 1, Benevole_B: 3, Type: 'Ensemble'},
         ],
       });
       const ix = indexer(m);
-      const marie = calculerChecklistBenevoles(m, ix, jourUnique(m), new Map()).find((l) => l.nom === 'Marie')!;
+      const marie = calculerChecklistBenevoles(m, ix, jourUnique(m), new Map()).lignes.find((l) => l.nom === 'Marie')!;
       expect(marie.binome.etat).toBe('viole');
       expect(marie.binome.detail).toContain('Karim est affecté ailleurs');
-      expect(marie.binome.detail).toContain('Alex n’est affecté à aucun indicatif');
+      expect(marie.binome.detail).not.toContain('Alex');
     });
   });
 
@@ -157,7 +197,7 @@ describe('calculerChecklistBenevoles', () => {
         ...modeleVide(), macroCreneaux: [MACRO], equipes: [EQUIPE], benevoles: [benevole(1, 'Marie')], ...a,
       });
       const ix = indexer(m);
-      const [ligne] = calculerChecklistBenevoles(m, ix, jourUnique(m), new Map());
+      const [ligne] = calculerChecklistBenevoles(m, ix, jourUnique(m), new Map()).lignes;
       expect(ligne!.artiste.etat).toBe('sans-objet');
     });
 
@@ -170,7 +210,7 @@ describe('calculerChecklistBenevoles', () => {
         disponibilites: [{Benevole: 1, Quart_heure: Q2, Statut: 'Artiste', Artiste: 1}],
       });
       const ix = indexer(m);
-      const [ligne] = calculerChecklistBenevoles(m, ix, jourUnique(m), new Map());
+      const [ligne] = calculerChecklistBenevoles(m, ix, jourUnique(m), new Map()).lignes;
       expect(ligne!.artiste.etat).toBe('respecte');
     });
 
@@ -183,7 +223,7 @@ describe('calculerChecklistBenevoles', () => {
         disponibilites: [{Benevole: 1, Quart_heure: Q0, Statut: 'Artiste', Artiste: 1}],
       });
       const ix = indexer(m);
-      const [ligne] = calculerChecklistBenevoles(m, ix, jourUnique(m), new Map());
+      const [ligne] = calculerChecklistBenevoles(m, ix, jourUnique(m), new Map()).lignes;
       expect(ligne!.artiste.etat).toBe('viole');
       expect(ligne!.artiste.detail).toContain('DJ Test');
     });

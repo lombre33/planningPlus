@@ -5,8 +5,11 @@
  */
 
 import type {Id} from '../domain/types';
-import {type Anomalie, type Index, type Jour, indexer, regrouperParJour} from '../logic/derive';
-import {calculerChecklistBenevoles, type EtatVerification, type LigneChecklistBenevole, type VerdictCritere} from '../logic/checklist-benevoles';
+import {type Anomalie, type Jour, indexer, regrouperParJour} from '../logic/derive';
+import {
+  calculerChecklistBenevoles, type EtatVerification, type LigneChecklistBenevole,
+  type ResultatChecklistBenevoles, type VerdictCritere,
+} from '../logic/checklist-benevoles';
 import {nomsCompletsDepuisSource} from '../logic/noms-complets';
 import {calculerAnomalies} from '../moteur/adaptateur-magasin';
 import type {Magasin} from '../store';
@@ -62,6 +65,7 @@ const PILL_PAR_ETAT: Record<EtatVerification, string> = {
   viole: 'pill--danger',
   'sans-objet': 'pill--neutral',
   'sans-donnee': 'pill--neutral',
+  'partenaire-absent': 'pill--neutral',
 };
 
 const LIBELLE_PAR_ETAT: Record<EtatVerification, string> = {
@@ -69,6 +73,7 @@ const LIBELLE_PAR_ETAT: Record<EtatVerification, string> = {
   viole: 'Non respecté',
   'sans-objet': 'Sans objet',
   'sans-donnee': 'Pas de donnée',
+  'partenaire-absent': 'Partenaire absent',
 };
 
 function celluleVerdict(v: VerdictCritere): Node {
@@ -95,12 +100,11 @@ function ligneChecklist(ligne: LigneChecklistBenevole): Node {
  * pourquoi, jamais un chiffre). Section ajoutée sous la liste existante,
  * qui reste inchangée et porte toujours sur tout le festival.
  */
-function sectionChecklist(m: Magasin, ix: Index, jour: Jour | undefined, nomsComplets: ReadonlyMap<Id, string>): Node {
+function sectionChecklist(jour: Jour | undefined, resultat: ResultatChecklistBenevoles | null): Node {
   if (!jour) {
     return h('p', {class: 'empty'}, 'Aucun jour de festival : rien à vérifier bénévole par bénévole.');
   }
-  const lignes = calculerChecklistBenevoles(m, ix, jour, nomsComplets);
-  if (lignes.length === 0) {
+  if (!resultat || resultat.lignes.length === 0) {
     return h('p', {class: 'empty'}, `Aucun bénévole affecté ${jour.libelle.toLowerCase()}.`);
   }
   return h('div', {style: {overflow: 'auto', maxWidth: '100%'}},
@@ -111,7 +115,7 @@ function sectionChecklist(m: Magasin, ix: Index, jour: Jour | undefined, nomsCom
         h('th', {scope: 'col'}, 'Binôme souhaité'),
         h('th', {scope: 'col'}, 'Artiste(s) à voir (30 min)'),
       )),
-      h('tbody', null, ...lignes.map(ligneChecklist)),
+      h('tbody', null, ...resultat.lignes.map(ligneChecklist)),
     ),
   );
 }
@@ -155,12 +159,21 @@ export function montrerAnomalies(container: HTMLElement, m: Magasin): () => void
       );
     }
 
+    const resultatChecklist = jour ? calculerChecklistBenevoles(m, ix, jour, nomsComplets) : null;
+    const paires = resultatChecklist?.pairesBinomeCassees ?? 0;
+
     container.append(
       h('div', {class: 'section-title', style: {marginTop: '24px'}},
         h('h2', null, 'Respect des souhaits, bénévole par bénévole'),
         jour ? h('span', {class: 'count mono'}, jour.libelle) : null,
+        resultatChecklist
+          ? h('span', {
+            class: `pill ${paires > 0 ? 'pill--danger' : 'pill--ok'}`,
+            title: 'Chaque paire cassée compte double en nombre de bénévoles (une ligne par côté de la paire).',
+          }, `${paires} paire${paires > 1 ? 's' : ''} de binôme non respectée${paires > 1 ? 's' : ''}`)
+          : null,
       ),
-      sectionChecklist(m, ix, jour, nomsComplets),
+      sectionChecklist(jour, resultatChecklist),
     );
   }
 
