@@ -14,9 +14,10 @@
  */
 
 import type {Contexte} from './contexte';
-import {clePaireBenevoles} from './contexte';
 import {peutVoirArtiste} from './temps';
-import type {CandidatEligible, ExplicationScore, Id, ParametresAlgorithme, RaisonInEligibilite} from './types';
+import type {
+  CandidatEligible, ExplicationScore, Id, Mission, ParametresAlgorithme, RaisonInEligibilite, TypeAffinite,
+} from './types';
 
 export interface EtatOccupation {
   /** Groupes actuellement tenus par un bénévole (au moins une place). */
@@ -194,9 +195,38 @@ function clamp01(valeur: number): number {
 }
 
 /**
- * Score et explication d'un candidat déjà jugé éligible (§7.2, dans l'ordre :
- * artiste > souhait de mission > équipe > équité — la couverture, premier
- * objectif, se joue au niveau du choix du groupe à traiter, pas ici).
+ * Mission de restauration au sens de la demande d'Antoine du 2026-09-25
+ * (« on oublie le choix de la mission SAUF pour restauration ») : aucune
+ * mission de ce nom n'existe dans le dépôt (schéma, seed, tests) au moment
+ * d'écrire ceci, faute de définition donnée par lui — défaut le plus
+ * simple retenu en attendant, à ajuster ici seulement s'il distingue
+ * autrement (par équipe, par priorité de mission…) : le nom de la mission
+ * contient « restauration », insensible à la casse.
+ */
+function estMissionRestauration(mission: Mission): boolean {
+  return /restauration/i.test(mission.nom);
+}
+
+/**
+ * Partenaires « Ensemble »/« Éviter » déclarés d'un bénévole, avec leur
+ * type — lecture directe de `donnees.affinites` (peu d'entrées attendues,
+ * pas besoin d'un index dédié dans `Contexte`, à la différence de
+ * `affiniteParPaire` qui ne sait interroger qu'une paire précise).
+ */
+function partenairesDeclares(ctx: Contexte, benevoleId: Id): {id: Id; type: TypeAffinite}[] {
+  const partenaires: {id: Id; type: TypeAffinite}[] = [];
+  for (const affinite of ctx.donnees.affinites) {
+    if (affinite.benevoleAId === benevoleId) { partenaires.push({id: affinite.benevoleBId, type: affinite.type}); }
+    else if (affinite.benevoleBId === benevoleId) { partenaires.push({id: affinite.benevoleAId, type: affinite.type}); }
+  }
+  return partenaires;
+}
+
+/**
+ * Score et explication d'un candidat déjà jugé éligible (§7.2 — la
+ * couverture, premier objectif, se joue au niveau du choix du groupe à
+ * traiter, pas ici ; voir `types.ts` `ParametresAlgorithme` pour l'ordre
+ * complet en vigueur depuis le 2026-09-25).
  *
  * Le terme d'affinité ci-dessous n'est PAS un des six objectifs du §7.2 —
  * voir la note sur `affiniteEnsemble`/`affiniteEviter` dans `types.ts`
@@ -221,7 +251,14 @@ export function calculerScore(
     missionId: mission.id,
     preference: ctx.souhaitParBenevoleEtMission.get(`${benevoleId}:${mission.id}`)?.preference ?? null,
   }));
-  const scoreSouhait = souhaitsMission.length === 0
+  // Demande d'Antoine du 2026-09-25 : « on oublie le choix de la mission
+  // SAUF pour restauration » — le souhait de mission ne pèse plus sur le
+  // score, sauf pour les missions de restauration (voir
+  // `estMissionRestauration` ci-dessus). `souhaitsMission` ci-dessus reste
+  // calculé sans condition : c'est de l'explication (§7.5.3), montrée même
+  // quand elle n'a pas influencé le classement.
+  const missionSouhaitActif = missions.some(estMissionRestauration);
+  const scoreSouhait = !missionSouhaitActif || souhaitsMission.length === 0
     ? 0
     : souhaitsMission.reduce((somme, s) => (
       // « Refuse » ne devrait jamais apparaître ici : evaluerEligibilite exclut
@@ -239,12 +276,31 @@ export function calculerScore(
     : 0;
   const scoreEquite = poids.equite * facteurSousQuota - (depasseraitQuota ? poids.equite * 0.5 : 0);
 
-  const rangmates = rangmatesActuels(ctx, decisionsParPlace, groupeId, placeIdCible);
+  // Affinité (binôme souhaité/à éviter) : priorité maximale depuis le
+  // 2026-09-25 (demande d'Antoine, en réponse aux binômes non respectés
+  // remontés par la checklist de la vue Anomalies, PR #18/#19). Compte un
+  // partenaire déjà assis sur une autre place du groupe (`rangmates`, comme
+  // avant), MAIS AUSSI un partenaire pas encore décidé s'il pourrait encore
+  // rejoindre ce même groupe : sans ce deuxième cas, l'affinité ne pouvait
+  // JAMAIS influencer qui remporte la toute première place d'un groupe,
+  // puisqu'aucun coéquipier n'y est encore décidé à ce moment — elle ne
+  // pouvait alors QUE renforcer un appariement déjà amorcé par hasard sur
+  // les places suivantes, jamais le provoquer. C'était la cause structurelle
+  // trouvée à la lecture du code, indépendante de tout réglage de poids.
+  const rangmates = new Set(rangmatesActuels(ctx, decisionsParPlace, groupeId, placeIdCible));
   let scoreAffinite = 0;
-  for (const rangmateId of rangmates) {
-    const type = ctx.affiniteParPaire.get(clePaireBenevoles(benevoleId, rangmateId));
-    if (type === 'Ensemble') { scoreAffinite += poids.affiniteEnsemble; }
-    else if (type === 'Éviter') { scoreAffinite += poids.affiniteEviter; }
+  for (const {id: partenaireId, type} of partenairesDeclares(ctx, benevoleId)) {
+    const poidsType = type === 'Ensemble' ? poids.affiniteEnsemble : poids.affiniteEviter;
+    if (rangmates.has(partenaireId)) {
+      scoreAffinite += poidsType;
+      continue;
+    }
+    const groupeAEncorePlaceOuverte = (ctx.placesParGroupe.get(groupeId) ?? []).some((place) => (
+      place.id !== placeIdCible && decisionsParPlace.has(place.id) && decisionsParPlace.get(place.id) == null
+    ));
+    if (groupeAEncorePlaceOuverte && evaluerEligibilite(ctx, etat, groupeId, partenaireId).eligible) {
+      scoreAffinite += poidsType;
+    }
   }
 
   const groupe = ctx.groupeParId.get(groupeId);
@@ -261,7 +317,10 @@ export function calculerScore(
     + scoreAffinite
     + scoreEquipe,
   );
-  const scoreSansConflitArtiste = clamp01(0.5 + scoreSouhait + scoreEquite + scoreAffinite + scoreEquipe);
+  // Sans l'affinité (son propre palier dominant, `scoreAffiniteSeule`
+  // ci-dessous, depuis le 2026-09-25) ni le conflit artiste.
+  const scoreSansConflitArtiste = clamp01(0.5 + scoreSouhait + scoreEquite + scoreEquipe);
+  const scoreAffiniteSeule = clamp01(0.5 + scoreAffinite);
 
   const explication: ExplicationScore = {
     competencesOk: true, // seuls les candidats déjà éligibles atteignent le scoring
@@ -274,5 +333,5 @@ export function calculerScore(
     affinite: scoreAffinite > 0 ? 'positive' : scoreAffinite < 0 ? 'negative' : 'neutre',
   };
 
-  return {benevoleId, score, scoreSansConflitArtiste, explication};
+  return {benevoleId, score, scoreSansConflitArtiste, scoreAffiniteSeule, explication};
 }
