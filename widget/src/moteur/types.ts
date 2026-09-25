@@ -151,9 +151,19 @@ export interface DonneesPlanning {
  * Poids et réglages de l'algorithme (§7.2 : « l'ordre et les poids relatifs
  * sont paramétrables, et le paramétrage est stocké dans le document pour
  * être audité et rejoué »). Toutes les valeurs sont des ajustements fins :
- * l'ORDRE de priorité (couverture > disponibilité/artiste > souhait mission
- * > équipe > équité) est, lui, une propriété structurelle de l'algorithme et
- * n'est pas paramétrable ici — le cahier des charges le fixe.
+ * l'ORDRE de priorité est, lui, une propriété structurelle de l'algorithme
+ * et n'est pas paramétrable ici.
+ *
+ * **Ordre en vigueur depuis le 2026-09-25** (demande directe d'Antoine,
+ * remplace l'ordre précédent du 2026-09-23) : couverture (priorité de
+ * mission, `prioriteGroupe`, inchangée) > disponibilité (contrainte dure,
+ * §7.1) > affinité (binôme souhaité/à éviter, priorité MAXIMALE désormais,
+ * voir `CandidatEligible.scoreAffiniteSeule`) > souhait de mission — **mis
+ * de côté partout SAUF pour les missions de restauration** (voir
+ * `estMissionRestauration` dans `eligibilite.ts`) — / équipe / équité,
+ * ex æquo entre elles > artiste souhaité (ne départage plus qu'à égalité
+ * stricte sur tout ce qui précède, inchangé depuis le 2026-09-23, juste
+ * repoussé plus bas puisque l'affinité passe désormais devant lui aussi).
  *
  * `affiniteEnsemble`/`affiniteEviter` ne correspondent à AUCUN des six
  * objectifs numérotés du §7.2 : code écrit tôt en miroir de la table
@@ -333,15 +343,26 @@ export interface CandidatEligible {
   benevoleId: Id;
   score: number;
   /**
-   * Le même score, sans le terme de conflit artiste (objectif 7). Sert au
-   * solveur (`affectation.ts`) à classer les candidats sur les objectifs 2 à
-   * 6 d'abord — le conflit artiste, dernier de la liste depuis le
-   * renversement du 2026-09-23 (§7.2), ne départage qu'à égalité sur tout le
-   * reste, jamais avant : un simple terme de plus dans la somme pondérée ne
-   * suffirait pas, ses poids par défaut (`conflitArtiste: -0.4` contre
-   * `affiniteEnsemble: 0.1`) l'emportant toujours sur le binôme souhaité.
+   * Le même score, sans le terme d'affinité NI le conflit artiste. Sert au
+   * solveur (`affectation.ts`) à classer les candidats sur le souhait de
+   * mission (restauration seulement, depuis le 2026-09-25) / équipe /
+   * équité, une fois l'affinité déjà départagée par `scoreAffiniteSeule`
+   * ci-dessous, et avant l'artiste (dernier de la liste, ne départage qu'à
+   * égalité sur tout le reste).
    */
   scoreSansConflitArtiste: number;
+  /**
+   * Score isolé sur la seule affinité (binôme souhaité/à éviter, réalisée
+   * avec un coéquipier déjà décidé OU seulement potentielle avec un
+   * partenaire pas encore décidé mais qui pourrait encore rejoindre ce même
+   * groupe — voir `eligibilite.ts` `calculerScore`). PREMIER critère de tri
+   * du solveur depuis le 2026-09-25 (demande d'Antoine : affinité en
+   * priorité maximale) : un simple terme de plus dans la somme pondérée ne
+   * suffirait pas à la faire dominer les autres objectifs (poids par défaut
+   * `affiniteEnsemble: 0.1` contre `equite: 0.15`), même raisonnement que
+   * pour `scoreSansConflitArtiste` face au conflit artiste en 2026-09-23.
+   */
+  scoreAffiniteSeule: number;
   explication: ExplicationScore;
 }
 

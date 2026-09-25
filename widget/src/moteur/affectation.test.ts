@@ -133,14 +133,15 @@ describe('calculerAffectation — conflit artiste (§7.2 objectif 2)', () => {
   });
 });
 
-describe('calculerAffectation — priorité 3 : binôme souhaité (affinité)', () => {
+describe('calculerAffectation — priorité 2 : binôme souhaité (affinité), priorité maximale depuis le 2026-09-25', () => {
   /** Un binôme (groupe de taille 2) : `dejaLa` tient déjà une place, verrouillée
    *  pour rester fixe pendant le calcul ; l'autre place doit choisir entre
    *  `souhaite` (affinité « Ensemble » avec `dejaLa`) et `autre` (aucune
    *  affinité). `pref` fixe leur souhait de mission respectif et `dispoSouhaite`
    *  la disponibilité de `souhaite` — de quoi isoler l'effet de l'affinité seule,
-   *  puis la faire céder devant la disponibilité (contrainte dure, §7.1) et le
-   *  souhait de mission (objectif de poids le plus fort, §7.2 objectif 3). */
+   *  puis la faire céder devant la disponibilité (contrainte dure, §7.1, seule
+   *  chose au-dessus d'elle depuis le 2026-09-25) et vérifier qu'elle ne cède
+   *  PLUS devant le souhait de mission, même le plus fort qui soit. */
   function scenarioBinome(options: {
     prefSouhaite?: SouhaitMission['preference']; prefAutre?: SouhaitMission['preference']; dispoSouhaite?: boolean;
   } = {}) {
@@ -187,35 +188,72 @@ describe('calculerAffectation — priorité 3 : binôme souhaité (affinité)', 
     expect(proposition).toMatchObject({benevoleIdApres: autre.id});
   });
 
-  it("cède devant un souhait de mission plus fort (§7.2 objectif 3, poids supérieur à l'affinité)", () => {
-    const {d, placeAPourvoir, autre} = scenarioBinome({prefSouhaite: 'Réticent', prefAutre: 'Souhaite fortement'});
-    const resultat = calculerAffectation(d);
+  it("l'emporte même face à un souhait de mission de restauration plus fort chez l'autre candidat (priorité maximale, 2026-09-25 : « on oublie le choix de la mission SAUF pour restauration », affinité toujours au-dessus)", () => {
+    const {d, placeAPourvoir, souhaite} = scenarioBinome({prefSouhaite: 'Réticent', prefAutre: 'Souhaite fortement'});
+    const dRestauration = {...d, missions: d.missions.map((m) => ({...m, nom: 'Restauration'}))};
+    const resultat = calculerAffectation(dRestauration);
     const proposition = resultat.propositions.find((p) => p.placeId === placeAPourvoir.id);
-    expect(proposition).toMatchObject({benevoleIdApres: autre.id});
+    expect(proposition).toMatchObject({benevoleIdApres: souhaite.id});
   });
 });
 
 /**
  * Preuve, par opposition deux à deux, de l'ordre de priorités qu'Antoine a
- * donné le 2026-09-23 17h40 : mission > disponibilité > binôme souhaité >
- * artiste à voir. Chaque test isole une seule frontière en gardant tout le
- * reste égal entre les deux candidats.
+ * donné directement le 2026-09-25 11h47, en remplacement de celui du
+ * 2026-09-23 : « on oublie le choix de la mission SAUF pour restauration » ;
+ * Prio 1 disponibilité (maximum), Prio 2 affinité/binôme (maximum), Prio 3
+ * artiste souhaité (au moins 30mn, priorité haute — mais toujours en dernier,
+ * ne départage qu'à stricte égalité sur tout le reste, mécanisme inchangé
+ * depuis le 2026-09-23). Chaque test isole une seule frontière en gardant
+ * tout le reste égal entre les deux candidats.
  *
  * La « disponibilité » de ce classement n'est PAS un critère de score : le
- * §7.2 (précisé le 2026-09-23) la range hors de la liste des objectifs
- * pondérés, comme contrainte dure (§7.1 règle 2) — un bénévole indisponible
- * n'est même pas candidat, il ne perd pas seulement un point de score. La
- * frontière « disponibilité > binôme souhaité » est donc déjà prouvée par
- * `cède devant la disponibilité...` ci-dessus (scénario binôme, ligne 183) :
- * le binôme souhaité mais indisponible en est exclu, pas seulement mal noté.
- * La frontière « mission > disponibilité » se lit alors comme : à
- * disponibilité strictement égale (les deux candidats sont éligibles), le
- * choix de mission décide — il n'existe pas de « mieux disponible » entre
- * deux candidats déjà disponibles.
+ * §7.2 la range hors de la liste des objectifs pondérés, comme contrainte
+ * dure (§7.1 règle 2) — un bénévole indisponible n'est même pas candidat, il
+ * ne perd pas seulement un point de score ; c'est déjà, de fait, la priorité
+ * maximale qu'Antoine redemande. La frontière « disponibilité > affinité »
+ * est prouvée par `cède devant la disponibilité...` ci-dessus (scénario
+ * binôme) : le binôme souhaité mais indisponible en est exclu, pas seulement
+ * mal noté. La frontière « affinité > souhait de mission (même de
+ * restauration) » est prouvée juste au-dessus par `l'emporte même face à un
+ * souhait de mission de restauration plus fort...`. Reste à prouver ici :
+ * le souhait de mission n'a plus AUCUN effet pour une mission ordinaire
+ * (l'exception « restauration » ne s'applique qu'à elle-même), et l'affinité
+ * l'emporte toujours sur l'artiste souhaité, dernier de la liste.
  */
-describe("calculerAffectation — ordre des priorités d'Antoine (2026-09-23)", () => {
-  it('à disponibilité égale (les deux sont éligibles), le bénévole qui a choisi la mission passe devant celui qui est seulement présent, sans préférence exprimée', () => {
-    const mission = creerMission();
+describe("calculerAffectation — ordre des priorités d'Antoine (2026-09-25)", () => {
+  it("à disponibilité égale (les deux sont éligibles) et sans affinité, le souhait de mission n'influence plus le choix pour une mission ordinaire (seule la restauration fait exception depuis le 2026-09-25)", () => {
+    const mission = creerMission(); // nom par défaut, donc PAS « Restauration »
+    const sousCreneau = creerSousCreneau(h(0, 10), h(0, 11));
+    const besoin = creerBesoin(mission.id, sousCreneau.id, {effectifMin: 1, effectifMax: 1});
+    const groupe = creerGroupe();
+    const position = creerPositionGroupe(groupe.id, besoin.id);
+    const place = creerPlace(groupe.id, 1);
+    const aChoisi = creerBenevole();
+    const simplementPresent = creerBenevole();
+
+    const resultat = calculerAffectation(donnees({
+      benevoles: [aChoisi, simplementPresent], missions: [mission], sousCreneaux: [sousCreneau], besoins: [besoin],
+      groupes: [groupe], positionsGroupe: [position], places: [place],
+      disponibilites: [
+        ...disponibilitesIntervalle(aChoisi.id, h(0, 10), h(0, 11)),
+        ...disponibilitesIntervalle(simplementPresent.id, h(0, 10), h(0, 11)),
+      ],
+      souhaitsMissions: [creerSouhait(aChoisi.id, mission.id, 'Souhaite fortement')],
+    }));
+
+    const proposition = resultat.propositions.find((p) => p.placeId === place.id);
+    // Le score complet des deux candidats est identique (souhait neutre pour
+    // les deux, mission non-restauration) : le départage se fait par le
+    // dernier critère du tri (`benevoleId` croissant), pas par la préférence
+    // exprimée — la preuve que le souhait ne compte plus ici est justement
+    // que `aChoisi` NE l'emporte PAS automatiquement malgré sa préférence.
+    const gagnantAttendu = aChoisi.id < simplementPresent.id ? aChoisi.id : simplementPresent.id;
+    expect(proposition).toMatchObject({benevoleIdApres: gagnantAttendu});
+  });
+
+  it("le souhait de mission reste actif pour une mission de restauration (exception du 2026-09-25) quand aucune affinité n'entre en jeu", () => {
+    const mission = creerMission({nom: 'Restauration'});
     const sousCreneau = creerSousCreneau(h(0, 10), h(0, 11));
     const besoin = creerBesoin(mission.id, sousCreneau.id, {effectifMin: 1, effectifMax: 1});
     const groupe = creerGroupe();
@@ -238,7 +276,7 @@ describe("calculerAffectation — ordre des priorités d'Antoine (2026-09-23)", 
     expect(proposition).toMatchObject({benevoleIdApres: aChoisi.id});
   });
 
-  it("le binôme souhaité passe devant l'artiste à voir (§7.2, renversement du 2026-09-23 17h49) : à égalité de mission, un candidat en conflit artiste mais en affinité « Ensemble » avec un coéquipier déjà en place bat un candidat propre sans affinité", () => {
+  it("le binôme souhaité passe devant l'artiste à voir (§7.2, priorité maximale depuis le 2026-09-25) : à égalité de mission, un candidat en conflit artiste mais en affinité « Ensemble » avec un coéquipier déjà en place bat un candidat propre sans affinité", () => {
     const mission = creerMission();
     const sousCreneau = creerSousCreneau(h(0, 10), h(0, 11));
     const besoin = creerBesoin(mission.id, sousCreneau.id, {effectifMin: 2, effectifMax: 2, tailleGroupe: 2});
@@ -264,6 +302,42 @@ describe("calculerAffectation — ordre des priorités d'Antoine (2026-09-23)", 
     const proposition = resultat.propositions.find((p) => p.placeId === placeAPourvoir.id);
     expect(proposition).toMatchObject({benevoleIdApres: enConflitAvecBinome.id});
     expect(resultat.anomalies.some((a) => a.code === 'conflit_artiste')).toBe(true);
+  });
+});
+
+describe('calculerAffectation — appariement proactif (correction structurelle du 2026-09-25)', () => {
+  it("forme un binôme dès la toute première place pourvue d'un groupe, sans qu'aucun des deux ne soit déjà en place (cause structurelle trouvée à la lecture du code : l'affinité ne pouvait auparavant influencer que les places suivantes, jamais la première, faute de coéquipier déjà décidé à ce moment-là)", () => {
+    const mission = creerMission();
+    const sousCreneau = creerSousCreneau(h(0, 10), h(0, 11));
+    const besoin = creerBesoin(mission.id, sousCreneau.id, {effectifMin: 2, effectifMax: 2, tailleGroupe: 2});
+    const groupe = creerGroupe({taille: 2});
+    const position = creerPositionGroupe(groupe.id, besoin.id);
+    const place1 = creerPlace(groupe.id, 1);
+    const place2 = creerPlace(groupe.id, 2);
+    // Créé en premier pour obtenir l'id le plus bas : sans le mécanisme de
+    // partenaire « potentiel », le départage par id croissant, à égalité de
+    // score sinon, le ferait gagner la première place malgré son absence
+    // d'affinité — la preuve que ce n'est plus le cas.
+    const sansAffinite = creerBenevole();
+    const benevoleA = creerBenevole();
+    const benevoleB = creerBenevole();
+
+    const resultat = calculerAffectation(donnees({
+      benevoles: [sansAffinite, benevoleA, benevoleB], missions: [mission], sousCreneaux: [sousCreneau],
+      besoins: [besoin], groupes: [groupe], positionsGroupe: [position], places: [place1, place2],
+      disponibilites: [
+        ...disponibilitesIntervalle(sansAffinite.id, h(0, 10), h(0, 11)),
+        ...disponibilitesIntervalle(benevoleA.id, h(0, 10), h(0, 11)),
+        ...disponibilitesIntervalle(benevoleB.id, h(0, 10), h(0, 11)),
+      ],
+      affinites: [creerAffinite(benevoleA.id, benevoleB.id, 'Ensemble')],
+    }));
+
+    const affectes = resultat.propositions
+      .filter((p) => p.placeId === place1.id || p.placeId === place2.id)
+      .map((p) => p.benevoleIdApres)
+      .filter((id): id is Id => id != null);
+    expect(new Set(affectes)).toEqual(new Set([benevoleA.id, benevoleB.id]));
   });
 });
 
@@ -644,7 +718,11 @@ describe('perimetreAbsence', () => {
 
 describe('classerCandidats', () => {
   it('classe les éligibles par score décroissant puis liste les inéligibles avec leur raison', () => {
-    const mission = creerMission();
+    // Mission de restauration : depuis le 2026-09-25, le souhait de mission
+    // ne différencie plus les scores que pour cette exception (voir
+    // `estMissionRestauration` dans `eligibilite.ts`) — nécessaire ici pour
+    // que `excellent` (souhait fort) se distingue de `moyen` (aucun souhait).
+    const mission = creerMission({nom: 'Restauration'});
     const sousCreneau = creerSousCreneau(h(0, 10), h(0, 11));
     const besoin = creerBesoin(mission.id, sousCreneau.id);
     const groupe = creerGroupe();

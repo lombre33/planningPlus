@@ -280,13 +280,14 @@ describe('evaluerEligibilite', () => {
 });
 
 describe('calculerScore', () => {
-  it('score plus haut un souhait « Souhaite fortement » qu’un souhait « Neutre », lui-même plus haut qu’un souhait « Réticent »', () => {
+  it('pour une mission de restauration (seule exception depuis le 2026-09-25), score plus haut un souhait « Souhaite fortement » qu’un souhait « Neutre », lui-même plus haut qu’un souhait « Réticent »', () => {
     const s = scenarioSimple();
+    const missionRestauration = {...s.mission, nom: 'Restauration'};
     const fort = creerBenevole();
     const neutre = creerBenevole();
     const reticent = creerBenevole();
     const d = donnees({
-      benevoles: [fort, neutre, reticent], missions: [s.mission], sousCreneaux: [s.sousCreneau],
+      benevoles: [fort, neutre, reticent], missions: [missionRestauration], sousCreneaux: [s.sousCreneau],
       besoins: [s.besoin], groupes: [s.groupe], positionsGroupe: [s.position], places: [s.place],
       disponibilites: [fort, neutre, reticent].flatMap((b) => disponibilitesIntervalle(b.id, s.sousCreneau.debut, s.sousCreneau.fin)),
       souhaitsMissions: [
@@ -300,6 +301,26 @@ describe('calculerScore', () => {
     const scoreDe = (id: number) => calculerScore(ctx, etat, PARAMETRES_PAR_DEFAUT, s.groupe.id, id, false, decisions, s.place.id).score;
     expect(scoreDe(fort.id)).toBeGreaterThan(scoreDe(neutre.id));
     expect(scoreDe(neutre.id)).toBeGreaterThan(scoreDe(reticent.id));
+  });
+
+  it("pour une mission ordinaire (pas de restauration), le souhait de mission n'a plus aucun effet sur le score depuis le 2026-09-25 (« on oublie le choix de la mission SAUF pour restauration »)", () => {
+    const s = scenarioSimple(); // nom par défaut, donc PAS « Restauration »
+    const fort = creerBenevole();
+    const reticent = creerBenevole();
+    const d = donnees({
+      benevoles: [fort, reticent], missions: [s.mission], sousCreneaux: [s.sousCreneau],
+      besoins: [s.besoin], groupes: [s.groupe], positionsGroupe: [s.position], places: [s.place],
+      disponibilites: [fort, reticent].flatMap((b) => disponibilitesIntervalle(b.id, s.sousCreneau.debut, s.sousCreneau.fin)),
+      souhaitsMissions: [
+        creerSouhait(fort.id, s.mission.id, 'Souhaite fortement'),
+        creerSouhait(reticent.id, s.mission.id, 'Réticent'),
+      ],
+    });
+    const ctx = construireContexte(d, PARAMETRES_PAR_DEFAUT);
+    const etat = construireEtatOccupation(ctx);
+    const decisions = new Map();
+    const scoreDe = (id: number) => calculerScore(ctx, etat, PARAMETRES_PAR_DEFAUT, s.groupe.id, id, false, decisions, s.place.id).score;
+    expect(scoreDe(fort.id)).toBe(scoreDe(reticent.id));
   });
 
   it('pénalise un candidat en conflit avec un souhait artiste par rapport à un candidat sans conflit', () => {

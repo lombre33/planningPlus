@@ -257,21 +257,29 @@ function remplir(
         ctx, etat, parametres, meilleurGroupeId, benevole.id, statut.conflitArtiste, decisionsParPlace, place.id,
       ));
     }
-    // Classement à deux niveaux, pas un simple tri par score : depuis le
-    // 2026-09-23 (demande d'Antoine, « par défaut on va valider le binôme
-    // souhaité »), l'artiste souhaité (objectif 7, dernier de la liste)
-    // ne départage plus qu'à égalité sur tous les objectifs qui le
-    // précèdent (binôme, missions souhaitées, équipe, équité) — pas avant.
-    // Avec les poids par défaut (`affiniteEnsemble: 0.1` contre
-    // `conflitArtiste: -0.4`), un simple tri par score global ne
-    // suffirait pas à faire gagner le binôme sur l'artiste (voir la note
-    // du cahier des charges §7.2) ; `scoreSansConflitArtiste` classe donc
-    // en premier sur les objectifs 2 à 6, et seul un ex æquo strict sur ce
-    // plan se départage par la préférence artiste (propre bat conflit),
-    // puis par le score complet, comme avant.
-    // Départage ultime, à stricte égalité sur tout ce qui précède (score,
-    // artiste, ordre d'Antoine) : privilégier le candidat qui a LE MOINS
-    // d'autres groupes vides où il serait aussi éligible à cet instant — un
+    // Classement à trois niveaux, pas un simple tri par score. Ordre en
+    // vigueur depuis le 2026-09-25 (demande directe d'Antoine, suite aux
+    // binômes non respectés remontés par la checklist de la vue Anomalies) :
+    // 1) affinité (binôme souhaité/à éviter) — priorité MAXIMALE, dominante
+    //    sur tout le reste ; 2) souhait de mission (restauration seulement
+    //    désormais, voir `estMissionRestauration` dans `eligibilite.ts`) /
+    //    équipe / équité, ex æquo ; 3) artiste souhaité, en tout dernier,
+    //    ne départage qu'à stricte égalité sur tout ce qui précède (repositionné,
+    //    mécanisme inchangé depuis le 2026-09-23 : « par défaut on va
+    //    valider le binôme souhaité »). Avec les poids par défaut
+    //    (`affiniteEnsemble: 0.1` face à `equite: 0.15` ou
+    //    `conflitArtiste: -0.4`), un simple tri par score global ne
+    //    suffirait à faire dominer ni l'affinité ni le binôme sur l'artiste
+    //    (voir la note du cahier des charges §7.2) : `scoreAffiniteSeule`
+    //    classe donc en premier sur l'affinité seule, puis
+    //    `scoreSansConflitArtiste` (qui exclut maintenant l'affinité, déjà
+    //    tranchée) départage sur les objectifs restants, et seul un ex
+    //    æquo strict sur ces deux plans se départage par la préférence
+    //    artiste (propre bat conflit), puis par le score complet, comme
+    //    avant.
+    // Départage ultime, à stricte égalité sur tout ce qui précède (affinité,
+    // score, artiste) : privilégier le candidat qui a LE MOINS d'autres
+    // groupes vides où il serait aussi éligible à cet instant — un
     // candidat qui ne peut aller nulle part ailleurs a davantage besoin de
     // CETTE place qu'un généraliste qui pourra encore servir un autre
     // groupe de même priorité au tour suivant. Corrige le bug du
@@ -290,7 +298,8 @@ function remplir(
       alternativesParBenevole.set(candidat.benevoleId, alternatives);
     }
     const gagnant = [...candidats].sort((a, b) => (
-      b.scoreSansConflitArtiste - a.scoreSansConflitArtiste
+      b.scoreAffiniteSeule - a.scoreAffiniteSeule
+      || b.scoreSansConflitArtiste - a.scoreSansConflitArtiste
       || Number(a.explication.conflitArtiste) - Number(b.explication.conflitArtiste)
       || b.score - a.score
       || (alternativesParBenevole.get(a.benevoleId) ?? 0) - (alternativesParBenevole.get(b.benevoleId) ?? 0)
