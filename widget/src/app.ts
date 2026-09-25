@@ -94,8 +94,10 @@ const ONGLETS: DefinitionOnglet[] = [
   {
     id: 'anomalies', libelle: 'Anomalies', icone: ICONES.anomalies,
     titre: 'Anomalies',
-    sousTitre: 'Places vides, souhaits contrariés, quotas dépassés — rien de tout ça n’est masqué (objectif O3).',
+    sousTitre: 'Places vides, souhaits contrariés, quotas dépassés — rien de tout ça n’est masqué (objectif O3). '
+      + 'Complété par un état, bénévole par bénévole, du respect de sa disponibilité, de son binôme et des artistes qu’il veut voir.',
     montrer: montrerAnomalies,
+    filtreJour: true,
   },
   {
     id: 'terrain', libelle: 'Terrain', icone: ICONES.terrain,

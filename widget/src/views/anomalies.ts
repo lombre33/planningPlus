@@ -4,7 +4,10 @@
  * indisponibilités non respectées, quotas dépassés.
  */
 
-import {type Anomalie, indexer} from '../logic/derive';
+import type {Id} from '../domain/types';
+import {type Anomalie, type Index, type Jour, indexer, regrouperParJour} from '../logic/derive';
+import {calculerChecklistBenevoles, type EtatVerification, type LigneChecklistBenevole, type VerdictCritere} from '../logic/checklist-benevoles';
+import {nomsCompletsDepuisSource} from '../logic/noms-complets';
 import {calculerAnomalies} from '../moteur/adaptateur-magasin';
 import type {Magasin} from '../store';
 import {formatHeures, h, vider} from '../ui/dom';
@@ -54,31 +57,110 @@ const LIBELLE_TYPE: Record<Anomalie['type'], string> = {
   'double-engagement': 'Double engagement',
 };
 
+const PILL_PAR_ETAT: Record<EtatVerification, string> = {
+  respecte: 'pill--ok',
+  viole: 'pill--danger',
+  'sans-objet': 'pill--neutral',
+  'sans-donnee': 'pill--neutral',
+};
+
+const LIBELLE_PAR_ETAT: Record<EtatVerification, string> = {
+  respecte: 'Respecté',
+  viole: 'Non respecté',
+  'sans-objet': 'Sans objet',
+  'sans-donnee': 'Pas de donnée',
+};
+
+function celluleVerdict(v: VerdictCritere): Node {
+  return h('td', null,
+    h('span', {class: `pill ${PILL_PAR_ETAT[v.etat]}`}, LIBELLE_PAR_ETAT[v.etat]),
+    h('div', {class: 'anomalie__detail', style: {marginTop: '3px'}}, v.detail),
+  );
+}
+
+function ligneChecklist(ligne: LigneChecklistBenevole): Node {
+  return h('tr', null,
+    h('th', {scope: 'row'}, ligne.nom),
+    celluleVerdict(ligne.disponibilite),
+    celluleVerdict(ligne.binome),
+    celluleVerdict(ligne.artiste),
+  );
+}
+
+/**
+ * Complément demandé par Antoine le 2026-09-25 : une ligne par bénévole
+ * affecté le jour affiché (filtre global, `Magasin.macroCreneauSelectionne`,
+ * posé par `app.ts`), trois colonnes — une par question posée — plutôt
+ * qu'un score (§ précision du coordinateur : ce qui est sacrifié et
+ * pourquoi, jamais un chiffre). Section ajoutée sous la liste existante,
+ * qui reste inchangée et porte toujours sur tout le festival.
+ */
+function sectionChecklist(m: Magasin, ix: Index, jour: Jour | undefined, nomsComplets: ReadonlyMap<Id, string>): Node {
+  if (!jour) {
+    return h('p', {class: 'empty'}, 'Aucun jour de festival : rien à vérifier bénévole par bénévole.');
+  }
+  const lignes = calculerChecklistBenevoles(m, ix, jour, nomsComplets);
+  if (lignes.length === 0) {
+    return h('p', {class: 'empty'}, `Aucun bénévole affecté ${jour.libelle.toLowerCase()}.`);
+  }
+  return h('div', {style: {overflow: 'auto', maxWidth: '100%'}},
+    h('table', {class: 'tableau-simple'},
+      h('thead', null, h('tr', null,
+        h('th', {scope: 'col'}, 'Bénévole'),
+        h('th', {scope: 'col'}, 'Disponibilité'),
+        h('th', {scope: 'col'}, 'Binôme souhaité'),
+        h('th', {scope: 'col'}, 'Artiste(s) à voir (30 min)'),
+      )),
+      h('tbody', null, ...lignes.map(ligneChecklist)),
+    ),
+  );
+}
+
 export function montrerAnomalies(container: HTMLElement, m: Magasin): () => void {
+  // Noms complets lus depuis la table externe d'Antoine (même mécanisme que
+  // le roster imprimable) : jamais bloquant, la checklist garde `Benevole.Nom`
+  // en attendant, se rafraîchit seule si des noms complets sont trouvés.
+  let nomsComplets: ReadonlyMap<Id, string> = new Map();
+  let vueActive = true;
+  nomsCompletsDepuisSource(m).then((trouves) => {
+    if (!vueActive || trouves.size === 0) { return; }
+    nomsComplets = trouves;
+    rafraichir();
+  }).catch(() => { /* jamais bloquant : la vue garde Benevole.Nom */ });
+
   function rafraichir(): void {
     const ix = indexer(m);
     const anomalies = calculerAnomalies(m, ix);
+    const jours = regrouperParJour(m.macroCreneaux);
+    const jour = jours.find((j) => j.macros.some((ma) => ma.id === m.macroCreneauSelectionne)) ?? jours[0];
     vider(container);
 
     if (anomalies.length === 0) {
       container.append(h('p', {class: 'empty'}, 'Aucune anomalie détectée sur ce jeu de données.'));
-      return;
+    } else {
+      const parGravite = {
+        danger: anomalies.filter((a) => a.gravite === 'danger'),
+        warn: anomalies.filter((a) => a.gravite === 'warn'),
+      };
+
+      container.append(
+        h('div', {style: {display: 'flex', gap: '10px', marginBottom: '16px'}},
+          h('span', {class: 'pill pill--danger'}, `${parGravite.danger.length} à corriger`),
+          h('span', {class: 'pill pill--warn'}, `${parGravite.warn.length} à surveiller`),
+        ),
+        h('div', {class: 'anomalies-cols'},
+          colonne('À corriger', parGravite.danger),
+          colonne('À surveiller', parGravite.warn),
+        ),
+      );
     }
 
-    const parGravite = {
-      danger: anomalies.filter((a) => a.gravite === 'danger'),
-      warn: anomalies.filter((a) => a.gravite === 'warn'),
-    };
-
     container.append(
-      h('div', {style: {display: 'flex', gap: '10px', marginBottom: '16px'}},
-        h('span', {class: 'pill pill--danger'}, `${parGravite.danger.length} à corriger`),
-        h('span', {class: 'pill pill--warn'}, `${parGravite.warn.length} à surveiller`),
+      h('div', {class: 'section-title', style: {marginTop: '24px'}},
+        h('h2', null, 'Respect des souhaits, bénévole par bénévole'),
+        jour ? h('span', {class: 'count mono'}, jour.libelle) : null,
       ),
-      h('div', {class: 'anomalies-cols'},
-        colonne('À corriger', parGravite.danger),
-        colonne('À surveiller', parGravite.warn),
-      ),
+      sectionChecklist(m, ix, jour, nomsComplets),
     );
   }
 
@@ -109,5 +191,5 @@ export function montrerAnomalies(container: HTMLElement, m: Magasin): () => void
 
   const desabonner = m.subscribe(rafraichir);
   rafraichir();
-  return desabonner;
+  return () => { vueActive = false; desabonner(); };
 }
