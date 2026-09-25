@@ -18,6 +18,19 @@
  * dit (`sans-donnee`). C'est distinct d'un souhait explicitement absent
  * (binôme non déclaré, aucun artiste souhaité : `sans-objet`), qui est un
  * fait connu, pas un trou de donnée.
+ *
+ * Deuxième piège, trouvé par Antoine le 2026-09-25 en lisant la première
+ * version (« beaucoup trop de bénévoles dont l'affinité n'est pas
+ * respectée ») : un partenaire de binôme souhaité qui n'est affecté à AUCUN
+ * indicatif ce jour-là (absent, pas nécessaire, ou simplement affecté un
+ * autre jour) rend la paire structurellement impossible — ce n'est jamais
+ * un raté du planning, l'algorithme n'avait rien à choisir. Distinct d'un
+ * partenaire réellement affecté ce jour-là mais ailleurs (`viole`, un vrai
+ * écart) : voir `partenaire-absent` ci-dessous. Autre cause du même
+ * signalement gonflé : l'affinité `Ensemble` est symétrique ici (si A
+ * souhaite B, les deux lignes sont jugées sur cette paire) — une seule paire
+ * cassée compte donc double en nombre de bénévoles, d'où le compteur de
+ * paires distinctes renvoyé par `calculerChecklistBenevoles`.
  */
 
 import type {Id, StatutDisponibilite} from '../domain/types';
@@ -30,7 +43,7 @@ import {peutVoirArtiste} from '../moteur';
 import {PAS_SECONDES} from '../temps';
 import type {Magasin} from '../store';
 
-export type EtatVerification = 'respecte' | 'viole' | 'sans-objet' | 'sans-donnee';
+export type EtatVerification = 'respecte' | 'viole' | 'sans-objet' | 'sans-donnee' | 'partenaire-absent';
 
 export interface VerdictCritere {
   etat: EtatVerification;
@@ -111,12 +124,43 @@ function verifierBinome(
   if (present != null) {
     return {etat: 'respecte', detail: `Avec ${nomDe(present)}, son binôme souhaité, sur le même indicatif.`};
   }
-  const detailsAbsence = partenaireIds.map((id) => (
-    benevolesAffectesAujourdhui.has(id)
-      ? `${nomDe(id)} est affecté ailleurs aujourd’hui`
-      : `${nomDe(id)} n’est affecté à aucun indicatif aujourd’hui`
-  ));
-  return {etat: 'viole', detail: `${detailsAbsence.join(' ; ')}.`};
+  // Un partenaire réellement affecté ce jour-là, mais pas avec lui, est un
+  // vrai écart imputable au plan. Un partenaire absent du plan ce jour-là
+  // (pas affecté du tout) n'en est pas un — voir le piège en tête de
+  // fichier : ne jamais le présenter comme un défaut de l'algorithme.
+  const ailleurs = partenaireIds.filter((id) => benevolesAffectesAujourdhui.has(id));
+  if (ailleurs.length > 0) {
+    return {
+      etat: 'viole',
+      detail: `${ailleurs.map((id) => `${nomDe(id)} est affecté ailleurs aujourd’hui`).join(' ; ')}.`,
+    };
+  }
+  return {
+    etat: 'partenaire-absent',
+    detail: `${partenaireIds.map((id) => `${nomDe(id)} n’est affecté à aucun indicatif aujourd’hui`).join(' ; ')}`
+      + ' : rien que ce planning aurait pu changer.',
+  };
+}
+
+/**
+ * Nombre de paires de binôme souhaité (`Affinites` de type 'Ensemble')
+ * réellement cassées ce jour-là — les deux affectés, mais pas ensemble.
+ * Sert à corriger la lecture des lignes `viole` de la colonne Binôme, qui
+ * comptent chaque paire en double (une ligne par bénévole, §note en tête de
+ * fichier) : une paire dont un membre est simplement absent du plan ce
+ * jour-là n'est jamais comptée ici, ce n'est pas un écart du planning.
+ */
+function compterPairesBinomeCassees(
+  m: Magasin, ix: Index, quarts: ReadonlySet<number>, benevolesAffectesAujourdhui: ReadonlySet<Id>,
+): number {
+  let n = 0;
+  for (const a of m.affinites) {
+    if (a.Type !== 'Ensemble') { continue; }
+    if (!benevolesAffectesAujourdhui.has(a.Benevole_A) || !benevolesAffectesAujourdhui.has(a.Benevole_B)) { continue; }
+    if (coequipiersCeJour(m, ix, a.Benevole_A, quarts).has(a.Benevole_B)) { continue; }
+    n++;
+  }
+  return n;
 }
 
 function verifierArtistes(
@@ -150,6 +194,14 @@ function verifierArtistes(
   };
 }
 
+export interface ResultatChecklistBenevoles {
+  lignes: LigneChecklistBenevole[];
+  /** Voir `compterPairesBinomeCassees` : le nombre réel de paires en défaut,
+   *  à distinguer du nombre de lignes `viole` sur la colonne Binôme (double
+   *  chaque paire) — à afficher à côté du titre de la section. */
+  pairesBinomeCassees: number;
+}
+
 /**
  * Une ligne par bénévole ayant au moins une place affectée le jour donné
  * (la question porte sur « le planning proposé » : rien à vérifier pour qui
@@ -157,7 +209,7 @@ function verifierArtistes(
  */
 export function calculerChecklistBenevoles(
   m: Magasin, ix: Index, jour: Jour, nomsComplets: ReadonlyMap<Id, string>,
-): LigneChecklistBenevole[] {
+): ResultatChecklistBenevoles {
   const quarts = quartsDuJour(jour);
   const affectations = affectationsQuartParBenevole(m, ix, quarts);
   const benevolesAffectesAujourdhui = new Set(affectations.keys());
@@ -177,5 +229,8 @@ export function calculerChecklistBenevoles(
       artiste: verifierArtistes(ix, m, benevoleId, quartsAffectes),
     });
   }
-  return lignes.sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+  return {
+    lignes: lignes.sort((a, b) => a.nom.localeCompare(b.nom, 'fr')),
+    pairesBinomeCassees: compterPairesBinomeCassees(m, ix, quarts, benevolesAffectesAujourdhui),
+  };
 }
