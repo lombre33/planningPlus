@@ -11,6 +11,7 @@
  * effectifs, comme dans la table du jour où elle est « à couvrir ».
  */
 
+import {t, traductions} from '../i18n.js';
 import {indexer, regrouperParJour} from '../logic/derive.js';
 import {
   affectationsAInstant, blocsDuJour, couvertureAInstant, indexerDisponibilitesDuQuart, statutBenevoleAInstant,
@@ -19,11 +20,28 @@ import {jourAffiche} from '../logic/journee.js';
 import {libelleHeure} from '../temps.js';
 import {h, vider} from '../ui/dom.js';
 
+traductions({
+  'Disponible, non affecté': 'Available, unassigned',
+  'Veut voir un artiste': 'Wants to see an artist',
+  Indisponible: 'Unavailable',
+  'Absent·e': 'Absent',
+  'Instant de la journée': 'Time of day',
+  'Aucun créneau ce jour-là.': 'No slots that day.',
+  'En poste maintenant': 'On duty now',
+  '{n} bénévole(s)': '{n} volunteer(s)',
+  'Personne en poste à cet instant.': 'Nobody on duty at this time.',
+  'Pas en poste': 'Not on duty',
+  '{etat} ({n}) : ': '{etat} ({n}): ',
+  'Effectifs attendus': 'Expected headcount',
+  'Aucun besoin ouvert à cet instant.': 'No active need at this time.',
+});
+
+/** Libellé de chaque état « pas en poste », dans la langue du moment. */
 const LIBELLE_ETAT_LIBRE = {
-  disponible: 'Disponible, non affecté',
-  'veut-voir-artiste': 'Veut voir un artiste',
-  indisponible: 'Indisponible',
-  absent: 'Absent·e',
+  disponible: () => t('Disponible, non affecté'),
+  'veut-voir-artiste': () => t('Veut voir un artiste'),
+  indisponible: () => t('Indisponible'),
+  absent: () => t('Absent·e'),
 };
 
 /** Absents du jour : pointés absents à l'appel de ce jour, ou désistés. */
@@ -52,7 +70,7 @@ export function montrerTerrain(container, m) {
       quarts.length > 0 ? h('div', {class: 'terrain-curseur'},
         h('input', {
           class: 'terrain-curseur__range', type: 'range', min: '0', max: String(quarts.length - 1), step: '1',
-          value: String(indexInstant), 'aria-label': 'Instant de la journée',
+          value: String(indexInstant), 'aria-label': t('Instant de la journée'),
           oninput: (e) => {
             instant = quarts[Number(e.target.value)] ?? null;
             rafraichir();
@@ -63,7 +81,7 @@ export function montrerTerrain(container, m) {
     ));
 
     if (instant == null) {
-      container.append(h('p', {class: 'empty'}, 'Aucun créneau ce jour-là.'));
+      container.append(h('p', {class: 'empty'}, t('Aucun créneau ce jour-là.')));
       return;
     }
 
@@ -95,9 +113,9 @@ export function montrerTerrain(container, m) {
     }
 
     const sectionEnPoste = h('section', {class: 'terrain-section'},
-      h('div', {class: 'section-title'}, h('h2', null, 'En poste maintenant'), h('span', {class: 'count'}, `${[...enPoste.values()].reduce((n, g) => n + g.benevoles.length, 0)} bénévole(s)`)),
+      h('div', {class: 'section-title'}, h('h2', null, t('En poste maintenant')), h('span', {class: 'count'}, t('{n} bénévole(s)', {n: [...enPoste.values()].reduce((n, g) => n + g.benevoles.length, 0)}))),
       enPoste.size === 0
-        ? h('p', {class: 'empty'}, 'Personne en poste à cet instant.')
+        ? h('p', {class: 'empty'}, t('Personne en poste à cet instant.'))
         : h('div', null, ...[...enPoste.values()]
           .sort((a, b) => a.mission.Nom.localeCompare(b.mission.Nom, 'fr'))
           .map((g) => h('div', {class: 'card terrain-mission'},
@@ -112,13 +130,13 @@ export function montrerTerrain(container, m) {
     );
 
     const sectionLibres = h('section', {class: 'terrain-section'},
-      h('div', {class: 'section-title'}, h('h2', null, 'Pas en poste')),
+      h('div', {class: 'section-title'}, h('h2', null, t('Pas en poste'))),
       ...(['disponible', 'veut-voir-artiste', 'indisponible', 'absent'])
         .filter((cle) => (libres.get(cle)?.length ?? 0) > 0)
         .map((cle) => {
           const liste = libres.get(cle);
           return h('p', {class: 'terrain-libres'},
-            h('strong', null, `${LIBELLE_ETAT_LIBRE[cle]} (${liste.length}) : `),
+            h('strong', null, t('{etat} ({n}) : ', {etat: LIBELLE_ETAT_LIBRE[cle](), n: liste.length})),
             liste.map((b) => (b.detail ? `${b.nom} (${b.detail})` : b.nom)).join(', '),
           );
         }),
@@ -129,9 +147,9 @@ export function montrerTerrain(container, m) {
       .sort((a, b) => a.mission.Nom.localeCompare(b.mission.Nom, 'fr'));
 
     const sectionEffectifs = h('section', {class: 'terrain-section'},
-      h('div', {class: 'section-title'}, h('h2', null, 'Effectifs attendus')),
+      h('div', {class: 'section-title'}, h('h2', null, t('Effectifs attendus'))),
       couvertures.length === 0
-        ? h('p', {class: 'empty'}, 'Aucun besoin ouvert à cet instant.')
+        ? h('p', {class: 'empty'}, t('Aucun besoin ouvert à cet instant.'))
         : h('div', {class: 'terrain-effectifs'}, ...couvertures.map((c) => h('div', {class: 'terrain-effectif-ligne'},
           h('div', null,
             h('span', {class: 'terrain-effectif-ligne__mission'}, c.mission.Nom),

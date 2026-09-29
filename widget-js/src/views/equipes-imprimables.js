@@ -61,6 +61,7 @@
  * ressemble tombe.
  */
 
+import {t, tn, traductions} from '../i18n.js';
 import {indexer, regrouperParJour, sousCreneauxApplicables} from '../logic/derive.js';
 import {blocsDuJour} from '../logic/dispos-terrain.js';
 import {
@@ -69,9 +70,23 @@ import {
 import {nomsCompletsDepuisSource} from '../logic/noms-complets.js';
 import {
   ajusterTexteBloc, ajusterTexteBlocAvecEnveloppe, ajusterTexteBlocAvecTroncature,
-  cellulesEnTeteQuarts, imprimer, largeurQuartImpressionPx, PADDING_HORIZONTAL_BLOC_PX,
+  cellulesEnTeteQuarts, imprimer, jourDansUnePhrase, largeurQuartImpressionPx, PADDING_HORIZONTAL_BLOC_PX,
 } from '../ui/impression.js';
 import {h, vider} from '../ui/dom.js';
+
+traductions({
+  Mission: 'Task',
+  'Aucune équipe dans ce jeu de données.': 'No teams in this dataset.',
+  'Aucun macro-créneau : rien à afficher.': 'No time blocks: nothing to show.',
+  'Ce jour ne couvre aucun quart d’heure.': 'This day covers no quarter hours.',
+  "Aucune équipe n'a de mission ce jour-là.": 'No team has a task that day.',
+  'Toutes les équipes': 'All teams',
+  '{n} équipe avec mission {jour}.': '{n} team with tasks on {jour}.',
+  '{n} équipes avec mission {jour}.': '{n} teams with tasks on {jour}.',
+  'Plannings équipes — {jour}': 'Team schedules — {jour}',
+  'Imprimer le planning {equipe}': 'Print the {equipe} schedule',
+  'Imprimer tous les plannings équipe': 'Print all team schedules',
+});
 
 const LARGEUR_COLONNE_MISSION_PX = 190;
 
@@ -184,7 +199,7 @@ function construireTableEquipe(
   return h('table', {class: 'impression-table', style: {width: `${totalPx}px`}},
     construireColgroup(nbQuartsTotal, pxParQuart, totalPx),
     h('thead', null, h('tr', null,
-      h('th', {class: 'impression-table__coin', scope: 'col'}, 'Mission'),
+      h('th', {class: 'impression-table__coin', scope: 'col'}, t('Mission')),
       ...cellulesEnTeteQuarts(blocs),
     )),
     h('tbody', null, ...missions.map((mission) => construireLigneMission(
@@ -229,16 +244,16 @@ export function montrerEquipesImprimables(container, m) {
     vider(container);
 
     if (m.equipes.length === 0) {
-      container.append(h('p', {class: 'empty'}, 'Aucune équipe dans ce jeu de données.'));
+      container.append(h('p', {class: 'empty'}, t('Aucune équipe dans ce jeu de données.')));
       return;
     }
     if (!jour) {
-      container.append(h('p', {class: 'empty'}, 'Aucun macro-créneau : rien à afficher.'));
+      container.append(h('p', {class: 'empty'}, t('Aucun macro-créneau : rien à afficher.')));
       return;
     }
     const blocs = blocsDuJour(jour).filter((b) => b.quarts.length > 0);
     if (blocs.length === 0) {
-      container.append(h('p', {class: 'empty'}, 'Ce jour ne couvre aucun quart d’heure.'));
+      container.append(h('p', {class: 'empty'}, t('Ce jour ne couvre aucun quart d’heure.')));
       return;
     }
 
@@ -265,7 +280,7 @@ export function montrerEquipesImprimables(container, m) {
       .filter(({missions}) => missions.length > 0);
 
     if (equipesAvecMissions.length === 0) {
-      container.append(h('p', {class: 'empty'}, "Aucune équipe n'a de mission ce jour-là."));
+      container.append(h('p', {class: 'empty'}, t("Aucune équipe n'a de mission ce jour-là.")));
       return;
     }
 
@@ -284,7 +299,7 @@ export function montrerEquipesImprimables(container, m) {
         class: `btn btn--sm${equipeFiltreeId == null ? ' btn--primary' : ''}`,
         type: 'button',
         onclick: () => { equipeFiltreeId = null; rafraichir(); },
-      }, 'Toutes les équipes'),
+      }, t('Toutes les équipes')),
       ...equipesAvecMissions.map(({equipe}) => h('button', {
         class: `btn btn--sm${equipeFiltreeId === equipe.id ? ' btn--primary' : ''}`,
         type: 'button',
@@ -294,7 +309,8 @@ export function montrerEquipesImprimables(container, m) {
 
     const barre = h('div', {class: 'impression-barre'},
       h('p', {class: 'view__intro', style: {margin: '0'}},
-        `${equipesAvecMissions.length} équipe${equipesAvecMissions.length > 1 ? 's' : ''} avec mission ${jour.libelle.toLowerCase()}.`,
+        tn(equipesAvecMissions.length, '{n} équipe avec mission {jour}.', '{n} équipes avec mission {jour}.',
+          {jour: jourDansUnePhrase(jour.libelle)}),
       ),
       h('button', {
         class: 'btn btn--primary btn--sm', type: 'button',
@@ -304,9 +320,11 @@ export function montrerEquipesImprimables(container, m) {
           const sections = equipesAffichees.map(({equipe, missions}) => construireSectionEquipe(
             ix, equipe, missions, blocs, affectationsParMission, pxImpression, false,
           ));
-          imprimer([h('h1', null, `Plannings équipes — ${jour.libelle}`), ...sections], 'impression-equipes');
+          imprimer([h('h1', null, t('Plannings équipes — {jour}', {jour: jour.libelle})), ...sections], 'impression-equipes');
         },
-      }, equipeFiltree ? `Imprimer le planning ${equipeFiltree.equipe.Nom}` : 'Imprimer tous les plannings équipe'),
+      }, equipeFiltree
+        ? t('Imprimer le planning {equipe}', {equipe: equipeFiltree.equipe.Nom})
+        : t('Imprimer tous les plannings équipe')),
     );
 
     const sectionsEcran = equipesAffichees.map(({equipe, missions}) => construireSectionEquipe(

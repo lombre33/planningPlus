@@ -7,6 +7,8 @@
  * (cahier des charges §3, glossaire).
  */
 
+import {locale} from './i18n.js';
+
 export const TIMEZONE = 'Europe/Paris';
 export const PAS_MINUTES = 15;
 export const PAS_SECONDES = PAS_MINUTES * 60;
@@ -38,14 +40,15 @@ export function epochDepuisHeureLocale(
   return Math.round(corrige / 1000);
 }
 
+/** Jour et mois dans la langue de l'interface (`i18n.js`). */
 export function libelleJourCourt(epochSecondes, fuseau = TIMEZONE) {
-  return new Intl.DateTimeFormat('fr-FR', {
+  return new Intl.DateTimeFormat(locale(), {
     timeZone: fuseau, weekday: 'short', day: '2-digit', month: 'short',
   }).format(new Date(epochSecondes * 1000));
 }
 
 export function libelleJourLong(epochSecondes, fuseau = TIMEZONE) {
-  const s = new Intl.DateTimeFormat('fr-FR', {
+  const s = new Intl.DateTimeFormat(locale(), {
     timeZone: fuseau, weekday: 'long', day: '2-digit', month: 'long',
   }).format(new Date(epochSecondes * 1000));
   return s.charAt(0).toUpperCase() + s.slice(1);

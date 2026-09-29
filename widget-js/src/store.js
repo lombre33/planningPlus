@@ -6,8 +6,45 @@
  * `window.grist.docApi`) sait d'où vient le `Modele` initial.
  */
 
+import {t, traductions} from './i18n.js';
 import {sousCreneauxApplicables} from './logic/derive.js';
 import {cleJourFestival, libelleHeurePlage, PAS_SECONDES} from './temps.js';
+
+// Les `raison` rendues aux vues, qui les affichent telles quelles. Le message
+// de `SuppressionApresCreationEchouee` n'en fait pas partie : cette erreur est
+// toujours rattrapée ici, jamais montrée.
+traductions({
+  'Macro-créneau introuvable.': 'Time block not found.',
+  "Des missions sont déjà positionnées sur ces sous-créneaux : le redécoupage automatique n'est pas possible sans risquer de perdre ce travail. Cette interface ne permet pas encore de les retirer.":
+    'Tasks are already placed on these slots: automatic re-splitting is not possible without risking losing that work. This interface cannot remove them yet.',
+  "Les nouveaux sous-créneaux ont bien été créés dans le document, mais les anciens n'ont pas pu être retirés : supprimez-les manuellement dans Grist.":
+    'The new slots were created in the document, but the old ones could not be removed: delete them manually in Grist.',
+  "Échec de l'écriture dans le document Grist : le redécoupage a été annulé.":
+    'Could not write to the Grist document: the re-splitting was cancelled.',
+  "Des missions sont déjà positionnées sur ce macro-créneau : la suppression n'est pas possible sans risquer de perdre ce travail.":
+    'Tasks are already placed on this time block: deleting it is not possible without risking losing that work.',
+  "Échec de l'écriture dans le document Grist : la suppression a été annulée.":
+    'Could not write to the Grist document: the deletion was cancelled.',
+  'Le jour source et le jour cible sont identiques.': 'The source day and the target day are the same.',
+  "Rien à copier : aucune mission n'a de besoin construit sur le jour source.":
+    'Nothing to copy: no task has a need built on the source day.',
+  "Échec de l'écriture dans le document Grist : la copie a été annulée.":
+    'Could not write to the Grist document: the copy was cancelled.',
+  "Échec de l'écriture dans le document Grist pour la mission « {mission} » : la copie s'est arrêtée là. Ce qui a déjà été copié avant ({besoins} besoin(s), {indicatifs} indicatif(s)) est conservé ; relancez la copie pour continuer, elle ne redouble jamais ce qui est déjà là.":
+    'Could not write to the Grist document for the “{mission}” task: the copy stopped there. What had already been copied ({besoins} need(s), {indicatifs} call sign(s)) is kept; run the copy again to continue, it never duplicates what is already there.',
+  "Échec du repositionnement d'un indicatif pour la mission « {mission} » : la copie s'est arrêtée là. Ce qui a déjà été copié avant ({besoins} besoin(s), {indicatifs} indicatif(s)) est conservé ; relancez la copie pour continuer, elle ne redouble jamais ce qui est déjà là.":
+    'Could not place a call sign again for the “{mission}” task: the copy stopped there. What had already been copied ({besoins} need(s), {indicatifs} call sign(s)) is kept; run the copy again to continue, it never duplicates what is already there.',
+  'Sous-créneau introuvable.': 'Slot not found.',
+  "Échec de l'écriture dans le document Grist : la conversion a été annulée.":
+    'Could not write to the Grist document: the conversion was cancelled.',
+  "Les nouveaux créneaux ont bien été créés dans le document, mais ses besoins n'ont pas pu être repointés dessus : ajustez-les manuellement dans Grist.":
+    'The new slots were created in the document, but the task’s needs could not be moved onto them: adjust them manually in Grist.',
+  "Échec de l'écriture dans le document Grist connecté. Réessayez.": 'Could not write to the connected Grist document. Try again.',
+  "Un créneau ne peut pas durer moins d'un quart d'heure.": 'A slot cannot last less than a quarter of an hour.',
+  'Place introuvable.': 'Spot not found.',
+  'Bénévole introuvable.': 'Volunteer not found.',
+  'Position introuvable.': 'Placement not found.',
+});
 
 /** Levée par `EcritureGrist.remplacerSousCreneaux` quand la création des
  *  nouveaux sous-créneaux a réussi mais que la suppression des anciens a
@@ -334,21 +371,21 @@ export class Magasin {
    *  cas plutôt que d'orpheliner ou d'effacer silencieusement ce travail. */
   async redecouperSousCreneaux(macroId, dureeMinutes) {
     const macro = this.data.macroCreneaux.find((m) => m.id === macroId);
-    if (!macro) { return {ok: false, raison: 'Macro-créneau introuvable.'}; }
+    if (!macro) { return {ok: false, raison: t('Macro-créneau introuvable.')}; }
     const actuels = this.data.sousCreneaux.filter((s) => s.Macro_creneau === macroId);
     const aUneMission = actuels.some((s) => s.Mission != null || this.data.besoins.some((b) => b.Sous_creneau === s.id));
     if (aUneMission) {
       return {
         ok: false,
-        raison: 'Des missions sont déjà positionnées sur ces sous-créneaux : le redécoupage automatique n\'est pas possible sans risquer de perdre ce travail. Cette interface ne permet pas encore de les retirer.',
+        raison: t("Des missions sont déjà positionnées sur ces sous-créneaux : le redécoupage automatique n'est pas possible sans risquer de perdre ce travail. Cette interface ne permet pas encore de les retirer."),
       };
     }
     const idsASupprimer = actuels.map((s) => s.id);
     const dureeSec = dureeMinutes * 60;
     const plages = [];
-    for (let t = macro.Debut; t < macro.Fin; t += dureeSec) {
-      const fin = Math.min(t + dureeSec, macro.Fin);
-      plages.push({libelle: libelleHeurePlage(t, fin), debut: t, fin});
+    for (let debut = macro.Debut; debut < macro.Fin; debut += dureeSec) {
+      const fin = Math.min(debut + dureeSec, macro.Fin);
+      plages.push({libelle: libelleHeurePlage(debut, fin), debut, fin});
     }
     let idsReels;
     if (this.ecriture) {
@@ -372,10 +409,10 @@ export class Magasin {
           this.notifier();
           return {
             ok: false,
-            raison: 'Les nouveaux sous-créneaux ont bien été créés dans le document, mais les anciens n\'ont pas pu être retirés : supprimez-les manuellement dans Grist.',
+            raison: t("Les nouveaux sous-créneaux ont bien été créés dans le document, mais les anciens n'ont pas pu être retirés : supprimez-les manuellement dans Grist."),
           };
         }
-        return {ok: false, raison: 'Échec de l\'écriture dans le document Grist : le redécoupage a été annulé.'};
+        return {ok: false, raison: t("Échec de l'écriture dans le document Grist : le redécoupage a été annulé.")};
       }
     } else {
       const baseId = prochainId(this.data.sousCreneaux);
@@ -411,7 +448,7 @@ export class Magasin {
    *  `PositionGroupe`, qui est tout ce qui le rattachait à ces besoins. */
   async supprimerMacroCreneau(macroId, forcer = false) {
     const macro = this.data.macroCreneaux.find((m) => m.id === macroId);
-    if (!macro) { return {ok: false, raison: 'Macro-créneau introuvable.'}; }
+    if (!macro) { return {ok: false, raison: t('Macro-créneau introuvable.')}; }
     const sousCreneauxDuMacro = this.data.sousCreneaux.filter((s) => s.Macro_creneau === macroId);
     const sousCreneauIds = sousCreneauxDuMacro.map((s) => s.id);
     const besoinsDuMacro = this.data.besoins.filter((b) => sousCreneauIds.includes(b.Sous_creneau));
@@ -419,7 +456,7 @@ export class Magasin {
     if (aUneMission && !forcer) {
       return {
         ok: false,
-        raison: 'Des missions sont déjà positionnées sur ce macro-créneau : la suppression n\'est pas possible sans risquer de perdre ce travail.',
+        raison: t("Des missions sont déjà positionnées sur ce macro-créneau : la suppression n'est pas possible sans risquer de perdre ce travail."),
       };
     }
     const besoinIds = besoinsDuMacro.map((b) => b.id);
@@ -428,7 +465,7 @@ export class Magasin {
       try {
         await this.ecriture.supprimerMacroCreneau(macroId, sousCreneauIds, besoinIds, positionIds);
       } catch {
-        return {ok: false, raison: 'Échec de l\'écriture dans le document Grist : la suppression a été annulée.'};
+        return {ok: false, raison: t("Échec de l'écriture dans le document Grist : la suppression a été annulée.")};
       }
     }
     this.data.positionsGroupe = this.data.positionsGroupe.filter((p) => !positionIds.includes(p.id));
@@ -501,11 +538,11 @@ export class Magasin {
     macroSourceId, macroCibleId,
   ) {
     if (macroSourceId === macroCibleId) {
-      return {ok: false, raison: 'Le jour source et le jour cible sont identiques.'};
+      return {ok: false, raison: t('Le jour source et le jour cible sont identiques.')};
     }
     const macroSource = this.data.macroCreneaux.find((ma) => ma.id === macroSourceId);
     const macroCible = this.data.macroCreneaux.find((ma) => ma.id === macroCibleId);
-    if (!macroSource || !macroCible) { return {ok: false, raison: 'Macro-créneau introuvable.'}; }
+    if (!macroSource || !macroCible) { return {ok: false, raison: t('Macro-créneau introuvable.')}; }
 
     const sousCreneauxSource = this.data.sousCreneaux.filter((s) => s.Macro_creneau === macroSourceId);
     const aCopier = [];
@@ -516,7 +553,7 @@ export class Magasin {
       }
     }
     if (aCopier.length === 0) {
-      return {ok: false, raison: "Rien à copier : aucune mission n'a de besoin construit sur le jour source."};
+      return {ok: false, raison: t("Rien à copier : aucune mission n'a de besoin construit sur le jour source.")};
     }
 
     // Sous-créneaux distincts à répliquer, dédupliqués par id (un commun
@@ -547,7 +584,7 @@ export class Magasin {
           );
         } catch (erreur) {
           if (!(erreur instanceof SuppressionApresCreationEchouee)) {
-            return {ok: false, raison: "Échec de l'écriture dans le document Grist : la copie a été annulée."};
+            return {ok: false, raison: t("Échec de l'écriture dans le document Grist : la copie a été annulée.")};
           }
           idsReels = erreur.idsReelsCrees;
         }
@@ -582,7 +619,10 @@ export class Magasin {
         this.notifier();
         return {
           ok: false,
-          raison: `Échec de l'écriture dans le document Grist pour la mission « ${mission.Nom} » : la copie s'est arrêtée là. Ce qui a déjà été copié avant (${besoinsCrees} besoin(s), ${indicatifsRepositionnes} indicatif(s)) est conservé ; relancez la copie pour continuer, elle ne redouble jamais ce qui est déjà là.`,
+          raison: t(
+            "Échec de l'écriture dans le document Grist pour la mission « {mission} » : la copie s'est arrêtée là. Ce qui a déjà été copié avant ({besoins} besoin(s), {indicatifs} indicatif(s)) est conservé ; relancez la copie pour continuer, elle ne redouble jamais ce qui est déjà là.",
+            {mission: mission.Nom, besoins: besoinsCrees, indicatifs: indicatifsRepositionnes},
+          ),
         };
       }
       this.data.besoins.push({
@@ -602,7 +642,10 @@ export class Magasin {
           this.notifier();
           return {
             ok: false,
-            raison: `Échec du repositionnement d'un indicatif pour la mission « ${mission.Nom} » : la copie s'est arrêtée là. Ce qui a déjà été copié avant (${besoinsCrees} besoin(s), ${indicatifsRepositionnes} indicatif(s)) est conservé ; relancez la copie pour continuer, elle ne redouble jamais ce qui est déjà là.`,
+            raison: t(
+              "Échec du repositionnement d'un indicatif pour la mission « {mission} » : la copie s'est arrêtée là. Ce qui a déjà été copié avant ({besoins} besoin(s), {indicatifs} indicatif(s)) est conservé ; relancez la copie pour continuer, elle ne redouble jamais ce qui est déjà là.",
+              {mission: mission.Nom, besoins: besoinsCrees, indicatifs: indicatifsRepositionnes},
+            ),
           };
         }
         this.data.positionsGroupe.push({id: positionId, Groupe: position.Groupe, Besoin: besoinCibleId});
@@ -631,7 +674,7 @@ export class Magasin {
     missionId, sousCreneauDeReferenceId,
   ) {
     const reference = this.data.sousCreneaux.find((s) => s.id === sousCreneauDeReferenceId);
-    if (!reference) { return {ok: false, raison: 'Sous-créneau introuvable.'}; }
+    if (!reference) { return {ok: false, raison: t('Sous-créneau introuvable.')}; }
     const cle = cleJourFestival(reference.Debut);
     const macrosDuJour = this.data.macroCreneaux.filter((ma) => cleJourFestival(ma.Debut) === cle);
     const sousCreneauxDuJour = this.data.sousCreneaux.filter((s) => macrosDuJour.some((ma) => ma.id === s.Macro_creneau));
@@ -649,7 +692,7 @@ export class Magasin {
       try {
         idsReels = await this.ecriture.remplacerSousCreneaux([], nouveaux);
       } catch {
-        return {ok: false, raison: "Échec de l'écriture dans le document Grist : la conversion a été annulée."};
+        return {ok: false, raison: t("Échec de l'écriture dans le document Grist : la conversion a été annulée.")};
       }
     } else {
       const baseId = prochainId(this.data.sousCreneaux);
@@ -681,7 +724,7 @@ export class Magasin {
           this.notifier();
           return {
             ok: false,
-            raison: 'Les nouveaux créneaux ont bien été créés dans le document, mais ses besoins n\'ont pas pu être repointés dessus : ajustez-les manuellement dans Grist.',
+            raison: t("Les nouveaux créneaux ont bien été créés dans le document, mais ses besoins n'ont pas pu être repointés dessus : ajustez-les manuellement dans Grist."),
           };
         }
       }
@@ -710,7 +753,7 @@ export class Magasin {
   ) {
     if (deltaSecondes === 0) { return {ok: true}; }
     const sc = this.data.sousCreneaux.find((s) => s.id === sousCreneauId);
-    if (!sc) { return {ok: false, raison: 'Sous-créneau introuvable.'}; }
+    if (!sc) { return {ok: false, raison: t('Sous-créneau introuvable.')}; }
     if (sc.Mission == null) {
       const materialise = await this.materialiserCreneauxPropres(missionId, sousCreneauId);
       if (!materialise.ok) { return materialise; }
@@ -725,7 +768,7 @@ export class Magasin {
       try {
         await this.ecriture.modifierSousCreneaux(patches);
       } catch {
-        return {ok: false, raison: "Échec de l'écriture dans le document Grist connecté. Réessayez."};
+        return {ok: false, raison: t("Échec de l'écriture dans le document Grist connecté. Réessayez.")};
       }
     }
     for (const patch of patches) {
@@ -748,7 +791,7 @@ export class Magasin {
   ) {
     if (deltaSecondes === 0) { return {ok: true}; }
     const sc = this.data.sousCreneaux.find((s) => s.id === sousCreneauId);
-    if (!sc) { return {ok: false, raison: 'Sous-créneau introuvable.'}; }
+    if (!sc) { return {ok: false, raison: t('Sous-créneau introuvable.')}; }
     let cible = sc;
     if (sc.Mission == null) {
       const materialise = await this.materialiserCreneauxPropres(missionId, sousCreneauId);
@@ -758,14 +801,14 @@ export class Magasin {
     const debut = depuisDebut ? cible.Debut + deltaSecondes : cible.Debut;
     const fin = depuisDebut ? cible.Fin : cible.Fin + deltaSecondes;
     if (fin - debut < PAS_SECONDES) {
-      return {ok: false, raison: "Un créneau ne peut pas durer moins d'un quart d'heure."};
+      return {ok: false, raison: t("Un créneau ne peut pas durer moins d'un quart d'heure.")};
     }
     const libelle = libelleHeurePlage(debut, fin);
     if (this.ecriture) {
       try {
         await this.ecriture.modifierSousCreneaux([{id: cible.id, debut, fin, libelle}]);
       } catch {
-        return {ok: false, raison: "Échec de l'écriture dans le document Grist connecté. Réessayez."};
+        return {ok: false, raison: t("Échec de l'écriture dans le document Grist connecté. Réessayez.")};
       }
     }
     cible.Debut = debut;
@@ -789,14 +832,14 @@ export class Magasin {
     placeId, benevoleId, origine = 'Manuel',
   ) {
     const place = this.data.places.find((p) => p.id === placeId);
-    if (!place) { return {ok: false, raison: 'Place introuvable.'}; }
+    if (!place) { return {ok: false, raison: t('Place introuvable.')}; }
     const score = benevoleId != null ? 1 : 0;
     const verrouillee = origine === 'Manuel' ? true : place.Verrouillee;
     if (this.ecriture) {
       try {
         await this.ecriture.modifierPlaces([{id: placeId, benevoleId, origine, verrouillee, score}]);
       } catch {
-        return {ok: false, raison: "Échec de l'écriture dans le document Grist connecté. Réessayez."};
+        return {ok: false, raison: t("Échec de l'écriture dans le document Grist connecté. Réessayez.")};
       }
     }
     place.Benevole = benevoleId;
@@ -809,7 +852,7 @@ export class Magasin {
 
   async basculerVerrouillage(placeId) {
     const place = this.data.places.find((p) => p.id === placeId);
-    if (!place) { return {ok: false, raison: 'Place introuvable.'}; }
+    if (!place) { return {ok: false, raison: t('Place introuvable.')}; }
     const verrouillee = !place.Verrouillee;
     if (this.ecriture) {
       try {
@@ -817,7 +860,7 @@ export class Magasin {
           id: placeId, benevoleId: place.Benevole, origine: place.Origine, verrouillee, score: place.Score,
         }]);
       } catch {
-        return {ok: false, raison: "Échec de l'écriture dans le document Grist connecté. Réessayez."};
+        return {ok: false, raison: t("Échec de l'écriture dans le document Grist connecté. Réessayez.")};
       }
     }
     place.Verrouillee = verrouillee;
@@ -834,7 +877,7 @@ export class Magasin {
     benevoleId, absent,
   ) {
     const benevole = this.data.benevoles.find((b) => b.id === benevoleId);
-    if (!benevole) { return {ok: false, raison: 'Bénévole introuvable.'}; }
+    if (!benevole) { return {ok: false, raison: t('Bénévole introuvable.')}; }
     const liberees = absent
       ? this.data.places.filter((p) => p.Benevole === benevoleId && !p.Verrouillee)
       : [];
@@ -843,7 +886,7 @@ export class Magasin {
       try {
         await this.ecriture.definirAbsence(benevoleId, absent, placeIds);
       } catch {
-        return {ok: false, raison: "Échec de l'écriture dans le document Grist connecté. Réessayez."};
+        return {ok: false, raison: t("Échec de l'écriture dans le document Grist connecté. Réessayez.")};
       }
     }
     benevole.Statut = absent ? 'Absent' : 'Actif';
@@ -947,12 +990,12 @@ export class Magasin {
    *  de macro-créneau, qui elles retirent le binôme lui-même. */
   async supprimerPosition(positionId) {
     const position = this.data.positionsGroupe.find((p) => p.id === positionId);
-    if (!position) { return {ok: false, raison: 'Position introuvable.'}; }
+    if (!position) { return {ok: false, raison: t('Position introuvable.')}; }
     if (this.ecriture) {
       try {
         await this.ecriture.supprimerPosition(positionId);
       } catch {
-        return {ok: false, raison: "Échec de l'écriture dans le document Grist connecté. Réessayez."};
+        return {ok: false, raison: t("Échec de l'écriture dans le document Grist connecté. Réessayez.")};
       }
     }
     this.data.positionsGroupe = this.data.positionsGroupe.filter((p) => p.id !== positionId);
@@ -981,7 +1024,7 @@ export class Magasin {
       try {
         await this.ecriture.modifierPlaces(patches);
       } catch {
-        return {ok: false, raison: "Échec de l'écriture dans le document Grist connecté. Réessayez."};
+        return {ok: false, raison: t("Échec de l'écriture dans le document Grist connecté. Réessayez.")};
       }
     }
     for (const patch of patches) {
@@ -1013,7 +1056,7 @@ export class Magasin {
       try {
         await this.ecriture.modifierPlaces(patches);
       } catch {
-        return {ok: false, raison: "Échec de l'écriture dans le document Grist connecté. Réessayez."};
+        return {ok: false, raison: t("Échec de l'écriture dans le document Grist connecté. Réessayez.")};
       }
     }
     for (const patch of patches) {

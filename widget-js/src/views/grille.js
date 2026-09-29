@@ -7,6 +7,7 @@
  * du jour, à l'étape 5.
  */
 
+import {t, tn, traductions} from '../i18n.js';
 import {
   couvertureBesoin, indexer, regrouperParJour, sousCreneauxApplicables,
 } from '../logic/derive.js';
@@ -14,6 +15,73 @@ import {epochJourFestivalEtHeure, libelleHeure, libelleHeurePlage} from '../temp
 import {fermerPanneau, h, icone, ICONES, ouvrirModal, ouvrirPanneau, vider} from '../ui/dom.js';
 import {construireFrise} from '../ui/frise.js';
 import {creerErreur} from '../ui/modalCreneau.js';
+
+traductions({
+  '+ Nouvelle mission': '+ New task',
+  "Copier les créneaux d'un autre jour…": 'Copy slots from another day…',
+  'Le référentiel des missions — pas encore où ni quand : ça se joue case par case, ci-dessous.':
+    'The task catalog — not yet where or when: that is decided cell by cell, below.',
+  'Toutes les équipes': 'All teams',
+  'Aucun sous-créneau ce jour.': 'No slots on this day.',
+  'Donner à cette mission un créneau à elle, décalé ou en pause par rapport à la trame commune':
+    'Give this task a slot of its own, shifted or paused relative to the shared grid',
+  créneau: 'slot',
+  'Cliquer pour donner à cette mission un créneau à elle, décalé ou en pause par rapport à la trame commune':
+    'Click to give this task a slot of its own, shifted or paused relative to the shared grid',
+  'Créer un besoin ici — facultatif, laissez vide pour une zone volontairement non couverte':
+    'Create a need here — optional, leave it empty for an area deliberately left uncovered',
+  'Contrôle des bracelets': 'Wristband check',
+  Bars: 'Bars',
+  '— aucun —': '— none —',
+  Normale: 'Normal',
+  Critique: 'Critical',
+  Confort: 'Nice to have',
+  'Nouvelle mission': 'New task',
+  'Merci de renseigner un nom.': 'Please enter a name.',
+  "Ce document n'a encore aucune équipe : merci de la nommer.": 'This document has no team yet: please name one.',
+  "Échec de l'écriture dans le document Grist connecté. Réessayez.": 'Could not write to the connected Grist document. Try again.',
+  Créer: 'Create',
+  Nom: 'Name',
+  Équipe: 'Team',
+  Lieu: 'Location',
+  "Ce document n'a encore aucune équipe : elle sera créée avec cette mission.":
+    'This document has no team yet: it will be created along with this task.',
+  Priorité: 'Priority',
+  Annuler: 'Cancel',
+  'Taille du binôme': 'Buddy pair size',
+  'Effectif minimum': 'Minimum headcount',
+  "Aucun indicatif n'est positionné automatiquement : vous les créerez depuis la vue Indicatifs.":
+    'No call sign is placed automatically: you will create them from the Call signs view.',
+  'Merci de renseigner des effectifs valides (au moins 1).': 'Please enter valid headcounts (at least 1).',
+  '{mission} — créneau propre': '{mission} — own slot',
+  Début: 'Start',
+  Fin: 'End',
+  'Se termine après minuit': 'Ends after midnight',
+  'Merci de renseigner des horaires valides.': 'Please enter valid times.',
+  "L'heure de fin doit être après l'heure de début.": 'The end time must be after the start time.',
+  "Copier les créneaux d'un autre jour": 'Copy slots from another day',
+  'Merci de choisir un jour.': 'Please choose a day.',
+  'Rien à copier depuis {source} : tout y était déjà présent sur {cible}.':
+    'Nothing to copy from {source}: everything there was already on {cible}.',
+  '{n} besoin copié depuis {jour}': '{n} need copied from {jour}',
+  '{n} besoins copiés depuis {jour}': '{n} needs copied from {jour}',
+  '{n} créneau créé': '{n} slot created',
+  '{n} créneaux créés': '{n} slots created',
+  '{n} indicatif repositionné': '{n} call sign placed again',
+  '{n} indicatifs repositionnés': '{n} call signs placed again',
+  Copier: 'Copy',
+  "Reproduit sur {jour} les besoins déjà construits sur le jour choisi ci-dessous, avec leurs indicatifs déjà positionnés le cas échéant. N'écrase jamais ce qui existe déjà sur {jour}.":
+    'Recreates on {jour} the needs already built on the day chosen below, along with their call signs already placed, if any. Never overwrites what already exists on {jour}.',
+  'Copier depuis': 'Copy from',
+  Fermer: 'Close',
+  '{n} affecté sur un minimum de {min}': '{n} assigned out of a minimum of {min}',
+  '{n} affectés sur un minimum de {min}': '{n} assigned out of a minimum of {min}',
+  "Aucun indicatif n'est encore positionné sur ce besoin.": 'No call sign is placed on this need yet.',
+  'Pour pourvoir, échanger ou verrouiller une place : étape 5, Affectation.': 'To fill, swap or lock a spot: step 5, Assignment.',
+  'Place à pourvoir': 'Open spot',
+  'Corrigée à la main : ni les scénarios ni l’algorithme n’y touchent.': 'Set by hand: neither the scenarios nor the algorithm touch it.',
+  Verrouillée: 'Locked',
+});
 
 /** Couleur posée sur une équipe créée depuis cet écran minimal (pas de
  *  sélecteur de couleur ici — demande d'Antoine du 2026-09-22 : juste de
@@ -52,14 +120,14 @@ export function montrerGrille(container, m) {
       h('div', {class: 'agenda__toolbar'},
         h('button', {
           class: 'btn btn--primary btn--sm', type: 'button', onclick: () => ouvrirCreationMission(),
-        }, '+ Nouvelle mission'),
+        }, t('+ Nouvelle mission')),
         jour && jours.length > 1
           ? h('button', {
             class: 'btn btn--ghost btn--sm', type: 'button', onclick: () => ouvrirCopieDepuisJour(jour, jours),
-          }, "Copier les créneaux d'un autre jour…")
+          }, t("Copier les créneaux d'un autre jour…"))
           : null,
         h('span', {class: 'view__intro', style: {margin: '0'}},
-          "Le référentiel des missions — pas encore où ni quand : ça se joue case par case, ci-dessous."),
+          t('Le référentiel des missions — pas encore où ni quand : ça se joue case par case, ci-dessous.')),
       ),
       h('div', {class: 'agenda__toolbar'},
         h('select', {
@@ -70,14 +138,14 @@ export function montrerGrille(container, m) {
             rafraichir();
           },
         },
-          h('option', {value: 'toutes'}, 'Toutes les équipes'),
+          h('option', {value: 'toutes'}, t('Toutes les équipes')),
           ...m.equipes.map((eq) => h(
             'option', {value: String(eq.id), selected: equipeFiltre === eq.id}, eq.Nom,
           )),
         ),
       ),
       !jour
-        ? h('p', {class: 'empty'}, 'Aucun sous-créneau ce jour.')
+        ? h('p', {class: 'empty'}, t('Aucun sous-créneau ce jour.'))
         : construireTimeline(ix, missions, jour, sousCreneaux),
     );
   }
@@ -151,9 +219,11 @@ export function montrerGrille(container, m) {
           // non.
           h('button', {
             class: 'btn btn--ghost btn--sm timeline__label__bouton-propre', type: 'button',
-            title: 'Donner à cette mission un créneau à elle, décalé ou en pause par rapport à la trame commune',
+            title: t('Donner à cette mission un créneau à elle, décalé ou en pause par rapport à la trame commune'),
             onclick: () => ouvrirCreationCreneauMission(mission, jour, axe.debut),
-          }, '+ créneau'),
+            // Signe hors de la clé : le « + créneau » de l'Agenda crée un
+            // macro-créneau (« + time block »), celui-ci un sous-créneau.
+          }, `+ ${t('créneau')}`),
         ),
         blocs,
       };
@@ -162,14 +232,14 @@ export function montrerGrille(container, m) {
     return construireFrise(lignes, {
       axeDebut: axe.debut,
       axeFin: axe.fin,
-      titrePiste: 'Cliquer pour donner à cette mission un créneau à elle, décalé ou en pause par rapport à la trame commune',
+      titrePiste: t('Cliquer pour donner à cette mission un créneau à elle, décalé ou en pause par rapport à la trame commune'),
       // Seuls les modificateurs de couleur (besoin--*/besoin-cell--vide) sont
       // repris de la vue Indicatifs, jamais la classe de base `.besoin` :
       // elle pose une bordure sur les quatre côtés qui écraserait le
       // border-bottom seul voulu ici (case de frise, pas case de tableau).
       classesBloc: (bloc) => (bloc.couverture ? `besoin--${bloc.couverture.statut}` : 'besoin-cell--vide'),
       titreBloc: (bloc) => (
-        bloc.besoin ? undefined : 'Créer un besoin ici — facultatif, laissez vide pour une zone volontairement non couverte'
+        bloc.besoin ? undefined : t('Créer un besoin ici — facultatif, laissez vide pour une zone volontairement non couverte')
       ),
       rendreBloc: (bloc) => [
         h('span', {class: 'besoin-cell__libelle'}, bloc.sc.Libelle),
@@ -213,38 +283,39 @@ export function montrerGrille(container, m) {
    *  l'utilise. `equipeCreeId` retient l'id réel une fois obtenu pour qu'un
    *  nouvel essai après un échec de la mission ne recrée pas l'équipe. */
   function ouvrirCreationMission() {
-    const champNom = h('input', {class: 'input', type: 'text', placeholder: 'Contrôle des bracelets'});
+    const champNom = h('input', {class: 'input', type: 'text', placeholder: t('Contrôle des bracelets')});
     const pasDEquipe = m.equipes.length === 0;
     const champEquipe = pasDEquipe ? null : h('select', {class: 'select'},
       ...m.equipes.map((eq) => h('option', {value: String(eq.id)}, eq.Nom)),
     );
     const champNouvelleEquipe = pasDEquipe
-      ? h('input', {class: 'input', type: 'text', placeholder: 'Bars'})
+      ? h('input', {class: 'input', type: 'text', placeholder: t('Bars')})
       : null;
     let equipeCreeId = null;
     const champLieu = h('select', {class: 'select'},
-      h('option', {value: ''}, '— aucun —'),
+      h('option', {value: ''}, t('— aucun —')),
       ...m.lieux.map((l) => h('option', {value: String(l.id)}, l.Nom)),
     );
+    // La valeur reste la priorité stockée ; seul son libellé se traduit.
     const champPriorite = h('select', {class: 'select'},
-      h('option', {value: 'Normale', selected: true}, 'Normale'),
-      h('option', {value: 'Critique'}, 'Critique'),
-      h('option', {value: 'Confort'}, 'Confort'),
+      h('option', {value: 'Normale', selected: true}, t('Normale')),
+      h('option', {value: 'Critique'}, t('Critique')),
+      h('option', {value: 'Confort'}, t('Confort')),
     );
     const erreur = creerErreur();
 
-    ouvrirModal('Nouvelle mission', (fermer) => {
+    ouvrirModal(t('Nouvelle mission'), (fermer) => {
       const boutonCreer = h('button', {
         class: 'btn btn--primary', type: 'button',
         onclick: async () => {
           const nom = champNom.value.trim();
           if (!nom) {
-            erreur.afficher('Merci de renseigner un nom.');
+            erreur.afficher(t('Merci de renseigner un nom.'));
             return;
           }
           const nomEquipe = champNouvelleEquipe?.value.trim() ?? '';
           if (champNouvelleEquipe && equipeCreeId == null && !nomEquipe) {
-            erreur.afficher("Ce document n'a encore aucune équipe : merci de la nommer.");
+            erreur.afficher(t("Ce document n'a encore aucune équipe : merci de la nommer."));
             return;
           }
           boutonCreer.setAttribute('disabled', 'true');
@@ -265,24 +336,24 @@ export function montrerGrille(container, m) {
             });
             fermer();
           } catch {
-            erreur.afficher("Échec de l'écriture dans le document Grist connecté. Réessayez.");
+            erreur.afficher(t("Échec de l'écriture dans le document Grist connecté. Réessayez."));
             boutonCreer.removeAttribute('disabled');
           }
         },
-      }, 'Créer');
+      }, t('Créer'));
 
       return h('div', {style: {display: 'flex', flexDirection: 'column', gap: '14px'}},
-        h('div', {class: 'field'}, h('label', null, 'Nom'), champNom),
+        h('div', {class: 'field'}, h('label', null, t('Nom')), champNom),
         h('div', {class: 'modal__row'},
-          h('div', {class: 'field'}, h('label', null, 'Équipe'), champNouvelleEquipe ?? champEquipe),
-          h('div', {class: 'field'}, h('label', null, 'Lieu'), champLieu),
+          h('div', {class: 'field'}, h('label', null, t('Équipe')), champNouvelleEquipe ?? champEquipe),
+          h('div', {class: 'field'}, h('label', null, t('Lieu')), champLieu),
         ),
         champNouvelleEquipe && h('p', {class: 'topbar__subtitle'},
-          "Ce document n'a encore aucune équipe : elle sera créée avec cette mission."),
-        h('div', {class: 'field'}, h('label', null, 'Priorité'), champPriorite),
+          t("Ce document n'a encore aucune équipe : elle sera créée avec cette mission.")),
+        h('div', {class: 'field'}, h('label', null, t('Priorité')), champPriorite),
         erreur.noeud,
         h('div', {class: 'modal__actions'},
-          h('button', {class: 'btn btn--ghost', type: 'button', onclick: fermer}, 'Annuler'),
+          h('button', {class: 'btn btn--ghost', type: 'button', onclick: fermer}, t('Annuler')),
           boutonCreer,
         ),
       );
@@ -301,28 +372,28 @@ export function montrerGrille(container, m) {
     ouvrirModal(mission.Nom, (fermer) => h('div', {style: {display: 'flex', flexDirection: 'column', gap: '14px'}},
       h('p', {class: 'topbar__subtitle'}, sc.Libelle),
       h('div', {class: 'modal__row'},
-        h('div', {class: 'field'}, h('label', null, 'Taille du binôme'), champTaille),
-        h('div', {class: 'field'}, h('label', null, 'Effectif minimum'), champMin),
+        h('div', {class: 'field'}, h('label', null, t('Taille du binôme')), champTaille),
+        h('div', {class: 'field'}, h('label', null, t('Effectif minimum')), champMin),
       ),
       erreur.noeud,
       h('p', {class: 'topbar__subtitle'},
-        "Aucun indicatif n'est positionné automatiquement : vous les créerez depuis la vue Indicatifs.",
+        t("Aucun indicatif n'est positionné automatiquement : vous les créerez depuis la vue Indicatifs."),
       ),
       h('div', {class: 'modal__actions'},
-        h('button', {class: 'btn btn--ghost', type: 'button', onclick: fermer}, 'Annuler'),
+        h('button', {class: 'btn btn--ghost', type: 'button', onclick: fermer}, t('Annuler')),
         h('button', {
           class: 'btn btn--primary', type: 'button',
           onclick: () => {
             const taille = Number(champTaille.value);
             const min = Number(champMin.value);
             if (!Number.isFinite(taille) || taille < 1 || !Number.isFinite(min) || min < 1) {
-              erreur.afficher('Merci de renseigner des effectifs valides (au moins 1).');
+              erreur.afficher(t('Merci de renseigner des effectifs valides (au moins 1).'));
               return;
             }
             m.creerBesoin(mission.id, sc.id, {tailleGroupe: Math.round(taille), effectifMin: Math.round(min)});
             fermer();
           },
-        }, 'Créer'),
+        }, t('Créer')),
       ),
     ));
   }
@@ -350,34 +421,34 @@ export function montrerGrille(container, m) {
     const caseApresMinuit = h('input', {type: 'checkbox'});
     const erreur = creerErreur();
 
-    ouvrirModal(`${mission.Nom} — créneau propre`, (fermer) => h(
+    ouvrirModal(t('{mission} — créneau propre', {mission: mission.Nom}), (fermer) => h(
       'div', {style: {display: 'flex', flexDirection: 'column', gap: '14px'}},
       h('p', {class: 'topbar__subtitle'}, jour.libelle),
       h('div', {class: 'modal__row'},
-        h('div', {class: 'field'}, h('label', null, 'Début'), champDebut),
-        h('div', {class: 'field'}, h('label', null, 'Fin'), champFin),
+        h('div', {class: 'field'}, h('label', null, t('Début')), champDebut),
+        h('div', {class: 'field'}, h('label', null, t('Fin')), champFin),
       ),
-      h('label', {class: 'horaire-apres-minuit'}, caseApresMinuit, 'Se termine après minuit'),
+      h('label', {class: 'horaire-apres-minuit'}, caseApresMinuit, t('Se termine après minuit')),
       erreur.noeud,
       h('div', {class: 'modal__actions'},
-        h('button', {class: 'btn btn--ghost', type: 'button', onclick: fermer}, 'Annuler'),
+        h('button', {class: 'btn btn--ghost', type: 'button', onclick: fermer}, t('Annuler')),
         h('button', {
           class: 'btn btn--primary', type: 'button',
           onclick: async () => {
             const debut = epochJourFestivalEtHeure(jour.cle, champDebut.value);
             const fin = epochJourFestivalEtHeure(jour.cle, champFin.value, caseApresMinuit.checked);
-            if (debut == null || fin == null) { erreur.afficher('Merci de renseigner des horaires valides.'); return; }
-            if (fin <= debut) { erreur.afficher("L'heure de fin doit être après l'heure de début."); return; }
+            if (debut == null || fin == null) { erreur.afficher(t('Merci de renseigner des horaires valides.')); return; }
+            if (fin <= debut) { erreur.afficher(t("L'heure de fin doit être après l'heure de début.")); return; }
             erreur.effacer();
             try {
               const macro = macroPourEpoch(jour, debut);
               await m.creerSousCreneauMission(macro.id, mission.id, {libelle: libelleHeurePlage(debut, fin), debut, fin});
               fermer();
             } catch {
-              erreur.afficher("Échec de l'écriture dans le document Grist connecté. Réessayez.");
+              erreur.afficher(t("Échec de l'écriture dans le document Grist connecté. Réessayez."));
             }
           },
-        }, 'Créer'),
+        }, t('Créer')),
       ),
     ));
   }
@@ -406,12 +477,12 @@ export function montrerGrille(container, m) {
       if (resultatTexte) { zoneResultat.append(h('span', {class: `pill pill--${resultatTexte.ton}`}, resultatTexte.texte)); }
     };
 
-    ouvrirModal("Copier les créneaux d'un autre jour", (fermer) => {
+    ouvrirModal(t("Copier les créneaux d'un autre jour"), (fermer) => {
       const boutonCopier = h('button', {
         class: 'btn btn--primary', type: 'button',
         onclick: async () => {
           const jourSource = autresJours.find((j) => j.cle === champJour.value);
-          if (!jourSource) { erreur.afficher('Merci de choisir un jour.'); return; }
+          if (!jourSource) { erreur.afficher(t('Merci de choisir un jour.')); return; }
           erreur.effacer();
           boutonCopier.setAttribute('disabled', 'true');
           const paires = jourSource.macros
@@ -432,28 +503,37 @@ export function montrerGrille(container, m) {
             besoinsCrees += resultat.besoinsCrees;
             indicatifsRepositionnes += resultat.indicatifsRepositionnes;
           }
+          // Chaque compte porte son propre accord (« 2 créneaux créés ») ; seule
+          // la ponctuation qui les relie reste hors traduction.
           resultatTexte = besoinsCrees === 0
-            ? {texte: `Rien à copier depuis ${jourSource.libelle} : tout y était déjà présent sur ${jourCible.libelle}.`, ton: 'ok'}
+            ? {
+              texte: t('Rien à copier depuis {source} : tout y était déjà présent sur {cible}.', {
+                source: jourSource.libelle, cible: jourCible.libelle,
+              }),
+              ton: 'ok',
+            }
             : {
-              texte: `${besoinsCrees} besoin${besoinsCrees > 1 ? 's' : ''} copié${besoinsCrees > 1 ? 's' : ''} depuis ${jourSource.libelle}`
-                + (sousCreneauxCrees > 0 ? ` (${sousCreneauxCrees} créneau${sousCreneauxCrees > 1 ? 'x' : ''} créé${sousCreneauxCrees > 1 ? 's' : ''})` : '')
-                + (indicatifsRepositionnes > 0 ? `, ${indicatifsRepositionnes} indicatif${indicatifsRepositionnes > 1 ? 's' : ''} repositionné${indicatifsRepositionnes > 1 ? 's' : ''}` : '')
+              texte: tn(besoinsCrees, '{n} besoin copié depuis {jour}', '{n} besoins copiés depuis {jour}', {jour: jourSource.libelle})
+                + (sousCreneauxCrees > 0 ? ` (${tn(sousCreneauxCrees, '{n} créneau créé', '{n} créneaux créés')})` : '')
+                + (indicatifsRepositionnes > 0
+                  ? `, ${tn(indicatifsRepositionnes, '{n} indicatif repositionné', '{n} indicatifs repositionnés')}`
+                  : '')
                 + '.',
               ton: 'ok',
             };
           rafraichirResultat();
           boutonCopier.removeAttribute('disabled');
         },
-      }, 'Copier');
+      }, t('Copier'));
 
       return h('div', {style: {display: 'flex', flexDirection: 'column', gap: '14px'}},
         h('p', {class: 'topbar__subtitle'},
-          `Reproduit sur ${jourCible.libelle} les besoins déjà construits sur le jour choisi ci-dessous, avec leurs indicatifs déjà positionnés le cas échéant. N'écrase jamais ce qui existe déjà sur ${jourCible.libelle}.`),
-        h('div', {class: 'field'}, h('label', null, 'Copier depuis'), champJour),
+          t("Reproduit sur {jour} les besoins déjà construits sur le jour choisi ci-dessous, avec leurs indicatifs déjà positionnés le cas échéant. N'écrase jamais ce qui existe déjà sur {jour}.", {jour: jourCible.libelle})),
+        h('div', {class: 'field'}, h('label', null, t('Copier depuis')), champJour),
         erreur.noeud,
         zoneResultat,
         h('div', {class: 'modal__actions'},
-          h('button', {class: 'btn btn--ghost', type: 'button', onclick: fermer}, 'Fermer'),
+          h('button', {class: 'btn btn--ghost', type: 'button', onclick: fermer}, t('Fermer')),
           boutonCopier,
         ),
       );
@@ -474,16 +554,16 @@ export function montrerGrille(container, m) {
           h('h3', null, mission.Nom),
           h('p', {class: 'topbar__subtitle'}, sousCreneau.Libelle),
         ),
-        h('button', {class: 'btn btn--ghost btn--sm', type: 'button', onclick: () => fermerPanneau()}, 'Fermer'),
+        h('button', {class: 'btn btn--ghost btn--sm', type: 'button', onclick: () => fermerPanneau()}, t('Fermer')),
       ),
       dernierMessage ? h('span', {class: `pill pill--${dernierMessage.ton}`}, dernierMessage.texte) : null,
       h('span', {class: `pill pill--${c.statut === 'sous' ? 'danger' : c.statut === 'partiel' ? 'warn' : 'ok'}`},
-        `${c.pourvues} affecté${c.pourvues > 1 ? 's' : ''} sur un minimum de ${besoin.Effectif_min}`,
+        tn(c.pourvues, '{n} affecté sur un minimum de {min}', '{n} affectés sur un minimum de {min}', {min: besoin.Effectif_min}),
       ),
       c.groupesPositionnes.length === 0
-        ? h('p', {class: 'empty'}, "Aucun indicatif n'est encore positionné sur ce besoin.")
+        ? h('p', {class: 'empty'}, t("Aucun indicatif n'est encore positionné sur ce besoin."))
         : h('div', null, ...c.groupesPositionnes.map((g) => carteGroupe(g.groupe))),
-      h('p', {class: 'view__intro', style: {margin: '0'}}, 'Pour pourvoir, échanger ou verrouiller une place : étape 5, Affectation.'),
+      h('p', {class: 'view__intro', style: {margin: '0'}}, t('Pour pourvoir, échanger ou verrouiller une place : étape 5, Affectation.')),
     );
     ouvrirPanneau(panneau);
   }
@@ -510,9 +590,9 @@ export function montrerGrille(container, m) {
       h('span', {class: 'rang mono'}, `#${place.Rang}`),
       benevole
         ? h('span', {style: {flex: '1'}}, benevole.Nom)
-        : h('span', {style: {flex: '1', color: 'var(--text-faint)'}}, 'Place à pourvoir'),
+        : h('span', {style: {flex: '1', color: 'var(--text-faint)'}}, t('Place à pourvoir')),
       place.Verrouillee
-        ? h('span', {class: 'pill pill--neutral', title: 'Corrigée à la main : ni les scénarios ni l’algorithme n’y touchent.'}, icone(ICONES.cadenas, 'icone-texte'), ' Verrouillée')
+        ? h('span', {class: 'pill pill--neutral', title: t('Corrigée à la main : ni les scénarios ni l’algorithme n’y touchent.')}, icone(ICONES.cadenas, 'icone-texte'), ` ${t('Verrouillée')}`)
         : null,
     );
   }

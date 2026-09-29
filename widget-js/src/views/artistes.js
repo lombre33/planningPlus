@@ -21,6 +21,7 @@
  * contraste à valider).
  */
 
+import {t, tn, traductions} from '../i18n.js';
 import {
   indexer, lignesGroupeesParArtiste, regrouperParJour,
 } from '../logic/derive.js';
@@ -30,6 +31,27 @@ import {construireFrise} from '../ui/frise.js';
 import {
   ouvrirModalCreationArtiste, ouvrirModalCreationPassagePourArtiste, ouvrirModalEditionArtiste,
 } from '../ui/modalArtiste.js';
+
+traductions({
+  '+ Nouvel artiste': '+ New artist',
+  'Aucun artiste dans ce jeu de données : utilisez « + Nouvel artiste » pour en créer un.':
+    'No artists in this dataset: use “+ New artist” to create one.',
+  "« En conflit » compte les bénévoles qui veulent voir l'artiste mais tiennent déjà une place sur ce créneau (préférence forte non respectée, §7.2).":
+    '“In conflict” counts the volunteers who want to see the artist but already hold a spot during that slot (strong preference not met, §7.2).',
+  'Aucun macro-créneau dans ce jeu de données : créez-en un dans l’Agenda avant de placer un passage.':
+    'No time blocks in this dataset: create one in the Agenda before placing a set.',
+  '{n} passages': '{n} sets',
+  'Ajouter un nouveau passage pour cet artiste': 'Add a new set for this artist',
+  '+ passage': '+ set',
+  'Cliquer pour créer le créneau de cet artiste, à l’horaire cliqué — redimensionnable ensuite':
+    'Click to create this artist’s slot at the clicked time — resizable afterwards',
+  '{lieu} — {n} intéressé, {conflits} en conflit': '{lieu} — {n} interested, {conflits} in conflict',
+  '{lieu} — {n} intéressés, {conflits} en conflit': '{lieu} — {n} interested, {conflits} in conflict',
+  '{lieu} — {n} intéressé': '{lieu} — {n} interested',
+  '{lieu} — {n} intéressés': '{lieu} — {n} interested',
+  "Échec de l'écriture dans le document Grist connecté. Réessayez.": 'Could not write to the connected Grist document. Try again.',
+  "Un passage ne peut pas durer moins d'un quart d'heure.": 'A set cannot last less than a quarter hour.',
+});
 
 /** Durée par défaut d'un passage créé au clic sur la piste — plus courte
  *  que celle des créneaux de mission (1h30) : un set d'artiste tient
@@ -69,22 +91,21 @@ export function montrerArtistes(container, m) {
     const boutonNouveau = h('button', {
       class: 'btn btn--primary btn--sm', type: 'button',
       onclick: () => ouvrirModalCreationArtiste(m),
-    }, '+ Nouvel artiste');
+    }, t('+ Nouvel artiste'));
 
     container.append(
       h('div', {class: 'agenda__toolbar'},
         boutonNouveau,
         h('span', {class: 'view__intro', style: {margin: '0'}},
           groupes.length === 0
-            ? 'Aucun artiste dans ce jeu de données : utilisez « + Nouvel artiste » pour en créer un.'
-            : '« En conflit » compte les bénévoles qui veulent voir l\'artiste mais tiennent déjà une place sur ce '
-              + 'créneau (préférence forte non respectée, §7.2).'),
+            ? t('Aucun artiste dans ce jeu de données : utilisez « + Nouvel artiste » pour en créer un.')
+            : t("« En conflit » compte les bénévoles qui veulent voir l'artiste mais tiennent déjà une place sur ce créneau (préférence forte non respectée, §7.2).")),
       ),
       ...(dernierMessage
         ? [h('p', {class: `pill pill--${dernierMessage.ton}`, style: {marginBottom: '8px'}}, dernierMessage.texte)]
         : []),
       !jour
-        ? h('p', {class: 'empty'}, 'Aucun macro-créneau dans ce jeu de données : créez-en un dans l’Agenda avant de placer un passage.')
+        ? h('p', {class: 'empty'}, t('Aucun macro-créneau dans ce jeu de données : créez-en un dans l’Agenda avant de placer un passage.'))
         : construireTimeline(groupes, jour),
     );
   }
@@ -128,10 +149,10 @@ export function montrerArtistes(container, m) {
         libelle: h('span', null,
           h('span', {class: 'nom'}, groupe.nom),
           h('span', {class: 'lieu'},
-            groupe.passages.length > 1 ? `${groupe.passages.length} passages` : groupe.passages[0].lieuNom),
+            groupe.passages.length > 1 ? t('{n} passages', {n: groupe.passages.length}) : groupe.passages[0].lieuNom),
           h('button', {
             class: 'btn btn--ghost btn--sm timeline__label__bouton-propre', type: 'button',
-            title: 'Ajouter un nouveau passage pour cet artiste',
+            title: t('Ajouter un nouveau passage pour cet artiste'),
             onclick: () => {
               const artisteReference = groupe.passages[0].artiste;
               ouvrirModalCreationPassagePourArtiste(m, groupe.nom, {
@@ -140,7 +161,7 @@ export function montrerArtistes(container, m) {
                 fin: axe.debut + DUREE_PASSAGE_PAR_DEFAUT_SECONDES,
               }, placeholder?.artiste.id);
             },
-          }, '+ passage'),
+          }, t('+ passage')),
         ),
         blocs,
       };
@@ -149,10 +170,12 @@ export function montrerArtistes(container, m) {
     return construireFrise(lignes, {
       axeDebut: axe.debut,
       axeFin: axe.fin,
-      titrePiste: 'Cliquer pour créer le créneau de cet artiste, à l’horaire cliqué — redimensionnable ensuite',
+      titrePiste: t('Cliquer pour créer le créneau de cet artiste, à l’horaire cliqué — redimensionnable ensuite'),
       classesBloc: (bloc) => (bloc.ligne.conflits > 0 ? 'besoin--partiel' : 'besoin--ok'),
-      titreBloc: (bloc) => `${bloc.ligne.lieuNom} — ${bloc.ligne.demande} intéressé${bloc.ligne.demande > 1 ? 's' : ''}`
-        + (bloc.ligne.conflits > 0 ? `, ${bloc.ligne.conflits} en conflit` : ''),
+      titreBloc: (bloc) => (bloc.ligne.conflits > 0
+        ? tn(bloc.ligne.demande, '{lieu} — {n} intéressé, {conflits} en conflit', '{lieu} — {n} intéressés, {conflits} en conflit',
+          {lieu: bloc.ligne.lieuNom, conflits: bloc.ligne.conflits})
+        : tn(bloc.ligne.demande, '{lieu} — {n} intéressé', '{lieu} — {n} intéressés', {lieu: bloc.ligne.lieuNom})),
       rendreBloc: (bloc) => [
         h('span', {class: 'besoin-cell__libelle'}, bloc.ligne.lieuNom),
         h('span', {class: 'besoin__effectif mono'}, String(bloc.ligne.demande)),
@@ -190,7 +213,7 @@ export function montrerArtistes(container, m) {
       });
       return {ok: true};
     } catch {
-      return {ok: false, raison: "Échec de l'écriture dans le document Grist connecté. Réessayez."};
+      return {ok: false, raison: t("Échec de l'écriture dans le document Grist connecté. Réessayez.")};
     }
   }
 
@@ -200,13 +223,13 @@ export function montrerArtistes(container, m) {
     const debut = depuisDebut ? artiste.Debut + deltaSecondes : artiste.Debut;
     const fin = depuisDebut ? artiste.Fin : artiste.Fin + deltaSecondes;
     if (fin - debut < PAS_SECONDES) {
-      return {ok: false, raison: "Un passage ne peut pas durer moins d'un quart d'heure."};
+      return {ok: false, raison: t("Un passage ne peut pas durer moins d'un quart d'heure.")};
     }
     try {
       await m.enregistrerArtiste({id: artiste.id, Nom: artiste.Nom, Lieu: artiste.Lieu, Debut: debut, Fin: fin});
       return {ok: true};
     } catch {
-      return {ok: false, raison: "Échec de l'écriture dans le document Grist connecté. Réessayez."};
+      return {ok: false, raison: t("Échec de l'écriture dans le document Grist connecté. Réessayez.")};
     }
   }
 

@@ -6,11 +6,30 @@
  * correction des affectations se fait depuis les vues Indicatifs / Jour J.
  */
 
+import {t, tn, traductions} from '../i18n.js';
 import {
   feuilleBenevole, indexer, regrouperParJourFestival,
 } from '../logic/derive.js';
 import {libelleHeurePlage} from '../temps.js';
 import {formatHeures, h, vider} from '../ui/dom.js';
+
+traductions({
+  chevauche: 'overlaps',
+  'Équipe {equipe}': 'Team {equipe}',
+  '{n} étape': '{n} shift',
+  '{n} étapes': '{n} shifts',
+  '{heures} au total': '{heures} in total',
+  "Aucune affectation pour l'instant.": 'No assignments yet.',
+  Horaire: 'Time',
+  Mission: 'Task',
+  Lieu: 'Location',
+  Indicatif: 'Call sign',
+  Coéquipiers: 'Teammates',
+  'Rechercher un bénévole…': 'Search volunteers…',
+  'Imprimer toutes les feuilles': 'Print all sheets',
+  'Imprimer cette feuille': 'Print this sheet',
+  'Aucun bénévole ne correspond à cette recherche.': 'No volunteer matches this search.',
+});
 
 function ligneEtape(etape) {
   return h('tr', {class: etape.chevaucheLaPrecedente ? 'feuille-benevole__ligne--chevauche' : undefined},
@@ -18,7 +37,7 @@ function ligneEtape(etape) {
     h('td', null,
       etape.missionNom,
       etape.chevaucheLaPrecedente
-        ? h('span', {class: 'pill pill--warn', style: {marginLeft: '6px'}}, 'chevauche')
+        ? h('span', {class: 'pill pill--warn', style: {marginLeft: '6px'}}, t('chevauche'))
         : null,
     ),
     h('td', null, etape.lieuNom),
@@ -35,18 +54,20 @@ function construireFeuille(feuille) {
   return h('section', {class: 'feuille-benevole'},
     h('header', {class: 'feuille-benevole__entete'},
       h('h2', null, feuille.benevole.Nom),
-      h('p', null,
-        `Équipe ${feuille.equipeNom} · ${feuille.etapes.length} étape${feuille.etapes.length > 1 ? 's' : ''} · ${formatHeures(feuille.totalHeures)} au total`,
-      ),
+      h('p', null, [
+        t('Équipe {equipe}', {equipe: feuille.equipeNom}),
+        tn(feuille.etapes.length, '{n} étape', '{n} étapes'),
+        t('{heures} au total', {heures: formatHeures(feuille.totalHeures)}),
+      ].join(' · ')),
     ),
     feuille.etapes.length === 0
-      ? h('p', {class: 'empty'}, "Aucune affectation pour l'instant.")
+      ? h('p', {class: 'empty'}, t("Aucune affectation pour l'instant."))
       : h('div', null, ...jours.map((jour) => h('div', {class: 'feuille-benevole__jour'},
         h('h3', {class: 'feuille-benevole__jour-titre'}, jour.libelle),
         h('table', {class: 'tableau-simple feuille-benevole__table'},
           h('thead', null, h('tr', null,
-            h('th', null, 'Horaire'), h('th', null, 'Mission'),
-            h('th', null, 'Lieu'), h('th', null, 'Indicatif'), h('th', null, 'Coéquipiers'),
+            h('th', null, t('Horaire')), h('th', null, t('Mission')),
+            h('th', null, t('Lieu')), h('th', null, t('Indicatif')), h('th', null, t('Coéquipiers')),
           )),
           h('tbody', null, ...jour.items.map(ligneEtape)),
         ),
@@ -87,14 +108,14 @@ export function montrerBenevole(container, m) {
 
     const colonneGauche = h('div', null,
       h('input', {
-        class: 'input', type: 'search', placeholder: 'Rechercher un bénévole…', value: recherche,
+        class: 'input', type: 'search', placeholder: t('Rechercher un bénévole…'), value: recherche,
         style: {width: '100%', marginBottom: '10px'},
         oninput: (e) => { recherche = e.target.value; rafraichir(); },
       }),
       h('button', {
         class: 'btn btn--sm', type: 'button', style: {width: '100%', marginBottom: '10px'},
         onclick: () => imprimerToutes(),
-      }, 'Imprimer toutes les feuilles'),
+      }, t('Imprimer toutes les feuilles')),
       ...benevoles.map((b) => {
         // Équipe orpheline possible (même défaut corrigé ailleurs le 2026-09-23) : ne doit pas planter la liste.
         const equipe = ix.equipe.get(b.Equipe);
@@ -107,7 +128,7 @@ export function montrerBenevole(container, m) {
             h('span', {class: 'dot', style: {background: equipe?.Couleur ?? 'var(--text-faint)', marginRight: '6px'}}),
             h('span', {class: 'nom'}, b.Nom),
             h('br'),
-            h('span', {class: 'equipe'}, `${equipe?.Nom ?? '?'} · ${nbEtapes} étape${nbEtapes > 1 ? 's' : ''}`),
+            h('span', {class: 'equipe'}, `${equipe?.Nom ?? '?'} · ${tn(nbEtapes, '{n} étape', '{n} étapes')}`),
           ),
         );
       }),
@@ -123,13 +144,13 @@ export function montrerBenevole(container, m) {
             h('button', {
               class: 'btn btn--sm', type: 'button',
               onclick: () => imprimer([construireFeuille(feuille)]),
-            }, 'Imprimer cette feuille'),
+            }, t('Imprimer cette feuille')),
           ),
           h('div', {class: 'card papier'}, construireFeuille(feuille)),
         );
       }
     } else {
-      colonneDroite.append(h('p', {class: 'empty'}, 'Aucun bénévole ne correspond à cette recherche.'));
+      colonneDroite.append(h('p', {class: 'empty'}, t('Aucun bénévole ne correspond à cette recherche.')));
     }
 
     container.append(h('div', {class: 'jourj-layout'}, colonneGauche, colonneDroite));

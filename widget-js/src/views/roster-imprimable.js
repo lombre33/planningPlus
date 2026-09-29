@@ -16,6 +16,7 @@
  * bénévole, la case ne les touche pas.
  */
 
+import {t, tn, traductions} from '../i18n.js';
 import {
   benevolesDisponiblesCeJour, estVraimentDisponibleAuQuart, indexer, indexerDisponibilites,
   regrouperParJour,
@@ -27,10 +28,29 @@ import {
 } from '../logic/impression.js';
 import {nomsCompletsDepuisSource} from '../logic/noms-complets.js';
 import {
-  ajusterTexteBlocAvecTroncature, cellulesEnTeteQuarts, imprimer, LARGEUR_QUART_ECRAN_PX, largeurQuartImpressionPx,
-  PADDING_HORIZONTAL_BLOC_PX,
+  ajusterTexteBlocAvecTroncature, cellulesEnTeteQuarts, imprimer, jourDansUnePhrase, LARGEUR_QUART_ECRAN_PX,
+  largeurQuartImpressionPx, PADDING_HORIZONTAL_BLOC_PX,
 } from '../ui/impression.js';
 import {h, vider} from '../ui/dom.js';
+
+traductions({
+  'hors de sa disponibilité déclarée': 'outside their declared availability',
+  "l'empêche de voir {artiste}": 'keeps them from seeing {artiste}',
+  Bénévole: 'Volunteer',
+  Indicatif: 'Call sign',
+  Équipe: 'Team',
+  'Aucun macro-créneau : rien à afficher.': 'No time blocks: nothing to show.',
+  'Ce jour ne couvre aucun quart d’heure.': 'This day covers no quarter hours.',
+  "Aucun bénévole disponible ce jour-là — importez ou déclarez des disponibilités (vue Disponibilités) pour qu'un roster apparaisse ici.":
+    'No volunteers available that day — import or enter availability (Availability view) for a roster to appear here.',
+  '{n} bénévole disponible {jour}.': '{n} volunteer available on {jour}.',
+  '{n} bénévoles disponibles {jour}.': '{n} volunteers available on {jour}.',
+  'Rouge visible à l’écran et à l’impression tant que la case est cochée — jamais pour les bénévoles par défaut.':
+    'Red shown on screen and in print while the box is checked — never for volunteers by default.',
+  'Signaler les créneaux à problème': 'Flag problem slots',
+  'Roster bénévoles — {jour}': 'Volunteer roster — {jour}',
+  'Imprimer ce roster': 'Print this roster',
+});
 
 export const LARGEUR_COLONNE_NOM_PX = 150;
 export const LARGEUR_COLONNE_INDICATIF_PX = 50;
@@ -113,8 +133,8 @@ function construireLigneBenevole(
         : artisteNom != null ? 'artiste' : (disponible ? 'libre' : 'indisponible');
       const texteACaler = missionNom ?? artisteNom;
       const motifs = [];
-      if (horsDispoReelle) { motifs.push('hors de sa disponibilité déclarée'); }
-      if (conflitArtisteNom != null) { motifs.push(`l'empêche de voir ${conflitArtisteNom}`); }
+      if (horsDispoReelle) { motifs.push(t('hors de sa disponibilité déclarée')); }
+      if (conflitArtisteNom != null) { motifs.push(t("l'empêche de voir {artiste}", {artiste: conflitArtisteNom})); }
       const titre = missionNom != null && motifs.length > 0
         ? `${missionNom} — ${motifs.join(' · ')}`
         : (texteACaler ?? undefined);
@@ -150,9 +170,9 @@ function construireTable(
   const table = h('table', {class: 'impression-table', style: {width: `${totalPx}px`}},
     construireColgroup(nbQuartsTotal, pxParQuart, totalPx),
     h('thead', null, h('tr', null,
-      h('th', {class: 'impression-table__coin', scope: 'col'}, 'Bénévole'),
-      h('th', {class: 'impression-table__entete', scope: 'col'}, 'Indicatif'),
-      h('th', {class: 'impression-table__entete', scope: 'col'}, 'Équipe'),
+      h('th', {class: 'impression-table__coin', scope: 'col'}, t('Bénévole')),
+      h('th', {class: 'impression-table__entete', scope: 'col'}, t('Indicatif')),
+      h('th', {class: 'impression-table__entete', scope: 'col'}, t('Équipe')),
       ...cellulesEnTeteQuarts(blocs),
     )),
     h('tbody', null, ...benevoles.map((b) => {
@@ -202,12 +222,12 @@ export function montrerRosterImprimable(container, m) {
     vider(container);
 
     if (!jour) {
-      container.append(h('p', {class: 'empty'}, 'Aucun macro-créneau : rien à afficher.'));
+      container.append(h('p', {class: 'empty'}, t('Aucun macro-créneau : rien à afficher.')));
       return;
     }
     const blocs = blocsDuJour(jour).filter((b) => b.quarts.length > 0);
     if (blocs.length === 0) {
-      container.append(h('p', {class: 'empty'}, 'Ce jour ne couvre aucun quart d’heure.'));
+      container.append(h('p', {class: 'empty'}, t('Ce jour ne couvre aucun quart d’heure.')));
       return;
     }
     const quartsDuJour = blocs.flatMap((b) => b.quarts);
@@ -226,7 +246,7 @@ export function montrerRosterImprimable(container, m) {
 
     if (benevoles.length === 0) {
       container.append(h('p', {class: 'empty'},
-        "Aucun bénévole disponible ce jour-là — importez ou déclarez des disponibilités (vue Disponibilités) pour qu'un roster apparaisse ici.",
+        t("Aucun bénévole disponible ce jour-là — importez ou déclarez des disponibilités (vue Disponibilités) pour qu'un roster apparaisse ici."),
       ));
       return;
     }
@@ -237,11 +257,12 @@ export function montrerRosterImprimable(container, m) {
 
     const barre = h('div', {class: 'impression-barre'},
       h('p', {class: 'view__intro', style: {margin: '0'}},
-        `${benevoles.length} bénévole${benevoles.length > 1 ? 's' : ''} disponible${benevoles.length > 1 ? 's' : ''} ${jour.libelle.toLowerCase()}.`,
+        tn(benevoles.length, '{n} bénévole disponible {jour}.', '{n} bénévoles disponibles {jour}.',
+          {jour: jourDansUnePhrase(jour.libelle)}),
       ),
       h('label', {
         style: {display: 'inline-flex', alignItems: 'center', gap: '4px', marginLeft: '8px'},
-        title: 'Rouge visible à l’écran et à l’impression tant que la case est cochée — jamais pour les bénévoles par défaut.',
+        title: t('Rouge visible à l’écran et à l’impression tant que la case est cochée — jamais pour les bénévoles par défaut.'),
       },
         h('input', {
           type: 'checkbox', checked: afficherConflits,
@@ -250,7 +271,7 @@ export function montrerRosterImprimable(container, m) {
             rafraichir();
           },
         }),
-        'Signaler les créneaux à problème',
+        t('Signaler les créneaux à problème'),
       ),
       h('button', {
         class: 'btn btn--primary btn--sm', type: 'button',
@@ -263,11 +284,11 @@ export function montrerRosterImprimable(container, m) {
             indexDispos, indexDispoReelle, afficherConflits, pxImpression,
           );
           imprimer(
-            [h('h2', null, `Roster bénévoles — ${jour.libelle}`), table],
+            [h('h2', null, t('Roster bénévoles — {jour}', {jour: jour.libelle})), table],
             'impression-roster',
           );
         },
-      }, 'Imprimer ce roster'),
+      }, t('Imprimer ce roster')),
     );
 
     const table = construireTable(

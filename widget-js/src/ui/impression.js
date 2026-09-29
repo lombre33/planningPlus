@@ -7,9 +7,18 @@
  * taille du texte d'un bloc pour qu'il tienne dans son créneau.
  */
 
+import {langue} from '../i18n.js';
 import {estHeurePleine} from '../logic/dispos-terrain.js';
 import {libelleHeure} from '../temps.js';
 import {h, vider} from './dom.js';
+
+/** Le libellé d'un jour (`libelleJourLong`) pris dans une phrase : en
+ *  minuscules en français (« 3 bénévoles disponibles vendredi 26
+ *  septembre. »), tel quel en anglais, où jours et mois gardent toujours
+ *  leur majuscule (« … available on Friday 26 September. »). */
+export function jourDansUnePhrase(libelle) {
+  return langue() === 'fr' ? libelle.toLowerCase() : libelle;
+}
 
 /** Même largeur qu'ailleurs dans le widget (`ui/frise.js` `LARGEUR_QUART_PX`,
  *  `.dispos-table__heure`) — reprise volontaire pour que l'aperçu à l'écran

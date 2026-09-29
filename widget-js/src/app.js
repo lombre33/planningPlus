@@ -20,10 +20,11 @@
  * démonter proprement la vue précédente à chaque changement.
  */
 
+import {surChangementLangue, t, traductions} from './i18n.js';
 import {regrouperParJour} from './logic/derive.js';
 import {cleJourFestival} from './temps.js';
 import {construireBandeauJours} from './ui/bandeauJours.js';
-import {h, ICONES, icone, vider} from './ui/dom.js';
+import {fermerPanneau, h, ICONES, icone, vider} from './ui/dom.js';
 import {marqueEtReglages} from './ui/reglages.js';
 import {montrerAffectation} from './views/affectation.js';
 import {montrerAgenda} from './views/agenda.js';
@@ -38,10 +39,67 @@ import {montrerIndicatifs} from './views/indicatifs.js';
 import {montrerRosterImprimable} from './views/roster-imprimable.js';
 import {montrerTerrain} from './views/terrain.js';
 
+traductions({
+  Parcours: 'Steps',
+  'Le jour J': 'On the day',
+  Diffuser: 'Share',
+  Agenda: 'Agenda',
+  'Agenda du festival': 'Festival agenda',
+  'Macro-créneaux et sous-créneaux. Glissez pour déplacer, redimensionnez par les bords, ou ajoutez un macro-créneau.':
+    'Time blocks and slots. Drag to move, resize from the edges, or add a time block.',
+  Missions: 'Tasks',
+  'Missions × sous-créneaux': 'Tasks × slots',
+  'Les missions et leurs créneaux du jour. Cliquez une case pour voir sa couverture ; les places se pourvoient à l’étape 5.':
+    'The day’s tasks and their slots. Click a cell to see its coverage; spots are filled in step 5.',
+  Indicatifs: 'Call signs',
+  'Indicatifs et équipes': 'Call signs and teams',
+  'Un indicatif est positionné à l’avance sur plusieurs missions : c’est la mission qui tourne, pas le binôme (§6.3).':
+    'A call sign is placed in advance on several tasks: the task rotates, not the buddy pair (§6.3).',
+  Bénévoles: 'Volunteers',
+  Vue: 'View',
+  Disponibilités: 'Availability',
+  Artistes: 'Artists',
+  Désistements: 'Withdrawals',
+  'Disponibilités des bénévoles': 'Volunteer availability',
+  'Qui est disponible, indisponible ou veut voir un artiste, au quart d’heure, un jour de festival à la fois.':
+    'Who is available, unavailable or wants to see an artist, by the quarter hour, one festival day at a time.',
+  'Qui joue quand, et combien de bénévoles veulent le voir — et parmi eux, combien sont déjà en conflit.':
+    'Who plays when, how many volunteers want to see them — and how many of those already have a clash.',
+  'Un bénévole qui ne viendra pas du tout : ses places se libèrent sur tout le festival, après confirmation. Une absence d’un jour se pointe à l’appel, à l’étape 5.':
+    'A volunteer who will not come at all: their spots are released across the whole festival, after confirmation. A one-day absence is marked at roll call, in step 5.',
+  Affectation: 'Assignment',
+  'Affectation · table du jour': 'Assignment · day table',
+  'Une ligne par place, sur les heures du jour. Cliquez une ligne pour voir ses options ; tout passe par le brouillon avant d’être écrit.':
+    'One row per spot, across the day’s hours. Click a row to see its options; everything goes through the draft before being written.',
+  Terrain: 'On site',
+  'Qui doit être où à un instant du jour, et les effectifs attendus par mission face à leur minimum.':
+    'Who should be where at a given moment of the day, and each task’s expected headcount against its minimum.',
+  Impressions: 'Printouts',
+  'Pour qui': 'For whom',
+  'Par bénévole': 'By volunteer',
+  'Par équipe': 'By team',
+  'Sur quelle durée': 'Over what period',
+  'Un jour': 'One day',
+  'Tout le festival': 'Whole festival',
+  'Roster bénévoles imprimable': 'Printable volunteer roster',
+  'Une ligne par bénévole disponible ce jour, son indicatif et ses affectations au quart d’heure — lecture seule, pensé pour être imprimé et distribué.':
+    'One row per volunteer available that day, with their call sign and assignments by the quarter hour — read-only, designed to be printed and handed out.',
+  'Feuille de route bénévole': 'Volunteer schedule sheet',
+  "La feuille individuelle d'un bénévole sur toute la durée, imprimable pour le jour J.":
+    'A volunteer’s personal sheet for the whole event, printable for the day.',
+  'Plannings équipes imprimables': 'Printable team schedules',
+  'Une table par équipe : ses missions du jour au quart d’heure, qui les tient et leur indicatif — lecture seule, une page par équipe à l’impression.':
+    'One table per team: its tasks for the day by the quarter hour, who holds them and their call sign — read-only, one page per team when printed.',
+  'Planning d’équipe sur tout le festival': 'Team schedule for the whole festival',
+  'Une équipe sur toute la durée, par indicatif : pour les cheffes d’équipe, qui repèrent sans modifier.':
+    'One team for the whole event, by call sign: for team leads, to look without changing anything.',
+  'Vues du planning': 'Schedule views',
+});
+
 const SECTIONS = [
-  {id: 'parcours', libelle: 'Parcours'},
-  {id: 'jour-j', libelle: 'Le jour J'},
-  {id: 'diffuser', libelle: 'Diffuser'},
+  {id: 'parcours', libelle: () => t('Parcours')},
+  {id: 'jour-j', libelle: () => t('Le jour J')},
+  {id: 'diffuser', libelle: () => t('Diffuser')},
 ];
 
 /**
@@ -51,109 +109,109 @@ const SECTIONS = [
  */
 const ENTREES = [
   {
-    id: 'agenda', libelle: 'Agenda', icone: ICONES.agenda, section: 'parcours', etape: 1,
+    id: 'agenda', libelle: () => t('Agenda'), icone: ICONES.agenda, section: 'parcours', etape: 1,
     vues: [{
-      titre: 'Agenda du festival',
-      sousTitre: 'Macro-créneaux et sous-créneaux. Glissez pour déplacer, redimensionnez par les bords, ou ajoutez un macro-créneau.',
+      titre: () => t('Agenda du festival'),
+      sousTitre: () => t('Macro-créneaux et sous-créneaux. Glissez pour déplacer, redimensionnez par les bords, ou ajoutez un macro-créneau.'),
       montrer: montrerAgenda,
     }],
   },
   {
-    id: 'missions', libelle: 'Missions', icone: ICONES.grille, section: 'parcours', etape: 2,
+    id: 'missions', libelle: () => t('Missions'), icone: ICONES.grille, section: 'parcours', etape: 2,
     vues: [{
-      titre: 'Missions × sous-créneaux',
-      sousTitre: 'Les missions et leurs créneaux du jour. Cliquez une case pour voir sa couverture ; les places se pourvoient à l’étape 5.',
+      titre: () => t('Missions × sous-créneaux'),
+      sousTitre: () => t('Les missions et leurs créneaux du jour. Cliquez une case pour voir sa couverture ; les places se pourvoient à l’étape 5.'),
       montrer: montrerGrille,
       filtreJour: true,
     }],
   },
   {
-    id: 'indicatifs', libelle: 'Indicatifs', icone: ICONES.equipes, section: 'parcours', etape: 3,
+    id: 'indicatifs', libelle: () => t('Indicatifs'), icone: ICONES.equipes, section: 'parcours', etape: 3,
     vues: [{
-      titre: 'Indicatifs et équipes',
-      sousTitre: 'Un indicatif est positionné à l’avance sur plusieurs missions : c’est la mission qui tourne, pas le binôme (§6.3).',
+      titre: () => t('Indicatifs et équipes'),
+      sousTitre: () => t('Un indicatif est positionné à l’avance sur plusieurs missions : c’est la mission qui tourne, pas le binôme (§6.3).'),
       montrer: montrerIndicatifs,
       filtreJour: true,
     }],
   },
   {
-    id: 'benevoles', libelle: 'Bénévoles', icone: ICONES.groupe, section: 'parcours', etape: 4,
+    id: 'benevoles', libelle: () => t('Bénévoles'), icone: ICONES.groupe, section: 'parcours', etape: 4,
     choix: [{
-      cle: 'vue', libelle: 'Vue',
-      options: [['disponibilites', 'Disponibilités'], ['artistes', 'Artistes'], ['desistements', 'Désistements']],
+      cle: 'vue', libelle: () => t('Vue'),
+      options: [['disponibilites', () => t('Disponibilités')], ['artistes', () => t('Artistes')], ['desistements', () => t('Désistements')]],
     }],
     vues: [
       {
         quand: {vue: 'disponibilites'},
-        titre: 'Disponibilités des bénévoles',
-        sousTitre: 'Qui est disponible, indisponible ou veut voir un artiste, au quart d’heure, un jour de festival à la fois.',
+        titre: () => t('Disponibilités des bénévoles'),
+        sousTitre: () => t('Qui est disponible, indisponible ou veut voir un artiste, au quart d’heure, un jour de festival à la fois.'),
         montrer: montrerDisponibilites,
         filtreJour: true,
       },
       {
         quand: {vue: 'artistes'},
-        titre: 'Artistes',
-        sousTitre: 'Qui joue quand, et combien de bénévoles veulent le voir — et parmi eux, combien sont déjà en conflit.',
+        titre: () => t('Artistes'),
+        sousTitre: () => t('Qui joue quand, et combien de bénévoles veulent le voir — et parmi eux, combien sont déjà en conflit.'),
         montrer: montrerArtistes,
         filtreJour: true,
       },
       {
         quand: {vue: 'desistements'},
-        titre: 'Désistements',
-        sousTitre: 'Un bénévole qui ne viendra pas du tout : ses places se libèrent sur tout le festival, après confirmation. Une absence d’un jour se pointe à l’appel, à l’étape 5.',
+        titre: () => t('Désistements'),
+        sousTitre: () => t('Un bénévole qui ne viendra pas du tout : ses places se libèrent sur tout le festival, après confirmation. Une absence d’un jour se pointe à l’appel, à l’étape 5.'),
         montrer: montrerDesistements,
       },
     ],
   },
   {
-    id: 'affectation', libelle: 'Affectation', icone: ICONES.affectation, section: 'parcours', etape: 5,
+    id: 'affectation', libelle: () => t('Affectation'), icone: ICONES.affectation, section: 'parcours', etape: 5,
     vues: [{
-      titre: 'Affectation · table du jour',
-      sousTitre: 'Une ligne par place, sur les heures du jour. Cliquez une ligne pour voir ses options ; tout passe par le brouillon avant d’être écrit.',
+      titre: () => t('Affectation · table du jour'),
+      sousTitre: () => t('Une ligne par place, sur les heures du jour. Cliquez une ligne pour voir ses options ; tout passe par le brouillon avant d’être écrit.'),
       montrer: montrerAffectation,
       filtreJour: true,
     }],
   },
   {
-    id: 'terrain', libelle: 'Terrain', icone: ICONES.terrain, section: 'jour-j',
+    id: 'terrain', libelle: () => t('Terrain'), icone: ICONES.terrain, section: 'jour-j',
     vues: [{
-      titre: 'Terrain',
-      sousTitre: 'Qui doit être où à un instant du jour, et les effectifs attendus par mission face à leur minimum.',
+      titre: () => t('Terrain'),
+      sousTitre: () => t('Qui doit être où à un instant du jour, et les effectifs attendus par mission face à leur minimum.'),
       montrer: montrerTerrain,
       filtreJour: true,
     }],
   },
   {
-    id: 'impressions', libelle: 'Impressions', icone: ICONES.imprimante, section: 'diffuser',
+    id: 'impressions', libelle: () => t('Impressions'), icone: ICONES.imprimante, section: 'diffuser',
     choix: [
-      {cle: 'qui', libelle: 'Pour qui', options: [['benevole', 'Par bénévole'], ['equipe', 'Par équipe']]},
-      {cle: 'duree', libelle: 'Sur quelle durée', options: [['jour', 'Un jour'], ['festival', 'Tout le festival']]},
+      {cle: 'qui', libelle: () => t('Pour qui'), options: [['benevole', () => t('Par bénévole')], ['equipe', () => t('Par équipe')]]},
+      {cle: 'duree', libelle: () => t('Sur quelle durée'), options: [['jour', () => t('Un jour')], ['festival', () => t('Tout le festival')]]},
     ],
     vues: [
       {
         quand: {qui: 'benevole', duree: 'jour'},
-        titre: 'Roster bénévoles imprimable',
-        sousTitre: 'Une ligne par bénévole disponible ce jour, son indicatif et ses affectations au quart d’heure — lecture seule, pensé pour être imprimé et distribué.',
+        titre: () => t('Roster bénévoles imprimable'),
+        sousTitre: () => t('Une ligne par bénévole disponible ce jour, son indicatif et ses affectations au quart d’heure — lecture seule, pensé pour être imprimé et distribué.'),
         montrer: montrerRosterImprimable,
         filtreJour: true,
       },
       {
         quand: {qui: 'benevole', duree: 'festival'},
-        titre: 'Feuille de route bénévole',
-        sousTitre: "La feuille individuelle d'un bénévole sur toute la durée, imprimable pour le jour J.",
+        titre: () => t('Feuille de route bénévole'),
+        sousTitre: () => t("La feuille individuelle d'un bénévole sur toute la durée, imprimable pour le jour J."),
         montrer: montrerBenevole,
       },
       {
         quand: {qui: 'equipe', duree: 'jour'},
-        titre: 'Plannings équipes imprimables',
-        sousTitre: 'Une table par équipe : ses missions du jour au quart d’heure, qui les tient et leur indicatif — lecture seule, une page par équipe à l’impression.',
+        titre: () => t('Plannings équipes imprimables'),
+        sousTitre: () => t('Une table par équipe : ses missions du jour au quart d’heure, qui les tient et leur indicatif — lecture seule, une page par équipe à l’impression.'),
         montrer: montrerEquipesImprimables,
         filtreJour: true,
       },
       {
         quand: {qui: 'equipe', duree: 'festival'},
-        titre: 'Planning d’équipe sur tout le festival',
-        sousTitre: 'Une équipe sur toute la durée, par indicatif : pour les cheffes d’équipe, qui repèrent sans modifier.',
+        titre: () => t('Planning d’équipe sur tout le festival'),
+        sousTitre: () => t('Une équipe sur toute la durée, par indicatif : pour les cheffes d’équipe, qui repèrent sans modifier.'),
         montrer: montrerEquipe,
       },
     ],
@@ -175,9 +233,7 @@ export function demarrerApp(racine, magasin, sourceLibelle) {
   ]));
 
   const boutons = new Map();
-  const rail = h('nav', {class: 'rail', 'aria-label': 'Vues du planning'},
-    h('div', {class: 'rail__brand'}, 'Planning+'),
-  );
+  const rail = h('nav', {class: 'rail'});
 
   function creerBouton(entree) {
     const bouton = h('button', {
@@ -188,18 +244,25 @@ export function demarrerApp(racine, magasin, sourceLibelle) {
         icone(entree.icone),
         entree.etape != null ? h('span', {class: 'rail__etape'}, String(entree.etape)) : null,
       ),
-      entree.libelle,
+      entree.libelle(),
     );
     boutons.set(entree.id, bouton);
     return bouton;
   }
 
   // Le parcours de référence (§1.1) d'abord, dans son ordre et numéroté :
-  // un chemin à suivre, pas un onglet de plus parmi d'autres.
-  for (const section of SECTIONS) {
-    const entrees = ENTREES.filter((e) => e.section === section.id);
-    rail.append(h('div', {class: 'rail__section'}, section.libelle), ...entrees.map(creerBouton));
+  // un chemin à suivre, pas un onglet de plus parmi d'autres. Redessiné à
+  // chaque changement de langue, comme la vue active.
+  function dessinerRail() {
+    boutons.clear();
+    rail.setAttribute('aria-label', t('Vues du planning'));
+    rail.replaceChildren(h('div', {class: 'rail__brand'}, 'Planning+'));
+    for (const section of SECTIONS) {
+      const entrees = ENTREES.filter((e) => e.section === section.id);
+      rail.append(h('div', {class: 'rail__section'}, section.libelle()), ...entrees.map(creerBouton));
+    }
   }
+  dessinerRail();
 
   const topbar = h('header', {class: 'topbar'});
   const sousVues = h('div', {class: 'app-sous-vues'});
@@ -251,7 +314,7 @@ export function demarrerApp(racine, magasin, sourceLibelle) {
     vider(sousVues);
     if (!entree.choix) { return; }
     const options = optionsParEntree.get(entree.id);
-    sousVues.append(...entree.choix.map((choix) => h('div', {class: 'segmente', role: 'group', 'aria-label': choix.libelle},
+    sousVues.append(...entree.choix.map((choix) => h('div', {class: 'segmente', role: 'group', 'aria-label': choix.libelle()},
       ...choix.options.map(([valeur, libelle]) => h('button', {
         class: 'segmente__option', type: 'button', 'aria-pressed': String(options[choix.cle] === valeur),
         onclick: () => {
@@ -259,7 +322,7 @@ export function demarrerApp(racine, magasin, sourceLibelle) {
           options[choix.cle] = valeur;
           monter();
         },
-      }, libelle)),
+      }, libelle())),
     )));
   }
 
@@ -273,11 +336,11 @@ export function demarrerApp(racine, magasin, sourceLibelle) {
     vider(topbar);
     topbar.append(
       h('div', {class: 'topbar__title'},
-        h('h1', null, def.titre),
-        h('p', {class: 'topbar__subtitle'}, def.sousTitre),
+        h('h1', null, def.titre()),
+        h('p', {class: 'topbar__subtitle'}, def.sousTitre()),
       ),
       h('div', {class: 'topbar__actions'},
-        h('span', {class: 'pill pill--neutral'}, sourceLibelle),
+        h('span', {class: 'pill pill--neutral'}, typeof sourceLibelle === 'function' ? sourceLibelle() : sourceLibelle),
         ...marqueEtReglages(),
       ),
     );
@@ -299,6 +362,14 @@ export function demarrerApp(racine, magasin, sourceLibelle) {
   racine.replaceChildren(shell);
   activer('agenda');
   magasin.subscribe(redessinerBandeauJours);
+  // Changement de langue (Réglages) : tout ce que la coquille montre se
+  // redessine, et la vue active se remonte dans la nouvelle langue ; un
+  // panneau latéral ouvert se referme plutôt que de rester dans l'ancienne.
+  surChangementLangue(() => {
+    fermerPanneau();
+    dessinerRail();
+    monter();
+  });
 
   // Zone d'impression : un enfant direct de <body>, pas de #app, pour que
   // masquer « tout sauf elle » (`.impression-active` dans style.css) au

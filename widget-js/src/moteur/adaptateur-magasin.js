@@ -37,12 +37,53 @@
  *    du verrouillage.
  */
 
+import {t, traductions} from '../i18n.js';
 import {
   couvertureBesoin, missionsCouvertesParGroupe, positionsDuGroupe, regrouperParJour,
 } from '../logic/derive.js';
 
 import {classerCandidats as moteurClasserCandidats} from './affectation.js';
 import {detecterAnomalies as moteurDetecterAnomalies} from './anomalies.js';
+
+// Seuls les textes d'affichage passent par `t` ; le moteur lui-même
+// (`./affectation`, `./anomalies`…) ne parle que par codes.
+traductions({
+  'équipe {equipe}': 'team {equipe}',
+  'hors équipe ({equipe})': 'other team ({equipe})',
+  'souhaite fortement': 'strong wish',
+  intéressé: 'interested',
+  réticent: 'reluctant',
+  'binôme souhaité': 'wished-for buddy',
+  'binôme à éviter': 'buddy to avoid',
+  'veut voir un artiste sur ce créneau': 'wants to see an artist during this slot',
+  'dépasse son quota ({quota} h)': 'over their quota ({quota} h)',
+  'sous son quota minimum': 'under their minimum quota',
+  'personne de disponible sur ce créneau': 'nobody available during this slot',
+  "personne n'a la compétence requise": 'nobody has the required skill',
+  'les bénévoles disponibles sont déjà occupés ailleurs sur ce créneau':
+    'the available volunteers are already busy elsewhere during this slot',
+  'les bénévoles disponibles tiennent déjà un autre indicatif ce jour-là':
+    'the available volunteers already hold another call sign that day',
+  'les bénévoles disponibles ont refusé cette mission': 'the available volunteers have refused this task',
+  'les seuls bénévoles qui conviendraient sont marqués absents': 'the only suitable volunteers are marked absent',
+  "les seuls bénévoles qui conviendraient sont absents à l'appel ce jour-là":
+    'the only suitable volunteers are absent at roll call that day',
+  'aucun bénévole importé': 'no volunteers imported',
+  'un binôme existe mais uniquement en conflit avec un souhait « voir un artiste », pas nécessaire ici':
+    'a buddy pair exists but only in conflict with a “see an artist” wish, not needed here',
+  'indisponible sur les créneaux encore ouverts': 'unavailable for the slots still open',
+  'compétence manquante pour les missions encore ouvertes': 'missing skill for the tasks still open',
+  'déjà occupé(e) sur ces créneaux via une autre place': 'already busy during these slots through another spot',
+  'tient déjà un autre indicatif ce jour-là': 'already holds another call sign that day',
+  'a refusé les missions encore ouvertes': 'has refused the tasks still open',
+  'marqué(e) absent(e)': 'marked absent',
+  "absent(e) à l'appel ce jour-là": 'absent at roll call that day',
+  'aucun indicatif encore ouvert sur ce périmètre': 'no call sign still open in this scope',
+  'éligible sur au moins un indicatif encore ouvert — un glisser-déposer ou un nouveau lancement peut le pourvoir':
+    'eligible for at least one call sign still open — a drag and drop or a new run can assign them',
+  'aucun indicatif ouvert ne correspond à son profil': 'no open call sign matches their profile',
+  'un artiste souhaité': 'a wished-for artist',
+});
 
 // --- Conversion Magasin -> DonneesPlanning ---------------------------------
 //
@@ -171,9 +212,9 @@ export function classerCandidats(
     const tags = [];
 
     if (c.explication.equipeCorrespond === true) {
-      tags.push({texte: `équipe ${equipe?.Nom ?? '?'}`, sens: 'plus'});
+      tags.push({texte: t('équipe {equipe}', {equipe: equipe?.Nom ?? '?'}), sens: 'plus'});
     } else if (c.explication.equipeCorrespond === false) {
-      tags.push({texte: `hors équipe (${equipe?.Nom ?? '?'})`, sens: 'moins'});
+      tags.push({texte: t('hors équipe ({equipe})', {equipe: equipe?.Nom ?? '?'}), sens: 'moins'});
     }
 
     const meilleurSouhait = c.explication.souhaitsMission.reduce((meilleur, s) => {
@@ -182,9 +223,9 @@ export function classerCandidats(
       const rangMeilleur = meilleur ? ORDRE_PREFERENCE.indexOf(meilleur) : -1;
       return rang > rangMeilleur ? s.preference : meilleur;
     }, null);
-    if (meilleurSouhait === 'Souhaite fortement') { tags.push({texte: 'souhaite fortement', sens: 'plus'}); }
-    else if (meilleurSouhait === 'Intéressé') { tags.push({texte: 'intéressé', sens: 'plus'}); }
-    else if (meilleurSouhait === 'Réticent') { tags.push({texte: 'réticent', sens: 'moins'}); }
+    if (meilleurSouhait === 'Souhaite fortement') { tags.push({texte: t('souhaite fortement'), sens: 'plus'}); }
+    else if (meilleurSouhait === 'Intéressé') { tags.push({texte: t('intéressé'), sens: 'plus'}); }
+    else if (meilleurSouhait === 'Réticent') { tags.push({texte: t('réticent'), sens: 'moins'}); }
 
     // Le binôme souhaité (§7.2 objectif 2, devant l'artiste depuis le
     // 2026-09-23) est ce qui peut faire accepter le conflit artiste
@@ -192,19 +233,19 @@ export function classerCandidats(
     // pour qu'on lise « avec son binôme, au prix de l'artiste » plutôt que
     // de ne voir que le sacrifice.
     if (c.explication.affinite === 'positive') {
-      tags.push({texte: 'binôme souhaité', sens: 'plus'});
+      tags.push({texte: t('binôme souhaité'), sens: 'plus'});
     } else if (c.explication.affinite === 'negative') {
-      tags.push({texte: 'binôme à éviter', sens: 'moins'});
+      tags.push({texte: t('binôme à éviter'), sens: 'moins'});
     }
 
     if (c.explication.conflitArtiste) {
-      tags.push({texte: 'veut voir un artiste sur ce créneau', sens: 'moins'});
+      tags.push({texte: t('veut voir un artiste sur ce créneau'), sens: 'moins'});
     }
 
     if (c.explication.depasseraitQuota) {
-      tags.push({texte: `dépasse son quota (${benevole.Quota_heures_max} h)`, sens: 'moins'});
+      tags.push({texte: t('dépasse son quota ({quota} h)', {quota: benevole.Quota_heures_max}), sens: 'moins'});
     } else if (benevole.Quota_heures_min > 0 && c.explication.heuresActuelles < benevole.Quota_heures_min) {
-      tags.push({texte: 'sous son quota minimum', sens: 'plus'});
+      tags.push({texte: t('sous son quota minimum'), sens: 'plus'});
     }
 
     resultats.push({benevoleId: c.benevoleId, nom: benevole.Nom, equipeNom: equipe?.Nom ?? '?', score: c.score, tags});
@@ -216,15 +257,17 @@ export function classerCandidats(
 
 // --- raisonsPlaceVide --------------------------------------------------------
 
-const LIBELLE_RAISON = {
-  indisponible: 'personne de disponible sur ce créneau',
-  competence_manquante: "personne n'a la compétence requise",
-  deja_occupe: 'les bénévoles disponibles sont déjà occupés ailleurs sur ce créneau',
-  autre_indicatif_meme_jour: 'les bénévoles disponibles tiennent déjà un autre indicatif ce jour-là',
-  refus_mission: 'les bénévoles disponibles ont refusé cette mission',
-  statut_absent: 'les seuls bénévoles qui conviendraient sont marqués absents',
-  absent_appel: "les seuls bénévoles qui conviendraient sont absents à l'appel ce jour-là",
-};
+/** Libellé de chaque raison d'inéligibilité du moteur, côté place ; dans la
+ *  langue courante, d'où une fonction appelée à chaque calcul. */
+const libellesRaison = () => ({
+  indisponible: t('personne de disponible sur ce créneau'),
+  competence_manquante: t("personne n'a la compétence requise"),
+  deja_occupe: t('les bénévoles disponibles sont déjà occupés ailleurs sur ce créneau'),
+  autre_indicatif_meme_jour: t('les bénévoles disponibles tiennent déjà un autre indicatif ce jour-là'),
+  refus_mission: t('les bénévoles disponibles ont refusé cette mission'),
+  statut_absent: t('les seuls bénévoles qui conviendraient sont marqués absents'),
+  absent_appel: t("les seuls bénévoles qui conviendraient sont absents à l'appel ce jour-là"),
+});
 
 /**
  * Pourquoi une place reste vide, en langage métier (question du
@@ -243,7 +286,7 @@ export function raisonsPlaceVide(m, groupeId) {
   // banc le 2026-09-23 en rejouant l'état d'Antoine : zéro bénévole importé,
   // la page semblait ne rien faire faute d'explication).
   if (donnees.benevoles.length === 0) {
-    return ['aucun bénévole importé'];
+    return [t('aucun bénévole importé')];
   }
   const classement = moteurClasserCandidats(donnees, groupeId);
   const eligibles = classement.filter((c) => c.eligible);
@@ -253,7 +296,7 @@ export function raisonsPlaceVide(m, groupeId) {
     // artiste » (§7.2 objectif 7) : non utilisés ici car pas nécessaires
     // pour l'effectif minimum de ce besoin (voir `estNecessairePourMinimum`).
     if (eligibles.every((c) => c.explication?.conflitArtiste)) {
-      return ['un binôme existe mais uniquement en conflit avec un souhait « voir un artiste », pas nécessaire ici'];
+      return [t('un binôme existe mais uniquement en conflit avec un souhait « voir un artiste », pas nécessaire ici')];
     }
     return []; // un candidat propre existe : ne devrait pas arriver sur une place restée vide
   }
@@ -262,20 +305,22 @@ export function raisonsPlaceVide(m, groupeId) {
   for (const c of classement) {
     if (!c.eligible && c.raison) { raisons.add(c.raison); }
   }
-  return [...raisons].map((r) => LIBELLE_RAISON[r]);
+  const libelles = libellesRaison();
+  return [...raisons].map((r) => libelles[r]);
 }
 
 // --- raisonsNonAffecte -------------------------------------------------------
 
-const LIBELLE_RAISON_BENEVOLE = {
-  indisponible: 'indisponible sur les créneaux encore ouverts',
-  competence_manquante: 'compétence manquante pour les missions encore ouvertes',
-  deja_occupe: 'déjà occupé(e) sur ces créneaux via une autre place',
-  autre_indicatif_meme_jour: 'tient déjà un autre indicatif ce jour-là',
-  refus_mission: 'a refusé les missions encore ouvertes',
-  statut_absent: 'marqué(e) absent(e)',
-  absent_appel: "absent(e) à l'appel ce jour-là",
-};
+/** Même chose côté bénévole, pour `raisonsNonAffecte`. */
+const libellesRaisonBenevole = () => ({
+  indisponible: t('indisponible sur les créneaux encore ouverts'),
+  competence_manquante: t('compétence manquante pour les missions encore ouvertes'),
+  deja_occupe: t('déjà occupé(e) sur ces créneaux via une autre place'),
+  autre_indicatif_meme_jour: t('tient déjà un autre indicatif ce jour-là'),
+  refus_mission: t('a refusé les missions encore ouvertes'),
+  statut_absent: t('marqué(e) absent(e)'),
+  absent_appel: t("absent(e) à l'appel ce jour-là"),
+});
 
 /**
  * Pourquoi CE bénévole n'est affecté à aucun indicatif encore ouvert
@@ -287,7 +332,7 @@ const LIBELLE_RAISON_BENEVOLE = {
  */
 export function raisonsNonAffecte(m, benevoleId, groupeIdsOuverts) {
   if (groupeIdsOuverts.length === 0) {
-    return ['aucun indicatif encore ouvert sur ce périmètre'];
+    return [t('aucun indicatif encore ouvert sur ce périmètre')];
   }
   const donnees = versDonneesPlanning(m);
   let eligibleQuelquePart = false;
@@ -303,12 +348,13 @@ export function raisonsNonAffecte(m, benevoleId, groupeIdsOuverts) {
     // On sait qu'il est éligible quelque part, pas s'il a déjà perdu un
     // arbitrage face à un autre candidat (ça demanderait de rejouer le
     // choix du solveur) — ne pas l'affirmer, juste dire ce qui reste possible.
-    return ['éligible sur au moins un indicatif encore ouvert — un glisser-déposer ou un nouveau lancement peut le pourvoir'];
+    return [t('éligible sur au moins un indicatif encore ouvert — un glisser-déposer ou un nouveau lancement peut le pourvoir')];
   }
   if (raisons.size === 0) {
-    return ['aucun indicatif ouvert ne correspond à son profil'];
+    return [t('aucun indicatif ouvert ne correspond à son profil')];
   }
-  return [...raisons].map((r) => LIBELLE_RAISON_BENEVOLE[r]);
+  const libelles = libellesRaisonBenevole();
+  return [...raisons].map((r) => libelles[r]);
 }
 
 // --- proposerPermutation (Jour J) -------------------------------------------
@@ -337,7 +383,7 @@ export function proposerPermutation(m, ix, placeVacanteId) {
 
   const directs = classerCandidats(m, ix, groupeCible.id);
   const meilleurDirect = directs[0];
-  const direct = meilleurDirect && !meilleurDirect.tags.some((t) => t.sens === 'moins');
+  const direct = meilleurDirect && !meilleurDirect.tags.some((tag) => tag.sens === 'moins');
   if (direct) { return null; } // un remplaçant propre existe déjà, inutile de permuter
 
   for (const donneur of m.places) {
@@ -361,7 +407,7 @@ export function proposerPermutation(m, ix, placeVacanteId) {
     // qu'il est justement en train de quitter.
     const evalCible = classerCandidats(m, ix, groupeCible.id, {placeIdCible: donneur.id})
       .find((c) => c.benevoleId === donneur.Benevole);
-    if (!evalCible || evalCible.tags.some((t) => t.sens === 'moins')) { continue; }
+    if (!evalCible || evalCible.tags.some((tag) => tag.sens === 'moins')) { continue; }
 
     const candidatsPourDonneur = classerCandidats(m, ix, groupeDonneur.id, {exclure: donneur.Benevole});
     if (candidatsPourDonneur.length === 0) { continue; }
@@ -480,7 +526,7 @@ export function calculerAnomalies(m, ix) {
         // faisait déjà l'ancien mock en l'absence d'artiste identifié.
         anomalies.push({
           type: 'conflit-artiste', gravite: 'warn', place,
-          benevoleNom: benevole.Nom, artisteNom: 'un artiste souhaité', groupeCode: groupe.Code,
+          benevoleNom: benevole.Nom, artisteNom: t('un artiste souhaité'), groupeCode: groupe.Code,
         });
         break;
       }
@@ -520,7 +566,7 @@ function heuresAffecteesPourAffichage(m, ix, benevoleId) {
     const groupe = ix.groupe.get(place.Groupe);
     if (!groupe) { continue; }
     for (const {sousCreneau} of positionsDuGroupePourHeures(m, ix, place.Groupe)) {
-      for (let t = sousCreneau.Debut; t < sousCreneau.Fin; t += 900) { quarts.add(t); }
+      for (let quart = sousCreneau.Debut; quart < sousCreneau.Fin; quart += 900) { quarts.add(quart); }
     }
   }
   return quarts.size / 4;

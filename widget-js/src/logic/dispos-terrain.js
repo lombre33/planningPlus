@@ -8,10 +8,16 @@
  * du sous-effectif reste unique dans tout le widget (§7.4).
  */
 
+import {t, traductions} from '../i18n.js';
 import {couvertureBesoin, regrouperParJour} from './derive.js';
 import {epochDebutJourFestival, HEURE_COUPURE_JOUR_FESTIVAL, libelleJourCourt, PAS_SECONDES} from '../temps.js';
 
 export {cleJourFestival} from '../temps.js';
+
+traductions({
+  'Refuse : {missions}': 'Refuses: {missions}',
+  'Réticent·e pour : {missions}': 'Reluctant about: {missions}',
+});
 
 /** Les quarts d'heure d'une plage [debut, fin[ (borne haute exclue). Exportée
  *  pour `logic/import-disponibilites.js`, qui en a besoin pour étaler une
@@ -125,8 +131,8 @@ export function graviteContraintes(c) {
 /** Résumé textuel des contraintes, pour l'infobulle. `null` si aucune. */
 export function libelleContraintes(c) {
   const parties = [];
-  if (c.missionsRefusees.length > 0) { parties.push(`Refuse : ${c.missionsRefusees.join(', ')}`); }
-  if (c.missionsReticentes.length > 0) { parties.push(`Réticent·e pour : ${c.missionsReticentes.join(', ')}`); }
+  if (c.missionsRefusees.length > 0) { parties.push(t('Refuse : {missions}', {missions: c.missionsRefusees.join(', ')})); }
+  if (c.missionsReticentes.length > 0) { parties.push(t('Réticent·e pour : {missions}', {missions: c.missionsReticentes.join(', ')})); }
   return parties.length > 0 ? parties.join(' · ') : null;
 }
 

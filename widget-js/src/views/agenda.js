@@ -13,6 +13,7 @@
  * qu'une grille dégénérée (`construirePlageJournaliere`).
  */
 
+import {t, tn, traductions} from '../i18n.js';
 import {regrouperParJour} from '../logic/derive.js';
 import {epochMinuitLocal} from '../temps.js';
 import {h, ICONES, icone, vider} from '../ui/dom.js';
@@ -20,6 +21,33 @@ import {ouvrirModalCreationCreneau, ouvrirModalEditionCreneau} from '../ui/modal
 import {
   construirePlageJournaliere, graduationsHoraires, graduationsMinuit, longueurAxePx, positionCreneau,
 } from './agenda-disposition.js';
+
+traductions({
+  "Échec de l'écriture dans le document Grist connecté. Réessayez.": 'Could not write to the connected Grist document. Try again.',
+  'Supprimer « {nom} » ?': 'Delete “{nom}”?',
+  'Supprimer « {nom} » et son sous-créneau ?': 'Delete “{nom}” and its slot?',
+  'Supprimer « {nom} » et ses {n} sous-créneaux ?': 'Delete “{nom}” and its {n} slots?',
+  '{n} sous-créneau': '{n} slot',
+  '{n} sous-créneaux': '{n} slots',
+  '{n} besoin': '{n} need',
+  '{n} besoins': '{n} needs',
+  '{n} binôme positionné': '{n} buddy pair placed',
+  '{n} binômes positionnés': '{n} buddy pairs placed',
+  '« {nom} » porte déjà du travail : {detail}. Forcer la suppression retirera tout cela ; les missions et les binômes eux-mêmes resteront, simplement libérés de ces créneaux. Continuer ?':
+    '“{nom}” already has work on it: {detail}. Forcing the deletion will remove all of it; the tasks and buddy pairs themselves will remain, simply released from these slots. Continue?',
+  minuit: 'midnight',
+  '+ créneau': '+ time block',
+  '+ Nouveau jour': '+ New day',
+  // Phrase coupée par l'icône crayon : deux morceaux, chacun traduit à part,
+  // l'icône restant entre les deux dans les deux langues.
+  "Glissez l'en-tête d'un macro-créneau pour le déplacer, ses bords gauche/droit pour le redimensionner ; l'icône ":
+    'Drag a time block’s header to move it, its left/right edges to resize it; the ',
+  ' ouvre le détail.': ' icon opens the details.',
+  Modifier: 'Edit',
+  Supprimer: 'Delete',
+  'Glisser pour changer le début': 'Drag to change the start',
+  'Glisser pour changer la fin': 'Drag to change the end',
+});
 
 const PX_PAR_MINUTE = 52 / 60;
 const LARGEUR_ENTETE_JOUR_PX = 120;
@@ -39,7 +67,7 @@ export function montrerAgenda(container, m) {
       await action();
       dernierMessage = null;
     } catch {
-      dernierMessage = {texte: "Échec de l'écriture dans le document Grist connecté. Réessayez.", ton: 'danger'};
+      dernierMessage = {texte: t("Échec de l'écriture dans le document Grist connecté. Réessayez."), ton: 'danger'};
     }
     rafraichir();
   }
@@ -64,8 +92,8 @@ export function montrerAgenda(container, m) {
     if (!aDuTravail) {
       const nSous = sousCreneauxDuMacro.length;
       const message = nSous === 0
-        ? `Supprimer « ${macro.Nom} » ?`
-        : `Supprimer « ${macro.Nom} » et ${nSous === 1 ? 'son sous-créneau' : `ses ${nSous} sous-créneaux`} ?`;
+        ? t('Supprimer « {nom} » ?', {nom: macro.Nom})
+        : tn(nSous, 'Supprimer « {nom} » et son sous-créneau ?', 'Supprimer « {nom} » et ses {n} sous-créneaux ?', {nom: macro.Nom});
       if (!window.confirm(message)) { return; }
       const resultat = await m.supprimerMacroCreneau(macro.id);
       if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; rafraichir(); return; }
@@ -74,14 +102,13 @@ export function montrerAgenda(container, m) {
     }
 
     const detail = [
-      `${sousCreneauxDuMacro.length} sous-créneau${sousCreneauxDuMacro.length > 1 ? 'x' : ''}`,
-      besoinsDuMacro.length > 0 ? `${besoinsDuMacro.length} besoin${besoinsDuMacro.length > 1 ? 's' : ''}` : null,
+      tn(sousCreneauxDuMacro.length, '{n} sous-créneau', '{n} sous-créneaux'),
+      besoinsDuMacro.length > 0 ? tn(besoinsDuMacro.length, '{n} besoin', '{n} besoins') : null,
       positionsDuMacro.length > 0
-        ? `${positionsDuMacro.length} binôme${positionsDuMacro.length > 1 ? 's' : ''} positionné${positionsDuMacro.length > 1 ? 's' : ''}`
+        ? tn(positionsDuMacro.length, '{n} binôme positionné', '{n} binômes positionnés')
         : null,
     ].filter((partie) => partie != null).join(', ');
-    const message = `« ${macro.Nom} » porte déjà du travail : ${detail}. Forcer la suppression retirera tout cela ; `
-      + 'les missions et les binômes eux-mêmes resteront, simplement libérés de ces créneaux. Continuer ?';
+    const message = t('« {nom} » porte déjà du travail : {detail}. Forcer la suppression retirera tout cela ; les missions et les binômes eux-mêmes resteront, simplement libérés de ces créneaux. Continuer ?', {nom: macro.Nom, detail});
     if (!window.confirm(message)) { return; }
     const resultat = await m.supprimerMacroCreneau(macro.id, true);
     if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; rafraichir(); return; }
@@ -115,7 +142,7 @@ export function montrerAgenda(container, m) {
         track.append(construireBlocMacro(macro, jourDebut, plage));
       }
       for (const decalagePx of graduationsMinuit(plage, PX_PAR_MINUTE)) {
-        track.append(h('div', {class: 'agenda__minuit', style: {left: `${decalagePx}px`}}, h('span', null, 'minuit')));
+        track.append(h('div', {class: 'agenda__minuit', style: {left: `${decalagePx}px`}}, h('span', null, t('minuit'))));
       }
 
       grille.append(
@@ -126,7 +153,7 @@ export function montrerAgenda(container, m) {
             h('button', {
               class: 'btn btn--ghost btn--sm', type: 'button', style: {alignSelf: 'flex-start', padding: '0'},
               onclick: () => ouvrirModalCreationCreneau(m, jour.cle),
-            }, '+ créneau'),
+            }, t('+ créneau')),
           ),
           track,
         ),
@@ -136,10 +163,10 @@ export function montrerAgenda(container, m) {
     container.append(
       h('div', {class: 'agenda'},
         h('div', {class: 'agenda__toolbar'},
-          h('button', {class: 'btn btn--primary btn--sm', type: 'button', onclick: () => ouvrirModalCreationCreneau(m, null)}, '+ Nouveau jour'),
+          h('button', {class: 'btn btn--primary btn--sm', type: 'button', onclick: () => ouvrirModalCreationCreneau(m, null)}, t('+ Nouveau jour')),
           h('span', {class: 'view__intro', style: {margin: '0'}},
-            "Glissez l'en-tête d'un macro-créneau pour le déplacer, ses bords gauche/droit pour le redimensionner ; l'icône ",
-            icone(ICONES.crayon, 'icone-texte'), ' ouvre le détail.'),
+            t("Glissez l'en-tête d'un macro-créneau pour le déplacer, ses bords gauche/droit pour le redimensionner ; l'icône "),
+            icone(ICONES.crayon, 'icone-texte'), t(' ouvre le détail.')),
         ),
         dernierMessage ? h('span', {class: `pill pill--${dernierMessage.ton}`}, dernierMessage.texte) : null,
         grille,
@@ -158,16 +185,16 @@ export function montrerAgenda(container, m) {
     const entete = h('div', {class: 'macro-bloc__head'},
       h('span', null, macro.Nom),
       h('button', {
-        class: 'btn btn--ghost btn--sm btn--icone', type: 'button', style: {padding: '0 2px'}, title: 'Modifier', 'aria-label': 'Modifier',
+        class: 'btn btn--ghost btn--sm btn--icone', type: 'button', style: {padding: '0 2px'}, title: t('Modifier'), 'aria-label': t('Modifier'),
         onclick: (e) => { e.stopPropagation(); ouvrirModalEditionCreneau(m, macro); },
       }, icone(ICONES.crayon)),
       h('button', {
-        class: 'btn btn--ghost btn--sm btn--icone', type: 'button', style: {padding: '0 2px'}, title: 'Supprimer', 'aria-label': 'Supprimer',
+        class: 'btn btn--ghost btn--sm btn--icone', type: 'button', style: {padding: '0 2px'}, title: t('Supprimer'), 'aria-label': t('Supprimer'),
         onclick: (e) => { e.stopPropagation(); void demanderSuppressionMacro(macro); },
       }, icone(ICONES.corbeille)),
     );
-    const poigneeGauche = h('div', {class: 'macro-bloc__resize macro-bloc__resize--gauche', title: 'Glisser pour changer le début'});
-    const poigneeDroite = h('div', {class: 'macro-bloc__resize macro-bloc__resize--droite', title: 'Glisser pour changer la fin'});
+    const poigneeGauche = h('div', {class: 'macro-bloc__resize macro-bloc__resize--gauche', title: t('Glisser pour changer le début')});
+    const poigneeDroite = h('div', {class: 'macro-bloc__resize macro-bloc__resize--droite', title: t('Glisser pour changer la fin')});
 
     const bloc = h('div', {
       class: 'macro-bloc', style: {left: `${position.decalagePx}px`, width: `${largeur}px`},

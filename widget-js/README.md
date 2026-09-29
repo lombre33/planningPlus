@@ -34,6 +34,13 @@ exécuté (choix d'Antoine, 2026-09-29).
   l'icône d'onglet de `index.html`, ce qui le fait copier ; le coin haut-droit
   de chaque vue l'affiche ensuite (`src/ui/reglages.js`). Une image citée
   seulement depuis le JS ou le CSS ne serait pas copiée.
+- **Bilingue français et anglais** (Réglages › Langue, comme Publipostage+).
+  Le texte français sert de clé : `t('Désistement de {nom}', {nom})`, ou
+  `tn(n, '{n} place', '{n} places')` quand il s'accorde en nombre, et chaque
+  module déclare en tête ses traductions anglaises (`traductions({…})`, voir
+  `src/i18n.js`). Une chaîne ajoutée ou modifiée porte sa traduction dans le
+  même lot : `src/i18n.test.js` échoue sinon, et repère à l'écran tout texte
+  resté en dur. Les données du document ne se traduisent jamais.
 - **JSON importé avec son attribut** : `import jeu from './festival.json' with {type: 'json'}`
   (jeu de données de démonstration, jamais chargé par le widget en production).
 - **Plus de types écrits.** Ceux de TypeScript ont été effacés. Le modèle de

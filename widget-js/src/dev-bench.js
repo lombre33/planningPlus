@@ -26,11 +26,15 @@
  */
 import {demarrerApp} from './app.js';
 import {jeuMinimal} from './dev/jeu-minimal.js';
+import {appliquerLangue, t, traductions} from './i18n.js';
 import {Magasin} from './store.js';
 import {appliquerTheme, themeMemorise} from './ui/reglages.js';
+
+traductions({'Banc de développement — jeu minimal': 'Development bench — minimal data set'});
 
 const racine = document.getElementById('app');
 if (racine) {
   appliquerTheme(themeMemorise());
-  demarrerApp(racine, new Magasin(jeuMinimal()), 'Banc de développement — jeu minimal');
+  appliquerLangue();
+  demarrerApp(racine, new Magasin(jeuMinimal()), () => t('Banc de développement — jeu minimal'));
 }

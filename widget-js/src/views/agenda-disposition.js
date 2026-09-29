@@ -14,7 +14,12 @@
  * à la même échelle.
  */
 
+import {t, traductions} from '../i18n.js';
 import {epochMinuitLocal} from '../temps.js';
+
+traductions({
+  '{heure}h': '{heure}:00',
+});
 
 /** Plage affichée quand aucun macro-créneau n'existe encore (document neuf, ou tous les jours vidés) — un cadre pour accueillir le premier, plutôt qu'une grille vide ou dégénérée. */
 const PLAGE_PAR_DEFAUT = {minMinute: 9 * 60, maxMinute: 18 * 60};
@@ -65,7 +70,7 @@ export function graduationsHoraires(plage, pxParMinute) {
   const graduations = [];
   for (let minute = plage.minMinute; minute <= plage.maxMinute; minute += 60) {
     graduations.push({
-      libelle: `${String(Math.floor(minute / 60) % 24).padStart(2, '0')}h`,
+      libelle: t('{heure}h', {heure: String(Math.floor(minute / 60) % 24).padStart(2, '0')}),
       decalagePx: (minute - plage.minMinute) * pxParMinute,
     });
   }

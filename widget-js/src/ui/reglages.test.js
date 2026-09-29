@@ -1,4 +1,5 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
+import {choisirLangue, langue, langueMemorisee} from '../i18n.js';
 import {appliquerTheme, choisirTheme, marqueEtReglages, ouvrirReglages, themeMemorise} from './reglages.js';
 
 const racineHtml = () => document.documentElement;
@@ -9,6 +10,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.restoreAllMocks();
+  choisirLangue('fr');
   document.body.innerHTML = '';
   localStorage.clear();
   racineHtml().removeAttribute('data-theme');
@@ -52,13 +54,21 @@ describe('Réglages', () => {
   const onglet = (libelle) => [...document.querySelectorAll('[role="tab"]')].find((b) => b.textContent === libelle);
   const panneauVisible = () => [...document.querySelectorAll('[role="tabpanel"]')].filter((p) => !p.hidden);
 
-  it('s’ouvre sur l’onglet Thème, qui coche le thème mémorisé et l’applique au changement', () => {
-    choisirTheme('light');
+  it('s’ouvre sur l’onglet Langue, puis Thème et Crédits, comme Publipostage+', () => {
     ouvrirReglages();
     expect(document.querySelector('.modal h3').textContent).toBe('Réglages');
-    expect([...document.querySelectorAll('[role="tab"]')].map((b) => b.textContent)).toEqual(['Thème', 'Crédits']);
-    expect(onglet('Thème').getAttribute('aria-selected')).toBe('true');
+    expect([...document.querySelectorAll('[role="tab"]')].map((b) => b.textContent)).toEqual(['Langue', 'Thème', 'Crédits']);
+    expect(onglet('Langue').getAttribute('aria-selected')).toBe('true');
     expect(panneauVisible()).toHaveLength(1);
+    const radios = [...document.querySelectorAll('input[name="reglages-langue"]')];
+    expect(radios.map((r) => [r.value, r.checked, r.closest('label').textContent])).toEqual([['fr', true, 'Français'], ['en', false, 'English']]);
+  });
+
+  it('l’onglet Thème coche le thème mémorisé et l’applique au changement', () => {
+    choisirTheme('light');
+    ouvrirReglages();
+    onglet('Thème').click();
+    expect(onglet('Thème').getAttribute('aria-selected')).toBe('true');
     const radios = [...document.querySelectorAll('input[name="reglages-theme"]')];
     expect(radios.map((r) => [r.value, r.checked])).toEqual([['system', false], ['light', true], ['dark', false]]);
 
@@ -73,7 +83,7 @@ describe('Réglages', () => {
     ouvrirReglages();
     onglet('Crédits').click();
     expect(onglet('Crédits').getAttribute('aria-selected')).toBe('true');
-    expect(onglet('Thème').getAttribute('aria-selected')).toBe('false');
+    expect(onglet('Langue').getAttribute('aria-selected')).toBe('false');
     const [panneau] = panneauVisible();
     expect([...panneau.querySelectorAll('dt')].map((d) => d.textContent)).toEqual(['Auteur', 'Site', 'Licence']);
     expect(panneau.textContent).toContain('Grist Factory');
@@ -87,12 +97,38 @@ describe('Réglages', () => {
 
   it('les flèches passent d’un onglet à l’autre ; Fermer referme', () => {
     ouvrirReglages();
+    onglet('Langue').dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowRight', bubbles: true}));
+    expect(onglet('Thème').getAttribute('aria-selected')).toBe('true');
     onglet('Thème').dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowRight', bubbles: true}));
     expect(onglet('Crédits').getAttribute('aria-selected')).toBe('true');
     onglet('Crédits').dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowRight', bubbles: true}));
-    expect(onglet('Thème').getAttribute('aria-selected')).toBe('true');
+    expect(onglet('Langue').getAttribute('aria-selected')).toBe('true');
     [...document.querySelectorAll('.modal button')].find((b) => b.textContent === 'Fermer').click();
     expect(document.querySelector('.modal')).toBeNull();
+  });
+
+  it('passer en anglais : les Réglages se rouvrent en anglais sur Langue, le choix est mémorisé et posé sur <html>', async () => {
+    ouvrirReglages();
+    const anglais = document.querySelector('input[name="reglages-langue"][value="en"]');
+    anglais.checked = true;
+    anglais.dispatchEvent(new Event('change', {bubbles: true}));
+
+    expect(langue()).toBe('en');
+    expect(langueMemorisee()).toBe('en');
+    expect(racineHtml().lang).toBe('en');
+    expect(document.querySelectorAll('.modal')).toHaveLength(1);
+    expect(document.querySelector('.modal h3').textContent).toBe('Settings');
+    expect([...document.querySelectorAll('[role="tab"]')].map((b) => [b.textContent, b.getAttribute('aria-selected')]))
+      .toEqual([['Language', 'true'], ['Theme', 'false'], ['Credits', 'false']]);
+    expect(document.querySelector('input[name="reglages-langue"][value="en"]').checked).toBe(true);
+    await new Promise((resolve) => { queueMicrotask(resolve); });
+    expect(document.activeElement.textContent).toBe('Language');
+
+    const francais = document.querySelector('input[name="reglages-langue"][value="fr"]');
+    francais.checked = true;
+    francais.dispatchEvent(new Event('change', {bubbles: true}));
+    expect(document.querySelector('.modal h3').textContent).toBe('Réglages');
+    expect(racineHtml().lang).toBe('fr');
   });
 
   it('la roue crantée ouvre les Réglages ; le logo Grist Factory est juste à sa droite', () => {

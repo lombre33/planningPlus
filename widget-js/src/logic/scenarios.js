@@ -17,20 +17,40 @@
  * mouvements `{benevoleId, de, vers}` que le brouillon applique ensuite.
  */
 
+import {t, traductions} from '../i18n.js';
 import {versDonneesPlanning} from '../moteur/adaptateur-magasin.js';
 import {construireContexte} from '../moteur/contexte.js';
 import {construireEtatOccupation, evaluerEligibilite, liberer, occuper} from '../moteur/eligibilite.js';
 import {PARAMETRES_PAR_DEFAUT} from '../moteur/types.js';
 import {estACouvrir, evaluerMouvements} from './journee.js';
 
+traductions({
+  'pas disponible sur tous ses créneaux': 'not available on all their slots',
+  'n’a pas la compétence requise': 'does not have the required skill',
+  'déjà pris·e sur ces créneaux': 'already busy on these slots',
+  'tient déjà un autre indicatif sur ce créneau du jour': 'already holds another call sign on this slot that day',
+  'a refusé une de ses missions': 'refused one of its tasks',
+  'désisté·e pour tout le festival': 'withdrawn for the whole festival',
+  'pointé·e absent·e à l’appel ce jour-là': 'marked absent at roll call that day',
+  'sa place {place} est verrouillée': 'their spot {place} is locked',
+  'personne ne pourrait reprendre sa place en {code}': 'nobody could take over their spot in {code}',
+  'place {place} verrouillée': 'spot {place} locked',
+  'en {code}, la personne choisie : {raison}': 'in {code}, the chosen person: {raison}',
+  'en {code} : {raison}': 'in {code}: {raison}',
+  'place verrouillée': 'locked spot',
+  'déjà en {place}': 'already in {place}',
+});
+
+/** Libellé de chaque raison du moteur, évalué à l'appel pour suivre la
+ *  langue de l'interface : les raisons s'affichent dans le panneau Scénarios. */
 export const LIBELLE_INELIGIBILITE = {
-  indisponible: 'pas disponible sur tous ses créneaux',
-  competence_manquante: 'n’a pas la compétence requise',
-  deja_occupe: 'déjà pris·e sur ces créneaux',
-  autre_indicatif_meme_jour: 'tient déjà un autre indicatif sur ce créneau du jour',
-  refus_mission: 'a refusé une de ses missions',
-  statut_absent: 'désisté·e pour tout le festival',
-  absent_appel: 'pointé·e absent·e à l’appel ce jour-là',
+  indisponible: () => t('pas disponible sur tous ses créneaux'),
+  competence_manquante: () => t('n’a pas la compétence requise'),
+  deja_occupe: () => t('déjà pris·e sur ces créneaux'),
+  autre_indicatif_meme_jour: () => t('tient déjà un autre indicatif sur ce créneau du jour'),
+  refus_mission: () => t('a refusé une de ses missions'),
+  statut_absent: () => t('désisté·e pour tout le festival'),
+  absent_appel: () => t('pointé·e absent·e à l’appel ce jour-là'),
 };
 
 /** Contexte du moteur pour un état du planning (réel ou brouillon), construit une fois par rendu. */
@@ -49,7 +69,7 @@ function eligibilite(moteur, groupeId, benevoleId, liberations = []) {
   }
 }
 
-const raisonLisible = (statut) => LIBELLE_INELIGIBILITE[statut.raison] ?? statut.raison;
+const raisonLisible = (statut) => LIBELLE_INELIGIBILITE[statut.raison]?.() ?? statut.raison;
 
 /** Clé de tri, dans l'ordre d'Antoine (voir l'en-tête). */
 export function cleTri(scenario) {
@@ -137,7 +157,7 @@ export function scenariosPourPlace(journee, moteur, placeId) {
     // Pour qui tient déjà une place, la raison de la chaîne prime sur celle du
     // remplacement direct (« déjà pris·e ») : c'est elle qui dit quoi changer.
     if (autrePlace.Verrouillee) {
-      raisons.set(d, `sa place ${g.groupe.Code} #${autrePlace.Rang} est verrouillée`);
+      raisons.set(d, t('sa place {place} est verrouillée', {place: `${g.groupe.Code} #${autrePlace.Rang}`}));
       continue;
     }
     const statut = eligibilite(moteur, groupeCible.groupe.id, d, [{groupeId: g.groupe.id, benevoleId: d}]);
@@ -157,7 +177,7 @@ export function scenariosPourPlace(journee, moteur, placeId) {
     if (meilleure) {
       scenarios.push(meilleure);
     } else {
-      raisons.set(d, `personne ne pourrait reprendre sa place en ${g.groupe.Code}`);
+      raisons.set(d, t('personne ne pourrait reprendre sa place en {code}', {code: g.groupe.Code}));
     }
   }
 
@@ -166,7 +186,7 @@ export function scenariosPourPlace(journee, moteur, placeId) {
   const ecartes = [...raisons].filter(([b]) => !impliques.has(b)).map(([benevoleId, raison]) => ({benevoleId, raison}));
   for (const b of journee.absents) {
     if (b !== occupant && journee.duJour.has(b)) {
-      ecartes.push({benevoleId: b, raison: journee.desistes?.has(b) ? LIBELLE_INELIGIBILITE.statut_absent : LIBELLE_INELIGIBILITE.absent_appel});
+      ecartes.push({benevoleId: b, raison: journee.desistes?.has(b) ? LIBELLE_INELIGIBILITE.statut_absent() : LIBELLE_INELIGIBILITE.absent_appel()});
     }
   }
   return {scenarios, ecartes, verrouillee: false};
@@ -191,12 +211,18 @@ export function echangesPourPlace(journee, moteur, placeId) {
     if (q == null || q === p || g === groupe || journee.absents.has(q)) { continue; }
     const autrePlace = journee.placeParId.get(autrePlaceId);
     const etiquette = `${g.groupe.Code} #${autrePlace.Rang}`;
-    if (autrePlace.Verrouillee) { ecartes.push({benevoleId: q, raison: `place ${etiquette} verrouillée`}); continue; }
+    if (autrePlace.Verrouillee) { ecartes.push({benevoleId: q, raison: t('place {place} verrouillée', {place: etiquette})}); continue; }
     const liberations = [{groupeId: groupe.groupe.id, benevoleId: p}, {groupeId: g.groupe.id, benevoleId: q}];
     const pVersG = eligibilite(moteur, g.groupe.id, p, liberations);
-    if (!pVersG.eligible) { ecartes.push({benevoleId: q, raison: `en ${g.groupe.Code}, la personne choisie : ${raisonLisible(pVersG)}`}); continue; }
+    if (!pVersG.eligible) {
+      ecartes.push({benevoleId: q, raison: t('en {code}, la personne choisie : {raison}', {code: g.groupe.Code, raison: raisonLisible(pVersG)})});
+      continue;
+    }
     const qVersGroupe = eligibilite(moteur, groupe.groupe.id, q, liberations);
-    if (!qVersGroupe.eligible) { ecartes.push({benevoleId: q, raison: `en ${groupe.groupe.Code} : ${raisonLisible(qVersGroupe)}`}); continue; }
+    if (!qVersGroupe.eligible) {
+      ecartes.push({benevoleId: q, raison: t('en {code} : {raison}', {code: groupe.groupe.Code, raison: raisonLisible(qVersGroupe)})});
+      continue;
+    }
     scenarios.push({mouvements: [{benevoleId: p, de: placeId, vers: autrePlaceId}, {benevoleId: q, de: autrePlaceId, vers: placeId}]});
   }
 
@@ -219,7 +245,7 @@ export function placesPourBenevole(journee, moteur, benevoleId) {
     const place = journee.placeParId.get(placeId);
     const g = journee.groupeDePlace.get(placeId);
     const etiquette = `${g.groupe.Code} #${place.Rang}`;
-    if (place.Verrouillee) { ecartes.push({etiquette, raison: 'place verrouillée'}); continue; }
+    if (place.Verrouillee) { ecartes.push({etiquette, raison: t('place verrouillée')}); continue; }
     const statut = eligibilite(moteur, g.groupe.id, benevoleId);
     if (statut.eligible) {
       scenarios.push({mouvements: [{benevoleId, de: null, vers: placeId}]});
@@ -260,9 +286,15 @@ export function choixPourPlace(journee, moteur, placeId) {
   for (const w of candidatsDuJour(journee, new Set([occupant]))) {
     const quittees = placesAQuitter(journee, w, g, placeId);
     const memeIndicatif = quittees.find((id) => journee.groupeDePlace.get(id) === g);
-    if (memeIndicatif != null) { options.push({benevoleId: w, mouvements: null, raison: `déjà en ${etiquetteDe(journee, memeIndicatif)}`}); continue; }
+    if (memeIndicatif != null) {
+      options.push({benevoleId: w, mouvements: null, raison: t('déjà en {place}', {place: etiquetteDe(journee, memeIndicatif)})});
+      continue;
+    }
     const verrou = quittees.find((id) => journee.placeParId.get(id).Verrouillee);
-    if (verrou != null) { options.push({benevoleId: w, mouvements: null, raison: `sa place ${etiquetteDe(journee, verrou)} est verrouillée`}); continue; }
+    if (verrou != null) {
+      options.push({benevoleId: w, mouvements: null, raison: t('sa place {place} est verrouillée', {place: etiquetteDe(journee, verrou)})});
+      continue;
+    }
     const mouvements = [
       {benevoleId: w, de: quittees[0] ?? null, vers: placeId},
       ...quittees.slice(1).map((id) => ({benevoleId: w, de: id, vers: null})),
@@ -282,9 +314,12 @@ function deplacements(journee, moteur, p, placeId) {
     if (cible === g || !estACouvrir(journee, occupant)) { continue; }
     const quittees = [...(placeId != null ? [placeId] : []), ...placesAQuitter(journee, p, cible, placeId)];
     if (quittees.some((id) => journee.groupeDePlace.get(id) === cible)) { continue; } // déjà dans cet indicatif
-    if (journee.placeParId.get(cibleId).Verrouillee) { options.push({placeId: cibleId, mouvements: null, raison: 'place verrouillée'}); continue; }
+    if (journee.placeParId.get(cibleId).Verrouillee) { options.push({placeId: cibleId, mouvements: null, raison: t('place verrouillée')}); continue; }
     const verrou = quittees.find((id) => id !== placeId && journee.placeParId.get(id).Verrouillee);
-    if (verrou != null) { options.push({placeId: cibleId, mouvements: null, raison: `sa place ${etiquetteDe(journee, verrou)} est verrouillée`}); continue; }
+    if (verrou != null) {
+      options.push({placeId: cibleId, mouvements: null, raison: t('sa place {place} est verrouillée', {place: etiquetteDe(journee, verrou)})});
+      continue;
+    }
     const mouvements = [
       {benevoleId: p, de: quittees[0] ?? null, vers: cibleId},
       ...quittees.slice(1).map((id) => ({benevoleId: p, de: id, vers: null})),
