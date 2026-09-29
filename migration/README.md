@@ -26,7 +26,7 @@ guillemets).
 | Annotations, génériques, `as`, `!`, `?` de paramètre, `interface`, `type`, `implements`, modificateurs `public` / `private` / `readonly` | effacés |
 | Imports de types (`import type`, `import {type X}`) | supprimés ; un module qui ne contient que des types (`domain/types.ts`) reste à côté en `.d.ts`, documentation comprise |
 | Imports relatifs sans extension | reçoivent `.js` (ou `/index.js`) |
-| Import d'une feuille de style (`import './style.css'`) | supprimé : la feuille se charge par `<link>` dans `index.html` et `dev-bench.html` (le convertisseur vérifie que chaque feuille atteinte y est) |
+| Import d'une feuille de style (`import './style.css'`) | supprimé : la feuille se charge par `<link>` dans `index.html` et `dev-bench.html` (tant que `widget-js/` est tel que converti, le convertisseur vérifie que chaque feuille atteinte y est ; une V2 modifiée gère seule ses feuilles) |
 | Import JSON | reçoit l'attribut `with {type: 'json'}` |
 | Propriété de paramètre de constructeur (`constructor(private x: T)`) | devient un champ et une affectation |
 | Noms de fichiers cités dans les commentaires et les titres de tests (`app.ts`) | prennent l'extension du fichier produit (`app.js`) |
@@ -67,9 +67,14 @@ Dès qu'un fichier de `widget-js/src/` ou de `widget-js/scripts/` change ou
 s'ajoute à la main (la V2 se construit), le sceau ne correspond plus au disque.
 La conversion **refuse alors d'écraser** ce travail, et `--verifier` ne
 compare plus fichier par fichier : il dit seulement si `widget/` a changé depuis
-la conversion.
+la conversion, ou depuis le dernier changement que la V2 a reporté (voir
+`--acquitter`). Le contrôle des feuilles de style cesse aussi : il exige que
+`index.html` et `dev-bench.html` chargent par `<link>` exactement celles que le
+code converti importait, ce qui n'a de sens que pour un dossier tel que la
+conversion le produit ; une V2 qui ajoute ses propres feuilles n'a pas à s'y
+plier.
 
-| `widget-js/` | `widget/` depuis la conversion | `--verifier` | conversion sans option |
+| `widget-js/` | `widget/` depuis la conversion (ou le dernier `--acquitter`) | `--verifier` | conversion sans option |
 | --- | --- | --- | --- |
 | intact | inchangé | « à jour » | réécrit à l'identique |
 | intact | changé | liste les fichiers en retard, code de sortie 1 | réécrit : rattrape `widget/` |
@@ -77,12 +82,19 @@ la conversion.
 | modifié à la main | changé | demande de reporter le changement, code de sortie 1 | refuse |
 
 Les workflows (`ci.yml`, `deploy-widget.yml`) lancent `--verifier` et n'en font
-qu'un avertissement, qui ne bloque rien. Deux options pour les autres cas :
+qu'un avertissement, qui ne bloque rien. Trois options pour les autres cas :
 
 - `--sortie <dossier>` écrit la conversion dans ce dossier et ne touche ni
   `widget-js/` ni le sceau ;
 - `--forcer` écrase `widget-js/` même modifié : pour repartir de la conversion,
-  jamais pour « rattraper » un changement de `widget/`.
+  jamais pour « rattraper » un changement de `widget/` ;
+- `--acquitter` note dans le sceau, sur une seconde ligne (`acquitte <empreinte>`),
+  que la V2 a reporté les changements de `widget/` jusqu'à aujourd'hui :
+  `--verifier` compare alors à cette ligne et cesse de réclamer un changement
+  déjà reporté. Il acquitte tout ce que `widget/` contient au moment où on le
+  lance. Il s'utilise seul, ne touche que le sceau, et refuse si `widget-js/` est
+  intact (relancer la conversion suffit), s'il n'a pas de sceau ou si la
+  conversion d'aujourd'hui signale une erreur.
 
 ### Reporter un changement de `widget/`
 
@@ -93,6 +105,10 @@ jour dans un dossier à part : pour un fichier que la V2 n'a pas touché, on le
 copie ; pour un fichier que la V2 a aussi modifié, on en reprend les lignes du
 changement. Ces corrections sont petites, le plus souvent, et la V2 remplace la
 V1 à la bascule.
+
+Le report fini, `node migration/convertir.mjs --acquitter` le note dans le
+sceau, à committer avec lui : sans cela, `--verifier` continue de signaler un
+changement que la V2 a déjà reçu.
 
 ## Le schéma
 
@@ -111,7 +127,9 @@ refait sont ceux où se trouvent le code mort et les types les plus commentés.
 - **Le code mort.** L'audit en a relevé une centaine de lignes dans
   `logic/derive` (`calculerAnomalies`, `placesDuBenevole`) et quelques exports
   que plus rien n'appelle, avec leurs tests. À reprendre sur la V2, une fois
-  l'écran Anomalies refait.
+  l'écran Anomalies refait. Depuis la table du jour de la maquette B,
+  `raisonsPlaceVide` (qui ne sert plus qu'à son test) et `raisonsNonAffecte`
+  (sans appelant) de `moteur/adaptateur-magasin.js` en font partie.
 - **Les commentaires des types, en JSDoc.** L'effacement retire avec chaque
   `interface` et chaque `type` le commentaire qui le décrit : environ 460
   lignes dans 25 fichiers, dont le contrat d'écriture de `store` (les raisons de
