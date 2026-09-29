@@ -149,7 +149,8 @@ export function montrerAgenda(container, m) {
         h('div', {class: 'agenda__row'},
           h('div', {class: 'agenda__day-head', style: {width: `${LARGEUR_ENTETE_JOUR_PX}px`}},
             h('span', {class: 'jour'}, jour.libelle.split(' ')[0]),
-            h('span', {class: 'date'}, jour.libelle),
+            // Le jour est déjà écrit juste au-dessus : la date seule suffit.
+            h('span', {class: 'date'}, jour.libelle.split(' ').slice(1).join(' ')),
             h('button', {
               class: 'btn btn--ghost btn--sm', type: 'button', style: {alignSelf: 'flex-start', padding: '0'},
               onclick: () => ouvrirModalCreationCreneau(m, jour.cle),

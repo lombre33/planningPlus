@@ -224,7 +224,7 @@ describe('comportement d’origine (consultation), inchangé', () => {
   it('résumé en pied de tableau avec le nombre de bénévoles affichés', () => {
     const m = new Magasin(modeleDeTest());
     montrerDisponibilites(container, m);
-    expect(container.textContent).toContain('2 bénévoles affichés');
+    expect(container.textContent).toContain('2 bénévoles. Une case vide vaut indisponible');
   });
 });
 
@@ -755,11 +755,19 @@ describe('mode édition (nouveau, 2026-09-23)', () => {
     expect(nouveauDefilement.scrollLeft).toBe(45);
   });
 
-  it('« Choisir un artiste au clic » reste désactivée tant que le mode édition ne l’est pas', () => {
+  it('« Choisir un artiste au clic » n’apparaît qu’en mode édition', () => {
     const m = new Magasin(modeleDeTest());
     montrerDisponibilites(container, m);
+    expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(1);
+    expect(container.textContent).not.toContain('Choisir un artiste au clic');
+
+    const modeEdition = container.querySelector('input[type="checkbox"]');
+    modeEdition.checked = true;
+    modeEdition.dispatchEvent(new Event('change'));
     const cases = container.querySelectorAll('input[type="checkbox"]');
-    expect(cases[1].disabled).toBe(true);
+    expect(cases).toHaveLength(2);
+    expect(cases[1].disabled).toBe(false);
+    expect(container.textContent).toContain('Choisir un artiste au clic');
   });
 
   it("un clic sur une cellule dont le quart d'heure ne porte aucun artiste ne bascule rien et le dit", async () => {

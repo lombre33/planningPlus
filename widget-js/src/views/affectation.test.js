@@ -52,7 +52,7 @@ describe('table du jour', () => {
     expect(texte(remi)).toContain('absent·e à l’appel');
     expect(remi.querySelector('.tj-bloc--absent')).toBeTruthy();
     expect(texte(container.querySelector('.tj-compteurs'))).toContain('5 / 8 places couvertes');
-    expect(texte(container.querySelector('.tj-compteurs'))).toContain('Binômes souhaités 1 / 2');
+    expect(texte(container.querySelector('.tj-compteurs'))).toContain('1 / 2 binômes réunis');
     // Zoé et Paul n'ont pas d'indicatif ce jour : section à part.
     expect(texte(container)).toContain('Sans indicatif aujourd’hui (2)');
   });
@@ -146,7 +146,7 @@ describe('brouillon', () => {
   it('relance l’algorithme dans le brouillon sans rien écrire', () => {
     const {m, container} = monter();
     const avant = m.places.map((p) => p.Benevole);
-    bouton(container, 'Relancer l’algorithme dans le brouillon').click();
+    bouton(container, 'Répartir automatiquement').click();
     expect(texte(container.querySelector('.tj-message'))).toMatch(/L'algorithme a ajouté \d+ changements? au brouillon/);
     expect(m.places.map((p) => p.Benevole)).toEqual(avant);
     expect(texte(barre(container))).toMatch(/Brouillon : \d+ places? change/);
@@ -226,27 +226,27 @@ describe('appel', () => {
 });
 
 describe('signaux de l’ancien écran Anomalies, dans la table', () => {
-  const pastille = (container) => [...container.querySelectorAll('.tj-compteurs .pill')].find((p) => texte(p).endsWith('à vérifier'));
+  const pastille = (container) => [...container.querySelectorAll('.tj-compteurs .tj-stat')].find((p) => texte(p).endsWith('à vérifier'));
   // Toutes les places tenues, chacun dans ses disponibilités : aucun signal.
   const complet = {places: [LEA, HUGO, TOM, PAUL, REMI, SOFIA, NINA, ZOE], absents: []};
 
-  it('met en tête les effectifs hors bornes, repliés, une ligne par mission, et les compte à vérifier', () => {
+  it('met en tête les effectifs à revoir, repliés, une ligne par mission, et les compte à vérifier', () => {
     const {container} = monter();
     // Rémi absent : Accueil à 1 / 2 l'après-midi ; A2 #2 et R1 #2 vides : Bar et Restauration à 1 / 2 le soir.
     // Repliés d'abord, pour que les places restent en haut de la table.
-    const bascule = bouton(container, '▸ Effectifs hors bornes (3)');
+    const bascule = bouton(container, '▸ Effectifs à revoir (3)');
     expect(bascule.getAttribute('aria-expanded')).toBe('false');
     expect(container.querySelector('.tj-effectifs')).toBeNull();
     bascule.click();
-    expect(bouton(container, '▾ Effectifs hors bornes (3)').getAttribute('aria-expanded')).toBe('true');
+    expect(bouton(container, '▾ Effectifs à revoir (3)').getAttribute('aria-expanded')).toBe('true');
     expect([...container.querySelectorAll('.tj-effectifs .tj-nom')].map((el) => el.getAttribute('aria-label'))).toEqual([
       'Accueil : 1 créneau sous le minimum', 'Bar : 1 créneau sous le minimum', 'Restauration : 1 créneau sous le minimum',
     ]);
-    expect(texte(pastille(container))).toBe('! 3 à vérifier');
-    expect(pastille(container).classList.contains('pill--danger')).toBe(true);
+    expect(texte(pastille(container))).toBe('3 à vérifier');
+    expect(pastille(container).classList.contains('tj-stat--danger')).toBe(true);
 
     const vide = monter(complet).container;
-    expect(texte(vide)).not.toContain('Effectifs hors bornes');
+    expect(texte(vide)).not.toContain('Effectifs à revoir');
     expect(pastille(vide)).toBeUndefined();
   });
 
@@ -261,7 +261,7 @@ describe('signaux de l’ancien écran Anomalies, dans la table', () => {
     // Léa tient A1 #1 et B1 #1, tous deux l'après-midi.
     expect(ligne(container, 'Léa Martin, A1 #1').getAttribute('aria-label')).toContain('en même temps sur B1 #1');
     expect(ligne(container, 'Léa Martin, B1 #1').getAttribute('aria-label')).toContain('en même temps sur A1 #1');
-    expect(texte(pastille(container))).toBe('! 3 à vérifier');
+    expect(texte(pastille(container))).toBe('3 à vérifier');
 
     hugo.click();
     expect(texte(panneau(container))).toContain('A refusé la mission Bar.');
@@ -272,8 +272,8 @@ describe('signaux de l’ancien écran Anomalies, dans la table', () => {
     const hugo = ligne(container, 'Hugo Petit, A1 #2').closest('.tj-ligne');
     expect(texte(hugo)).toContain('pas de disponibilité déclarée');
     expect(hugo.querySelector('.tj-alerte, .tj-bloc--hors-dispo, .tj-bloc--alerte')).toBeNull();
-    expect(texte(pastille(container))).toBe('! 1 à vérifier');
-    expect(pastille(container).classList.contains('pill--neutral')).toBe(true);
+    expect(texte(pastille(container))).toBe('1 à vérifier');
+    expect(pastille(container).classList.contains('tj-stat--neutral')).toBe(true);
   });
 
   it('montre un désisté « désisté·e » sur sa place verrouillée, sans boutons d’appel', () => {
@@ -305,7 +305,7 @@ describe('verrous', () => {
     bouton(panneau(container), 'Verrouiller vide').click();
     await tick();
     expect(place(m, 8)).toMatchObject({Benevole: null, Verrouillee: true});
-    bouton(container, 'Relancer l’algorithme dans le brouillon').click();
+    bouton(container, 'Répartir automatiquement').click();
     expect(ligne(container, 'R1 #2 à pourvoir')).toBeTruthy();
   });
 

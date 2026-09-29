@@ -52,9 +52,13 @@
   --absence: #8a6a00;
   --absence-tint: #fbf3cf;
 
-  --radius-sm: 7px;
-  --radius-md: 11px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
   --radius-lg: 16px;
+
+  /* Hauteur commune des boutons, champs et menus d'une même ligne. */
+  --control-h: 34px;
+  --ombre-carte: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
 
   --shadow-pop: 0 8px 24px -8px rgba(32, 33, 36, 0.18);
 
@@ -66,6 +70,13 @@
 :root {
   padding-top: env(safe-area-inset-top, 0px);
   padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Sur l'écran, une seule police : heures, codes et compteurs prennent celle
+   du corps (chiffres tabulaires, voir `body`). Le papier garde la chasse
+   fixe du bloc ci-dessus, sur laquelle ses troncatures sont calibrées. */
+:root {
+  --font-mono: var(--font-body);
 }
 
 /* Un élément hérite la couleur calculée de son parent, pas le jeton : le
@@ -107,6 +118,7 @@
     --absence-tint: #3a3410;
 
     --shadow-pop: 0 12px 28px -10px rgba(0, 0, 0, 0.55);
+    --ombre-carte: 0 1px 2px rgba(0, 0, 0, 0.3);
   }
 }
 
@@ -142,6 +154,7 @@
   --absence-tint: #3a3410;
 
   --shadow-pop: 0 12px 28px -10px rgba(0, 0, 0, 0.55);
+  --ombre-carte: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 * {
@@ -159,6 +172,8 @@ body {
   font-family: var(--font-body);
   font-size: 14px;
   line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
 }
 
 h1, h2, h3, h4 {
@@ -197,15 +212,15 @@ button {
 
 .rail {
   flex: 0 0 auto;
-  width: 84px;
-  background: var(--surface-muted);
+  width: 92px;
+  background: var(--surface);
   color: var(--text-muted);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   align-items: center;
   padding-block: 16px;
-  gap: 4px;
+  gap: 2px;
   /* Fixe plutôt que sticky : avec `position: sticky`, tant que la page
      (au-delà de `.rail`) est plus haute que l'écran, le rail ne se
      détache de son ancrage qu'au tout dernier moment du défilement de la
@@ -227,13 +242,14 @@ button {
 .rail__brand {
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 15px;
+  font-size: 15.5px;
   color: var(--brand);
   text-align: center;
   padding-bottom: 14px;
   margin-bottom: 10px;
   border-bottom: 1px solid var(--border);
   width: 100%;
+  letter-spacing: -0.01em;
 }
 
 .rail__item {
@@ -242,38 +258,39 @@ button {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   width: calc(100% - 12px);
-  padding: 8px 4px;
-  border-radius: var(--radius-sm);
+  padding: 9px 4px 8px;
+  border-radius: 10px;
   color: var(--text-muted);
-  font-size: 10.5px;
-  font-weight: 600;
+  font-size: 11.5px;
+  font-weight: 500;
   text-align: center;
 }
 
 .rail__item:hover {
-  background: var(--border);
+  background: var(--surface-muted);
   color: var(--text);
 }
 
 .rail__item[aria-current="true"] {
   background: var(--brand-tint);
   color: var(--brand-ink);
+  font-weight: 650;
 }
 
 .rail__item svg {
-  width: 20px;
-  height: 20px;
+  width: 21px;
+  height: 21px;
 }
 
 .rail__section {
   width: calc(100% - 12px);
-  padding: 10px 6px 2px;
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  padding: 14px 8px 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--text-faint);
 }
 
@@ -290,37 +307,43 @@ button {
 
 .rail__etape {
   position: absolute;
-  top: -4px;
-  right: -6px;
-  min-width: 13px;
-  height: 13px;
+  top: -5px;
+  right: -8px;
+  min-width: 15px;
+  height: 15px;
   padding: 0 2px;
   border-radius: 999px;
   background: var(--brand);
   color: var(--brand-contrast);
-  font-family: var(--font-mono);
-  font-size: 8.5px;
+  font-family: var(--font-body);
+  font-size: 9.5px;
   font-weight: 700;
-  line-height: 13px;
+  line-height: 15px;
   text-align: center;
+  box-shadow: 0 0 0 2px var(--surface);
 }
 
 .main {
   flex: 1 1 auto;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
+  display: grid;
   /* .rail est en position fixed (sorti du flux) : la largeur qu'il ne
      réserve plus doit être compensée ici pour ne pas passer dessous. */
-  margin-left: 84px;
+  margin-left: 92px;
+  grid-template-columns: auto 1fr;
+  align-content: start;
+}
+
+.main > .topbar, .main > .view {
+  grid-column: 1 / -1;
 }
 
 .topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px 24px;
+  justify-content: flex-start;
+  gap: 20px;
+  padding: 18px 28px 16px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
   flex-wrap: wrap;
@@ -329,16 +352,35 @@ button {
 .topbar__title {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
 .topbar__title h1 {
-  font-size: 22px;
+  font-size: 21px;
+  letter-spacing: -0.015em;
 }
 
 .topbar__subtitle {
   color: var(--text-muted);
-  font-size: 12.5px;
+  font-size: 13px;
+  margin: 0;
+}
+
+/* Repère de la vue : son icône du menu, en tête de page. */
+.topbar__icone {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  background: var(--brand-tint);
+  color: var(--brand-ink);
+}
+
+.topbar__icone svg {
+  width: 22px;
+  height: 22px;
 }
 
 .topbar__actions {
@@ -349,6 +391,23 @@ button {
   /* Reste à droite même quand la barre passe à la ligne (écran étroit) :
      la roue crantée et le logo gardent leur coin. */
   margin-left: auto;
+}
+
+/* Source des données : un état discret, pas un badge. */
+.topbar__actions .pill--neutral {
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 500;
+  padding: 0 6px 0 0;
+}
+
+.topbar__actions .pill--neutral::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 0 3px var(--ok-tint);
 }
 
 /* Logo Grist Factory : repère de marque discret, juste à droite de la roue
@@ -363,24 +422,38 @@ button {
 
 /* Sous la barre de titre : les vues d'une entrée qui en regroupe
    plusieurs (Bénévoles, Impressions), puis le bandeau des jours. */
+/* Vides, ils ne doivent pas occuper de case dans la grille de `.main`. */
+.app-sous-vues:empty,
+.app-bandeau-jours:empty {
+  display: none;
+}
+
 .app-sous-vues:not(:empty) {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 12px;
-  padding: 12px 24px 0;
+  gap: 8px;
+  padding: 16px 0 0 28px;
 }
 
 .app-bandeau-jours:not(:empty) {
-  padding: 12px 24px 0;
+  padding: 16px 28px 0;
+}
+
+/* Vues d'une entrée puis jours : une seule ligne de contexte. */
+.app-sous-vues:not(:empty) + .app-bandeau-jours:not(:empty) {
+  padding-left: 12px;
 }
 
 .segmente {
   display: inline-flex;
   flex-wrap: wrap;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
+  border: none;
+  border-radius: 11px;
   overflow: hidden;
-  background: var(--surface);
+  background: var(--surface-muted);
+  gap: 2px;
+  padding: 3px;
+  box-shadow: inset 0 0 0 1px var(--border);
 }
 
 .segmente__option {
@@ -389,14 +462,13 @@ button {
   background: transparent;
   color: var(--text-muted);
   font: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
-  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 5px 14px;
   cursor: pointer;
-}
-
-.segmente__option + .segmente__option {
-  border-left: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: none;
+  min-height: 28px;
 }
 
 .segmente__option:hover {
@@ -404,8 +476,10 @@ button {
 }
 
 .segmente__option[aria-pressed="true"] {
-  background: var(--brand-tint);
-  color: var(--brand-ink);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.1), 0 0 0 1px var(--border);
 }
 
 .segmente__option:focus-visible {
@@ -414,7 +488,7 @@ button {
 }
 
 .view {
-  padding: 20px 24px 48px;
+  padding: 20px 28px 56px;
   flex: 1 1 auto;
   min-width: 0;
 }
@@ -430,18 +504,20 @@ button {
 
 .btn {
   appearance: none;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
   border-radius: var(--radius-sm);
-  padding: 7px 13px;
-  font-size: 12.5px;
+  padding: 6px 14px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   white-space: nowrap;
+  min-height: var(--control-h);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
 }
 
 .btn svg {
@@ -451,7 +527,8 @@ button {
 }
 
 .btn:hover {
-  border-color: var(--text-faint);
+  border-color: var(--border-strong);
+  background: var(--surface-muted);
 }
 
 .btn:focus-visible {
@@ -467,21 +544,28 @@ button {
 
 .btn--primary:hover {
   filter: brightness(1.05);
+  background: var(--brand);
+  border-color: var(--brand);
 }
 
 .btn--ghost {
-  border-color: transparent;
+  /* Un filet léger : sans fond, il reste lisible comme un bouton. */
+  border-color: var(--border);
   background: transparent;
+  box-shadow: none;
 }
 
 .btn--sm {
-  padding: 4px 9px;
-  font-size: 11.5px;
+  padding: 3px 10px;
+  font-size: 12px;
+  min-height: 28px;
 }
 
 /* Bouton à icône seule : son libellé est dans `aria-label` et `title`. */
 .btn--icone {
-  padding: 6px;
+  padding: 7px;
+  min-height: 0;
+  box-shadow: none;
 }
 
 .btn--sm.btn--icone {
@@ -506,15 +590,83 @@ button {
   cursor: not-allowed;
 }
 
+/* Réglages dans l'en-tête : une icône sans cadre. */
+.topbar .btn--icone {
+  border-color: transparent;
+}
+
+/* Le choix du jour prend l'allure des vues d'une entrée. */
+.app-bandeau-jours .agenda__toolbar {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: none;
+  border-radius: 11px;
+  background: var(--surface-muted);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.app-bandeau-jours .btn {
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 5px 14px;
+  min-height: 28px;
+}
+
+.app-bandeau-jours .btn--primary {
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.1), 0 0 0 1px var(--border);
+}
+
+.app-bandeau-jours .btn:hover {
+  color: var(--text);
+  filter: none;
+}
+
+/* Étape suivante : en bas des étapes 1 à 4, pour suivre le parcours. */
+.app-suite:empty {
+  display: none;
+}
+
+.app-suite {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 28px 40px;
+  margin-top: -24px;
+}
+
+.app-suite__bouton {
+  min-height: 40px;
+  padding: 8px 16px;
+  gap: 10px;
+  border-radius: 10px;
+}
+
+.app-suite__etape {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
 .select, .input {
   appearance: none;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
   border-radius: var(--radius-sm);
-  padding: 7px 10px;
-  font-size: 12.5px;
+  padding: 6px 10px;
+  font-size: 13px;
   font-family: var(--font-body);
+  min-height: var(--control-h);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
 }
 
 .field {
@@ -524,20 +676,20 @@ button {
 }
 
 .field label {
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .pill {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 2px 9px;
+  padding: 3px 10px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1.6;
 }
@@ -566,6 +718,7 @@ button {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 14px 16px;
+  box-shadow: var(--ombre-carte);
 }
 
 .section-title {
@@ -577,7 +730,7 @@ button {
 }
 
 .section-title h2 {
-  font-size: 16px;
+  font-size: 15px;
 }
 
 .section-title .count {
@@ -587,12 +740,13 @@ button {
 }
 
 .empty {
-  color: var(--text-faint);
-  font-size: 12.5px;
-  padding: 18px;
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 28px 20px;
   text-align: center;
-  border: 1px dashed var(--border);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
+  background: var(--surface);
 }
 
 /* ---------- Fenêtre modale ---------- */
@@ -851,6 +1005,15 @@ button {
   flex-wrap: wrap;
 }
 
+/* Une barre d'outils par vue : filtres à gauche, action principale à droite. */
+.vue-outils {
+  margin-bottom: 14px;
+}
+
+.vue-outils__fin {
+  margin-left: auto;
+}
+
 /* Disposition horizontale (choisie par Antoine après comparaison avec une
    disposition verticale, fil dédié) : jours en lignes, temps de gauche à
    droite. .agenda__grid est un simple conteneur défilant, chaque ligne
@@ -896,17 +1059,33 @@ button {
   gap: 1px;
 }
 
+.agenda__day-head {
+  padding: 10px 12px;
+  gap: 2px;
+}
+
 .agenda__day-head .jour {
   font-family: var(--font-display);
   font-weight: 700;
-  text-transform: uppercase;
-  font-size: 13px;
-  letter-spacing: 0.02em;
+  text-transform: none;
+  font-size: 14px;
+  letter-spacing: 0;
 }
 
 .agenda__day-head .date {
-  font-size: 10.5px;
+  font-size: 11.5px;
   color: var(--text-muted);
+}
+
+/* « + créneau » : un lien discret sous la date. */
+.agenda__day-head .btn {
+  min-height: 0;
+  padding: 3px 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+  color: var(--brand-ink);
+  justify-content: flex-start;
 }
 
 .agenda__axis {
@@ -921,7 +1100,7 @@ button {
   padding-left: 4px;
   border-left: 1px solid var(--border);
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--text-faint);
 }
 
@@ -961,11 +1140,11 @@ button {
 
 .macro-bloc {
   position: absolute;
-  top: 4px;
-  bottom: 4px;
-  border-radius: var(--radius-sm);
-  background: var(--night-tint);
-  border: 1px solid var(--night);
+  top: 6px;
+  bottom: 6px;
+  border-radius: 10px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border-strong);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -992,11 +1171,11 @@ button {
   justify-content: space-between;
   align-items: center;
   gap: 6px;
-  padding: 4px 7px;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--night);
-  background: rgba(255, 255, 255, 0.5);
+  padding: 6px 8px 2px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--text);
+  background: transparent;
 }
 
 .macro-bloc__sous {
@@ -1019,11 +1198,11 @@ button {
 .sous-bloc {
   flex: 0 0 auto;
   background: var(--surface);
-  border: 1px solid rgba(44, 40, 84, 0.18);
+  border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 1px 7px;
-  font-size: 9px;
-  line-height: 15px;
+  padding: 1px 8px;
+  font-size: 10px;
+  line-height: 17px;
   color: var(--text-muted);
   max-width: 100%;
 }
@@ -1179,8 +1358,6 @@ table.grille .mission-cell .lieu {
 .timeline__label__bouton-propre {
   display: block;
   margin-top: 4px;
-  padding: 1px 6px;
-  font-size: 10.5px;
 }
 
 /* Le fond de chaque ligne de mission : hachuré et cliquable sur toute la
@@ -1756,10 +1933,11 @@ table.grille .mission-cell .lieu {
     justify-content: flex-start;
     overflow-x: auto;
     padding: 8px 10px;
+    gap: 2px;
   }
   /* .rail redevient un élément du flux (barre horizontale) ici : plus
      besoin que `.main` lui réserve sa largeur en desktop. */
-  .main { margin-left: 0; }
+  .main { margin-left: 0; grid-template-columns: minmax(0, 1fr); }
   .rail__brand { display: none; }
   .rail__item { flex-direction: row; width: auto; padding: 8px 10px; }
   .rail__section {
@@ -1768,6 +1946,23 @@ table.grille .mission-cell .lieu {
     align-items: center;
     padding: 0 10px;
     white-space: nowrap;
+  }
+  .topbar {
+    padding: 14px 16px;
+  }
+  .topbar__icone {
+    display: none;
+  }
+  .app-sous-vues:not(:empty),
+  .app-bandeau-jours:not(:empty),
+  .app-sous-vues:not(:empty) + .app-bandeau-jours:not(:empty) {
+    padding: 12px 16px 0;
+  }
+  .view {
+    padding: 16px 16px 48px;
+  }
+  .app-suite {
+    padding: 0 16px 32px;
   }
 }
 
@@ -2152,17 +2347,32 @@ table.grille .mission-cell .lieu {
   display: flex;
   gap: 8px;
   flex: 1 1 260px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .dispos-barre__filtres .input {
-  flex: 1;
+  flex: 1 1 180px;
+  min-width: 160px;
+  max-width: 280px;
+}
+
+.dispos-barre__filtres label {
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.dispos-barre .btn--sm {
+  min-height: var(--control-h);
+  padding: 6px 14px;
+  font-size: 13px;
 }
 
 .dispos-legende {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--text-muted);
 }
 
@@ -2239,6 +2449,13 @@ table.dispos-table td {
   border-left: 2px solid var(--border-strong);
 }
 
+/* Heure pleine : elle déborde sur les quarts suivants au lieu d'être coupée
+   (« 10:0 ») par l'en-tête collant de la case d'après. */
+.dispos-table__heure:not(:empty) {
+  z-index: 3;
+  overflow: visible;
+}
+
 .dispos-table__benevole {
   position: sticky;
   left: 0;
@@ -2249,6 +2466,10 @@ table.dispos-table td {
   font-weight: 600;
   white-space: nowrap;
   text-align: left;
+}
+
+.dispos-table__benevole .dot {
+  margin-right: 7px;
 }
 
 .dispos-cellule {

@@ -79,6 +79,13 @@ table.impression-table th, table.impression-table td {
   border-left: 2px solid var(--border-strong);
 }
 
+/* Heure pleine : elle déborde sur les quarts suivants au lieu d'être coupée
+   (« 10:0 ») par l'en-tête collant de la case d'après. */
+.impression-table__heure:not(:empty) {
+  z-index: 3;
+  overflow: visible;
+}
+
 .impression-table__entete {
   position: sticky;
   top: 0;

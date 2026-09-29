@@ -53,7 +53,8 @@ traductions({
 });
 
 export const LARGEUR_COLONNE_NOM_PX = 150;
-export const LARGEUR_COLONNE_INDICATIF_PX = 50;
+// Assez pour l'en-tête « Indicatif » (« Call sign ») en entier, marges comprises.
+export const LARGEUR_COLONNE_INDICATIF_PX = 66;
 export const LARGEUR_COLONNE_EQUIPE_PX = 100;
 
 function cleContenu(c) {

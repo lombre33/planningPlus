@@ -129,10 +129,10 @@ traductions({
   'veut voir {artiste}': 'wants to see {artiste}',
   'cliquer pour choisir un artiste': 'click to pick an artist',
   'cliquer pour basculer': 'click to toggle',
-  '{n} bénévole affiché.': '{n} volunteer shown.',
-  '{n} bénévoles affichés.': '{n} volunteers shown.',
-  "Une case sans donnée vaut indisponible (§6.4 du cahier des charges) : seule une disponibilité déclarée ouvre la possibilité d'une affectation.":
-    'A cell with no data counts as unavailable (§6.4 of the specification): only a declared availability makes an assignment possible.',
+  '{n} bénévole.': '{n} volunteer.',
+  '{n} bénévoles.': '{n} volunteers.',
+  'Une case vide vaut indisponible : on n’affecte que sur une disponibilité déclarée.':
+    'An empty cell counts as unavailable: assignments only go where availability was declared.',
 });
 
 /** Libellé d'un statut de disponibilité (valeur stockée) dans l'infobulle
@@ -658,14 +658,14 @@ export function montrerDisponibilites(container, m) {
           }),
           t('Mode édition'),
         ),
-        h('label', {
+        // Ne sert qu'en mode édition : n'apparaît qu'avec lui.
+        !modeEdition ? null : h('label', {
           style: {
             display: 'inline-flex', alignItems: 'center', gap: '4px', marginLeft: '8px',
-            opacity: modeEdition ? '1' : '0.5',
           },
         },
           h('input', {
-            type: 'checkbox', checked: modeArtiste, disabled: !modeEdition,
+            type: 'checkbox', checked: modeArtiste,
             onchange: (e) => { modeArtiste = e.target.checked; rafraichir(); },
           }),
           t('Choisir un artiste au clic'),
@@ -774,7 +774,7 @@ export function montrerDisponibilites(container, m) {
     container.append(
       nouveauDefilement,
       h('p', {class: 'view__intro', style: {marginTop: '10px', marginBottom: '0'}},
-        `${tn(benevoles.length, '{n} bénévole affiché.', '{n} bénévoles affichés.')} ${t("Une case sans donnée vaut indisponible (§6.4 du cahier des charges) : seule une disponibilité déclarée ouvre la possibilité d'une affectation.")}`,
+        `${tn(benevoles.length, '{n} bénévole.', '{n} bénévoles.')} ${t('Une case vide vaut indisponible : on n’affecte que sur une disponibilité déclarée.')}`,
       ),
     );
     // Ne s'applique qu'une fois le `<div>` attaché au document : posé sur un

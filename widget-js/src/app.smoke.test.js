@@ -73,9 +73,27 @@ describe.each([
     // Désistements en plus, et les quatre impressions.
     expect([...titres].sort()).toEqual([
       'Affectation · table du jour', 'Agenda du festival', 'Artistes', 'Disponibilités des bénévoles', 'Désistements',
-      'Feuille de route bénévole', 'Indicatifs et équipes', 'Missions × sous-créneaux', 'Planning d’équipe sur tout le festival',
+      'Feuille de route bénévole', 'Indicatifs et équipes', 'Missions du jour', 'Planning d’équipe sur tout le festival',
       'Plannings équipes imprimables', 'Roster bénévoles imprimable', 'Terrain',
     ].sort());
+  });
+
+  it('en bas des étapes 1 à 4, un bouton ouvre l’étape suivante ; rien après l’Affectation', () => {
+    document.body.innerHTML = '<div id="app"></div>';
+    const racine = document.getElementById('app');
+    demarrerApp(racine, creerMagasin(), 'test');
+    const suite = () => racine.querySelector('.app-suite button');
+    const parcours = [];
+    for (let i = 0; i < 4; i++) {
+      parcours.push(texte(suite()));
+      suite().click();
+    }
+    expect(parcours).toEqual(['Étape 2 Missions →', 'Étape 3 Indicatifs →', 'Étape 4 Bénévoles →', 'Étape 5 Affectation →']);
+    expect(texte(racine.querySelector('h1'))).toBe('Affectation · table du jour');
+    expect(racine.querySelector('.rail__item[aria-current="true"]').textContent).toContain('Affectation');
+    expect(suite()).toBeNull();
+    [...racine.querySelectorAll('.rail__item')].find((b) => texte(b) === 'Terrain').click();
+    expect(suite()).toBeNull();
   });
 
   it('changer de langue redessine le menu et la vue active, sans rien recharger', () => {

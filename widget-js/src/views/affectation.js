@@ -149,10 +149,10 @@ traductions({
   Heure: 'Hour',
   Artistes: 'Artists',
   'passages du jour': 'the day’s sets',
-  'Masquer les effectifs hors bornes': 'Hide out-of-range headcounts',
+  'Masquer les effectifs à revoir': 'Hide headcounts to review',
   'Afficher les missions dont un créneau du jour est sous son minimum ou au-dessus de son maximum':
     'Show the tasks with a slot of the day below its minimum or above its maximum',
-  'Effectifs hors bornes ({n})': 'Out-of-range headcounts ({n})',
+  'Effectifs à revoir ({n})': 'Headcounts to review ({n})',
   'Places du jour': 'The day’s spots',
   'Aucun indicatif positionné ce jour-là. Positionnez des indicatifs depuis la vue Indicatifs (étape 3), puis revenez ici.':
     'No call sign placed on that day. Place call signs from the Call signs view (step 3), then come back here.',
@@ -253,12 +253,12 @@ traductions({
   'Cliquez une place à pourvoir ou une personne pour voir toutes les options, classées selon vos priorités.':
     'Click an open spot or a person to see all the options, ranked by your priorities.',
   Scénarios: 'Scenarios',
-  '{couvertes} / {total} places couvertes': '{couvertes} / {total} spots covered',
-  'Binômes souhaités {n} / {total}': 'Wished-for buddies {n} / {total}',
-  'Artistes souhaités vus {n} / {total}': 'Wished-for artists seen {n} / {total}',
-  'Lignes qui enfreignent une règle (hors disponibilité, mission refusée, deux places en même temps, quota dépassé, disponibilités non déclarées) et effectifs hors bornes, en tête de table.':
-    'Rows that break a rule (outside availability, refused task, two spots at the same time, quota exceeded, no availability declared) and out-of-range headcounts, at the top of the table.',
-  '{n} à vérifier': '{n} to check',
+  'places couvertes': 'spots covered',
+  'binômes réunis': 'buddies together',
+  'artistes vus': 'artists seen',
+  'Lignes qui enfreignent une règle (hors disponibilité, mission refusée, deux places en même temps, quota dépassé, disponibilités non déclarées) et effectifs à revoir, en tête de table.':
+    'Rows that break a rule (outside availability, refused task, two spots at the same time, quota exceeded, no availability declared) and headcounts to review, at the top of the table.',
+  'à vérifier': 'to check',
   'Brouillon vide': 'Empty draft',
   'Brouillon : {n} place change (dont {ailleurs} un autre jour)': 'Draft: {n} spot changes ({ailleurs} on another day)',
   'Brouillon : {n} places changent (dont {ailleurs} un autre jour)': 'Draft: {n} spots change ({ailleurs} of them on another day)',
@@ -269,8 +269,8 @@ traductions({
   Brouillon: 'Draft',
   Binômes: 'Buddies',
   'À couvrir': 'To cover',
-  'Ajoutez un scénario ou lancez l’algorithme : rien n’est écrit dans le planning avant « Appliquer au planning ».':
-    'Add a scenario or run the algorithm: nothing is written to the schedule before “Apply to schedule”.',
+  'Répartissez ou ajoutez un scénario : rien n’est écrit dans le planning avant « Appliquer au planning ».':
+    'Assign automatically or add a scenario: nothing is written to the schedule before “Apply to schedule”.',
   'Annuler le dernier': 'Undo last',
   'Brouillon vidé : le planning n’a pas bougé.': 'Draft cleared: the schedule has not changed.',
   'Tout annuler': 'Undo all',
@@ -282,7 +282,7 @@ traductions({
     'Intended when two tasks rotate at different paces; otherwise, fix it in Tasks or the Agenda.',
   'Aucun jour de festival : créez d’abord un macro-créneau dans l’Agenda (étape 1).':
     'No festival day: first create a time block in the Agenda (step 1).',
-  'Relancer l’algorithme dans le brouillon': 'Rerun the algorithm in the draft',
+  'Répartir automatiquement': 'Assign automatically',
   'Appliquez ou annulez d’abord le brouillon': 'Apply or discard the draft first',
   'Vide et déverrouille tout le planning, tous les jours confondus': 'Empties and unlocks the whole schedule, across all days',
   'Réinitialiser tout': 'Reset all',
@@ -787,10 +787,10 @@ export function montrerAffectation(container, m) {
         h('div', {class: 'tj-nom'}, h('button', {
           class: 'tj-section__bascule', type: 'button', 'aria-expanded': String(effectifsOuverts),
           title: effectifsOuverts
-            ? t('Masquer les effectifs hors bornes')
+            ? t('Masquer les effectifs à revoir')
             : t('Afficher les missions dont un créneau du jour est sous son minimum ou au-dessus de son maximum'),
           onclick: () => { effectifsOuverts = !effectifsOuverts; rafraichir(); },
-        }, `${effectifsOuverts ? '▾' : '▸'} ${t('Effectifs hors bornes ({n})', {n: effectifs.length})}`)),
+        }, `${effectifsOuverts ? '▾' : '▸'} ${t('Effectifs à revoir ({n})', {n: effectifs.length})}`)),
         h('div', {class: 'tj-piste'})));
       const nomDe = (liste) => liste[0].mission?.Nom ?? '';
       if (effectifsOuverts) {
@@ -1166,18 +1166,14 @@ export function montrerAffectation(container, m) {
     const alertes = [...r.alertes.values()].flat();
     const ton = r.signalements.effectifs.length > 0 || alertes.some((a) => a.grave) ? 'danger'
       : alertes.some((a) => !a.neutre) ? 'warn' : 'neutral';
+    // Un point de couleur, le chiffre, puis ce qu'il compte.
+    const stat = (ton, valeur, libelle, title) => h('span', {class: `tj-stat tj-stat--${ton}`, title}, h('strong', null, valeur), ` ${libelle}`);
     return h('div', {class: 'tj-compteurs'},
-      h('span', {class: `pill ${aCouvrir ? 'pill--warn' : 'pill--ok'}`},
-        `${aCouvrir ? '! ' : '✓ '}${t('{couvertes} / {total} places couvertes', {couvertes: mes.couvertes, total: mes.totalPlaces})}`),
-      h('span', {class: `pill ${mes.binomes === mes.binomesTotal ? 'pill--ok' : 'pill--neutral'}`},
-        `♥ ${t('Binômes souhaités {n} / {total}', {n: mes.binomes, total: mes.binomesTotal})}`),
-      h('span', {class: `pill ${mes.artistes === mes.artistesTotal ? 'pill--ok' : 'tj-pill--art'}`},
-        `♪ ${t('Artistes souhaités vus {n} / {total}', {n: mes.artistes, total: mes.artistesTotal})}`),
+      stat(aCouvrir ? 'warn' : 'ok', `${mes.couvertes} / ${mes.totalPlaces}`, t('places couvertes')),
+      stat(mes.binomes === mes.binomesTotal ? 'ok' : 'neutral', `${mes.binomes} / ${mes.binomesTotal}`, t('binômes réunis')),
+      stat(mes.artistes === mes.artistesTotal ? 'ok' : 'art', `${mes.artistes} / ${mes.artistesTotal}`, t('artistes vus')),
       aVerifier > 0
-        ? h('span', {
-          class: `pill pill--${ton}`,
-          title: t('Lignes qui enfreignent une règle (hors disponibilité, mission refusée, deux places en même temps, quota dépassé, disponibilités non déclarées) et effectifs hors bornes, en tête de table.'),
-        }, `! ${t('{n} à vérifier', {n: aVerifier})}`)
+        ? stat(ton, String(aVerifier), t('à vérifier'), t('Lignes qui enfreignent une règle (hors disponibilité, mission refusée, deux places en même temps, quota dépassé, disponibilités non déclarées) et effectifs à revoir, en tête de table.'))
         : null,
     );
   }
@@ -1209,7 +1205,7 @@ export function montrerAffectation(container, m) {
             delta(`♥ ${t('Binômes')}`, avant.binomes, apres.binomes, true), delta(`♪ ${t('Artistes')}`, avant.artistes, apres.artistes, true),
             delta(t('À couvrir'), avant.aCouvrir.length, apres.aCouvrir.length, false),
           ]
-          : [h('span', {class: 'tj-note'}, t('Ajoutez un scénario ou lancez l’algorithme : rien n’est écrit dans le planning avant « Appliquer au planning ».'))]),
+          : [h('span', {class: 'tj-note'}, t('Répartissez ou ajoutez un scénario : rien n’est écrit dans le planning avant « Appliquer au planning ».'))]),
       ),
       h('button', {class: 'btn btn--sm', type: 'button', disabled: brouillon.pile.length === 0, onclick: () => { annulerDernier(brouillon); apercu = null; rafraichir(); }}, t('Annuler le dernier')),
       h('button', {class: 'btn btn--sm', type: 'button', disabled: brouillon.modifs.size === 0, onclick: () => {
@@ -1303,25 +1299,17 @@ export function montrerAffectation(container, m) {
     const brouillonNonVide = brouillon.modifs.size > 0;
     container.append(...[
       h('div', {class: 'tj-outils'},
-        h('button', {class: 'btn btn--primary', type: 'button', onclick: lancerAlgorithme}, t('Relancer l’algorithme dans le brouillon')),
         compteurs(mesurer(journee)),
+        h('details', {class: 'tj-legende-repli tj-outils__fin'},
+          h('summary', null, t('Légende')),
+          legende(),
+        ),
         h('button', {
-          class: 'btn btn--ghost btn--sm tj-outils__fin', type: 'button', disabled: brouillonNonVide,
+          class: 'btn btn--ghost', type: 'button', disabled: brouillonNonVide,
           title: brouillonNonVide ? t('Appliquez ou annulez d’abord le brouillon') : t('Vide et déverrouille tout le planning, tous les jours confondus'),
           onclick: () => void reinitialiser(),
         }, t('Réinitialiser tout')),
-      ),
-      h('div', {class: 'tj-legende', 'aria-label': t('Légende')},
-        h('span', null, h('i', {class: 'tj-l-bloc'}), t('mission')),
-        h('span', null, h('i', {class: 'tj-l-vide'}), t('à pourvoir')),
-        h('span', null, h('i', {class: 'tj-l-absent'}), t('absent·e à remplacer')),
-        h('span', null, h('i', {class: 'tj-l-indispo'}), t('indisponible')),
-        h('span', null, h('i', {class: 'tj-l-hors-dispo'}), t('placé·e hors disponibilité')),
-        h('span', null, h('i', {class: 'tj-l-art'}), t('voit son artiste')),
-        h('span', null, h('i', {class: 'tj-l-rate'}), t('rate son artiste')),
-        h('span', null, h('i', {class: 'tj-l-change'}), t('changé dans le brouillon')),
-        h('span', null, h('i', {class: 'tj-l-sous'}), t('effectif sous le minimum')),
-        h('span', null, `♥ ${t('binôme réuni')} · ♡ ${t('binôme séparé')} · `, icone(ICONES.cadenas, 'icone-texte'), ` ${t('verrouillée')}`),
+        h('button', {class: 'btn btn--primary', type: 'button', onclick: lancerAlgorithme}, t('Répartir automatiquement')),
       ),
       chevauchements(),
       message ? h('div', {class: `tj-message tj-message--${message.ton}`, role: 'status'}, message.texte) : null,
@@ -1330,6 +1318,21 @@ export function montrerAffectation(container, m) {
       barreBrouillon(),
     ].filter(Boolean));
     restaurer(avant);
+  }
+
+  function legende() {
+    return h('div', {class: 'tj-legende', 'aria-label': t('Légende')},
+      h('span', null, h('i', {class: 'tj-l-bloc'}), t('mission')),
+      h('span', null, h('i', {class: 'tj-l-vide'}), t('à pourvoir')),
+      h('span', null, h('i', {class: 'tj-l-absent'}), t('absent·e à remplacer')),
+      h('span', null, h('i', {class: 'tj-l-indispo'}), t('indisponible')),
+      h('span', null, h('i', {class: 'tj-l-hors-dispo'}), t('placé·e hors disponibilité')),
+      h('span', null, h('i', {class: 'tj-l-art'}), t('voit son artiste')),
+      h('span', null, h('i', {class: 'tj-l-rate'}), t('rate son artiste')),
+      h('span', null, h('i', {class: 'tj-l-change'}), t('changé dans le brouillon')),
+      h('span', null, h('i', {class: 'tj-l-sous'}), t('effectif sous le minimum')),
+      h('span', null, `♥ ${t('binôme réuni')} · ♡ ${t('binôme séparé')} · `, icone(ICONES.cadenas, 'icone-texte'), ` ${t('verrouillée')}`),
+    );
   }
 
   const desabonner = m.subscribe(rafraichir);

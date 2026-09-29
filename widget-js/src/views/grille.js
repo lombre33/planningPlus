@@ -19,8 +19,6 @@ import {creerErreur} from '../ui/modalCreneau.js';
 traductions({
   '+ Nouvelle mission': '+ New task',
   "Copier les créneaux d'un autre jour…": 'Copy slots from another day…',
-  'Le référentiel des missions — pas encore où ni quand : ça se joue case par case, ci-dessous.':
-    'The task catalog — not yet where or when: that is decided cell by cell, below.',
   'Toutes les équipes': 'All teams',
   'Aucun sous-créneau ce jour.': 'No slots on this day.',
   'Donner à cette mission un créneau à elle, décalé ou en pause par rapport à la trame commune':
@@ -117,19 +115,8 @@ export function montrerGrille(container, m) {
 
     vider(container);
     container.append(
-      h('div', {class: 'agenda__toolbar'},
-        h('button', {
-          class: 'btn btn--primary btn--sm', type: 'button', onclick: () => ouvrirCreationMission(),
-        }, t('+ Nouvelle mission')),
-        jour && jours.length > 1
-          ? h('button', {
-            class: 'btn btn--ghost btn--sm', type: 'button', onclick: () => ouvrirCopieDepuisJour(jour, jours),
-          }, t("Copier les créneaux d'un autre jour…"))
-          : null,
-        h('span', {class: 'view__intro', style: {margin: '0'}},
-          t('Le référentiel des missions — pas encore où ni quand : ça se joue case par case, ci-dessous.')),
-      ),
-      h('div', {class: 'agenda__toolbar'},
+      // Une seule barre d'outils : le filtre à gauche, l'action principale à droite.
+      h('div', {class: 'agenda__toolbar vue-outils'},
         h('select', {
           class: 'select',
           onchange: (e) => {
@@ -143,6 +130,14 @@ export function montrerGrille(container, m) {
             'option', {value: String(eq.id), selected: equipeFiltre === eq.id}, eq.Nom,
           )),
         ),
+        jour && jours.length > 1
+          ? h('button', {
+            class: 'btn btn--ghost', type: 'button', onclick: () => ouvrirCopieDepuisJour(jour, jours),
+          }, t("Copier les créneaux d'un autre jour…"))
+          : null,
+        h('button', {
+          class: 'btn btn--primary vue-outils__fin', type: 'button', onclick: () => ouvrirCreationMission(),
+        }, t('+ Nouvelle mission')),
       ),
       !jour
         ? h('p', {class: 'empty'}, t('Aucun sous-créneau ce jour.'))
