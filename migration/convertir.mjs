@@ -10,12 +10,16 @@
  *   node migration/convertir.mjs --sortie <dir>  écrit dans <dir> au lieu de widget-js/
  *                                                (pour comparer, ou reporter un changement de widget/)
  *   node migration/convertir.mjs --forcer        écrase widget-js/ même s'il a été modifié à la main
+ *   node migration/convertir.mjs --acquitter     note dans le sceau que la V2 a reporté les changements de
+ *                                                widget/ jusqu'à aujourd'hui (dossier modifié à la main seulement)
  *
  * Tant que personne n'a modifié `widget-js/src` ni `scripts`, ces dossiers sont
  * le reflet de `widget/`. Le sceau `widget-js/.sceau-conversion`, écrit avec
  * eux, le constate : dès qu'un fichier a bougé à la main (la V2 se construit),
- * la conversion refuse d'écraser et `--verifier` n'a plus rien à comparer. À
- * la bascule, ce dossier `migration/` disparaît avec `widget/`.
+ * la conversion refuse d'écraser et `--verifier` ne compare plus fichier par
+ * fichier : il dit seulement si `widget/` a changé depuis la conversion ou le
+ * dernier acquittement. À la bascule, ce dossier `migration/` disparaît avec
+ * `widget/`.
  */
 
 import crypto from 'node:crypto';
@@ -32,10 +36,15 @@ const argv = process.argv.slice(2);
 const args = new Set(argv);
 const verifierSeulement = args.has('--verifier');
 const forcer = args.has('--forcer');
+const acquitter = args.has('--acquitter');
 const positionSortie = argv.indexOf('--sortie');
 const dossierSortie = positionSortie >= 0 ? argv[positionSortie + 1] : null;
 if (positionSortie >= 0 && !dossierSortie) {
   console.error('--sortie attend un dossier.');
+  process.exit(2);
+}
+if (acquitter && (verifierSeulement || forcer || positionSortie >= 0)) {
+  console.error('--acquitter s\'utilise seul : il ne vérifie pas, n\'écrit ni ne force rien d\'autre que le sceau.');
   process.exit(2);
 }
 
@@ -247,15 +256,22 @@ function feuillesAtteintes(entree) {
   return [...feuilles].sort();
 }
 
-for (const [page, module] of [['index.html', 'src/main.js'], ['dev-bench.html', 'src/dev-bench.js']]) {
-  const chemin = path.join(cible, page);
-  if (!fs.existsSync(chemin)) continue;
-  const attendues = feuillesAtteintes(path.join(cible, module)).map((f) => path.relative(cible, f));
-  const liens = [...fs.readFileSync(chemin, 'utf8').matchAll(/<link[^>]*rel="stylesheet"[^>]*href="\.\/([^"]+)"/g)].map((m) => m[1]).sort();
-  const manquantes = attendues.filter((a) => !liens.includes(a));
-  const enTrop = liens.filter((l) => !attendues.includes(l));
-  if (manquantes.length || enTrop.length) {
-    rapport.erreurs.push(`${page} : feuilles de style à charger par <link> — manquantes : [${manquantes.join(', ')}], en trop : [${enTrop.join(', ')}]`);
+/**
+ * Les pages doivent charger par <link> exactement les feuilles que le code converti importait.
+ * Ce contrôle ne vaut que pour un dossier tel que la conversion le produit : une V2 modifiée à la
+ * main gère seule ses feuilles (elle en ajoute, en fusionne), il n'est plus lancé pour elle.
+ */
+function verifierLiensHtml() {
+  for (const [page, module] of [['index.html', 'src/main.js'], ['dev-bench.html', 'src/dev-bench.js']]) {
+    const chemin = path.join(cible, page);
+    if (!fs.existsSync(chemin)) continue;
+    const attendues = feuillesAtteintes(path.join(cible, module)).map((f) => path.relative(cible, f));
+    const liens = [...fs.readFileSync(chemin, 'utf8').matchAll(/<link[^>]*rel="stylesheet"[^>]*href="\.\/([^"]+)"/g)].map((m) => m[1]).sort();
+    const manquantes = attendues.filter((a) => !liens.includes(a));
+    const enTrop = liens.filter((l) => !attendues.includes(l));
+    if (manquantes.length || enTrop.length) {
+      rapport.erreurs.push(`${page} : feuilles de style à charger par <link> — manquantes : [${manquantes.join(', ')}], en trop : [${enTrop.join(', ')}]`);
+    }
   }
 }
 
@@ -267,8 +283,11 @@ const existants = dossiersGeneres.flatMap((d) => (fs.existsSync(d) ? lister(d) :
 /**
  * Sceau : empreinte de tous les fichiers produits (chemin et contenu), écrite avec eux dans
  * `widget-js/.sceau-conversion`. Elle dit deux choses sans autre comparaison : si `widget-js/`
- * a été modifié à la main depuis (l'empreinte du disque diffère du sceau) et si `widget/` a
- * changé depuis (l'empreinte de la conversion d'aujourd'hui diffère du sceau).
+ * a été modifié à la main depuis (l'empreinte du disque diffère de la première ligne) et si
+ * `widget/` a changé depuis (l'empreinte de la conversion d'aujourd'hui diffère de la dernière
+ * conversion absorbée par la V2). Celle-ci est la première ligne, ou la seconde
+ * (`acquitte <empreinte>`) quand `--acquitter` a noté que la V2 avait reporté les changements
+ * de `widget/` à la main.
  */
 const fichierSceau = path.join(miroir, '.sceau-conversion');
 function empreinte(fichiers) {
@@ -280,19 +299,38 @@ function empreinte(fichiers) {
   return h.digest('hex');
 }
 const scelle = !dossierSortie;
-const sceauEcrit = scelle && fs.existsSync(fichierSceau) ? fs.readFileSync(fichierSceau, 'utf8').trim() : null;
+const lignesSceau = scelle && fs.existsSync(fichierSceau) ? fs.readFileSync(fichierSceau, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean) : [];
+const sceauEcrit = lignesSceau[0] ?? null;
+const sceauAbsorbe = lignesSceau.find((l) => l.startsWith('acquitte '))?.slice('acquitte '.length) ?? sceauEcrit;
+const conversionDuJour = empreinte(sorties);
 const modifieAMain = scelle && existants.length > 0 && sceauEcrit !== empreinte(new Map(existants.map((f) => [f, fs.readFileSync(f)])));
-const widgetChange = scelle && sceauEcrit !== empreinte(sorties);
+const widgetChange = scelle && sceauAbsorbe !== conversionDuJour;
 
-if (modifieAMain && !verifierSeulement && !forcer) {
+if (modifieAMain && !verifierSeulement && !forcer && !acquitter) {
   console.error(`${path.relative(racine, miroir)}/ a été modifié depuis la dernière conversion : elle refuse d'écraser ce travail.
   --sortie <dossier>  produit la conversion ailleurs, pour la comparer ou en reporter un changement de widget/
   --forcer            écrase quand même`);
   process.exit(2);
 }
+if (acquitter && !modifieAMain) {
+  console.error(`${path.relative(racine, miroir)}/ n'a pas été modifié depuis la conversion : la relancer suffit, il n'y a rien à acquitter.`);
+  process.exit(2);
+}
+if (acquitter && sceauEcrit === null) {
+  console.error(`${path.relative(racine, miroir)}/ n'a pas de sceau : le sceller d'abord par une conversion avec --forcer.`);
+  process.exit(2);
+}
+if (!modifieAMain || (forcer && !verifierSeulement)) verifierLiensHtml();
 
 let enRetard = 0;
-if (verifierSeulement) {
+let acquitte = false;
+if (acquitter) {
+  // Rien n'est écrit que le sceau, et seulement si la conversion d'aujourd'hui est saine.
+  if (!rapport.erreurs.length && !rapport.differences.length) {
+    fs.writeFileSync(fichierSceau, `${sceauEcrit}\nacquitte ${conversionDuJour}\n`);
+    acquitte = true;
+  }
+} else if (verifierSeulement) {
   // Un dossier modifié à la main n'a plus de raison de ressembler à la conversion : on ne compare
   // plus fichier par fichier, seul compte de savoir si widget/ a bougé depuis.
   if (!modifieAMain) {
@@ -313,7 +351,7 @@ if (verifierSeulement) {
     fs.mkdirSync(path.dirname(chemin), {recursive: true});
     fs.writeFileSync(chemin, contenu);
   }
-  if (scelle) fs.writeFileSync(fichierSceau, `${empreinte(sorties)}\n`);
+  if (scelle) fs.writeFileSync(fichierSceau, `${conversionDuJour}\n`);
 }
 
 // --- Rapport ---------------------------------------------------------------
@@ -333,17 +371,21 @@ if (rapport.erreurs.length) {
   for (const e of rapport.erreurs) console.log(`  ${e}`);
 }
 let enRetardSurWidget = false;
-if (verifierSeulement) {
+if (acquitter) {
+  console.log(acquitte
+    ? '\nacquitté : widget-js/.sceau-conversion note que la V2 a reporté les changements de widget/ jusqu\'à aujourd\'hui (à committer avec le report).'
+    : '\nrien acquitté : la conversion d\'aujourd\'hui signale des erreurs (ci-dessus).');
+} else if (verifierSeulement) {
   if (modifieAMain) {
     enRetardSurWidget = widgetChange;
     console.log(sceauEcrit === null
       ? '\nwidget-js/ n\'a pas de sceau de conversion : impossible de dire s\'il reflète widget/. Faire une conversion avec --forcer pour le sceller.'
       : widgetChange
-        ? '\nwidget-js/ a été modifié depuis la conversion, et widget/ a changé depuis : reporter le changement dans widget-js/ (voir migration/README.md, « Reporter un changement de widget/ »).'
-        : '\nwidget-js/ a été modifié depuis la conversion (la V2 se construit) ; widget/ n\'a pas changé depuis : rien à reporter.');
+        ? '\nwidget-js/ a été modifié depuis la conversion, et widget/ a changé depuis la conversion ou le dernier acquittement : reporter le changement dans widget-js/, puis node migration/convertir.mjs --acquitter pour le noter dans le sceau (voir migration/README.md, « Reporter un changement de widget/ »).'
+        : '\nwidget-js/ a été modifié depuis la conversion (la V2 se construit) ; widget/ n\'a pas changé depuis la conversion ni le dernier acquittement : rien à reporter.');
   } else {
     enRetardSurWidget = enRetard > 0;
     console.log(enRetard ? `\n${enRetard} fichier(s) en retard sur widget/ : widget-js/ n'a pas été modifié depuis la conversion, la relancer suffit (node migration/convertir.mjs).` : '\nwidget-js est à jour.');
   }
 }
-process.exit(rapport.erreurs.length || rapport.differences.length || enRetardSurWidget ? 1 : 0);
+process.exit(rapport.erreurs.length || rapport.differences.length || enRetardSurWidget || (acquitter && !acquitte) ? 1 : 0);
