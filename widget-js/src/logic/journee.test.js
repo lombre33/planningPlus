@@ -1,7 +1,9 @@
 import {describe, expect, it} from 'vitest';
 import {Magasin} from '../store.js';
 import {regrouperParJour} from './derive.js';
-import {appliquerMouvements, construireJournee, evaluerMouvements, jourAffiche, mesurer} from './journee.js';
+import {
+  appliquerMouvements, binomesDuBenevole, construireJournee, evaluerMouvements, jourAffiche, mesurer, souhaitsDuBenevole,
+} from './journee.js';
 import {HUGO, jeuJournee, LEA, NINA, PAUL, REMI, TOM, ZOE} from './journee-fixtures.js';
 
 function journeeDe(options) {
@@ -68,5 +70,21 @@ describe('evaluerMouvements', () => {
     const occupant = new Map([[1, LEA], [2, HUGO]]);
     const apres = appliquerMouvements(occupant, [{benevoleId: LEA, de: 1, vers: 2}, {benevoleId: HUGO, de: 2, vers: 1}]);
     expect([...apres]).toEqual([[1, HUGO], [2, LEA]]);
+  });
+});
+
+describe('état d’une personne', () => {
+  it('dit si elle voit chaque artiste souhaité, selon l’occupation donnée', () => {
+    const j = journeeDe();
+    expect(souhaitsDuBenevole(j, j.occupantParPlace, LEA).map(({artiste, vu}) => [artiste.Nom, vu])).toEqual([['Fanfare', true]]);
+    // Léa sur A2 (18h-22h) ne verrait plus la Fanfare (19h-19h45).
+    const deplacee = appliquerMouvements(j.occupantParPlace, [{benevoleId: LEA, de: 1, vers: 4}]);
+    expect(souhaitsDuBenevole(j, deplacee, LEA)[0].vu).toBe(false);
+  });
+
+  it('dit si chaque binôme souhaité est réuni, et où est le partenaire sinon', () => {
+    const j = journeeDe();
+    expect(binomesDuBenevole(j, j.occupantParPlace, LEA)).toEqual([{partenaireId: HUGO, reunis: true, codes: ['A1']}]);
+    expect(binomesDuBenevole(j, j.occupantParPlace, TOM)).toEqual([{partenaireId: PAUL, reunis: false, codes: []}]);
   });
 });

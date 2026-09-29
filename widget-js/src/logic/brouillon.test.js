@@ -2,7 +2,7 @@ import {describe, expect, it} from 'vitest';
 import {Magasin} from '../store.js';
 import {
   ajouterScenario, annulerDernier, appliquerBrouillon, creerBrouillon, deverrouillerDansBrouillon, estVide,
-  placesChangees, planningDuBrouillon, relancerAlgorithme, retirerDeLaPlace, toutAnnuler,
+  placesChangees, planningDuBrouillon, relancerAlgorithme, retirerDeLaPlace, toutAnnuler, verrouillerDansBrouillon,
 } from './brouillon.js';
 import {jeuJournee, NINA, PAUL, REMI, TOM, ZOE} from './journee-fixtures.js';
 
@@ -30,14 +30,25 @@ describe('brouillon', () => {
     expect(estVide(m, b)).toBe(true);
   });
 
-  it('retire quelqu’un d’une place : vide et verrouillée, puis déverrouillable dans le brouillon', () => {
+  it('retire quelqu’un d’une place : vide et libre, puis verrouillable dans le brouillon pour la garder vide', () => {
     const m = new Magasin(jeuJournee());
     const b = creerBrouillon();
     retirerDeLaPlace(m, b, 3);
-    expect(planningDuBrouillon(m, b).places.find((p) => p.id === 3)).toMatchObject({Benevole: null, Verrouillee: true});
+    expect(planningDuBrouillon(m, b).places.find((p) => p.id === 3)).toMatchObject({Benevole: null, Verrouillee: false});
+    expect(verrouillerDansBrouillon(m, b, 3)).toBe(true);
+    expect(planningDuBrouillon(m, b).places.find((p) => p.id === 3).Verrouillee).toBe(true);
     expect(deverrouillerDansBrouillon(m, b, 3)).toBe(true);
     expect(planningDuBrouillon(m, b).places.find((p) => p.id === 3).Verrouillee).toBe(false);
-    expect(deverrouillerDansBrouillon(m, b, 1)).toBe(false); // pas dans le brouillon : au réel de le faire
+    expect(verrouillerDansBrouillon(m, b, 1)).toBe(false); // pas dans le brouillon : au réel de le faire
+  });
+
+  it('libère, sans la verrouiller, une place que quelqu’un quitte sans remplaçant', () => {
+    const m = new Magasin(jeuJournee());
+    const b = creerBrouillon();
+    ajouterScenario(m, b, [{benevoleId: TOM, de: 3, vers: 4}]);
+    const places = planningDuBrouillon(m, b).places;
+    expect(places.find((p) => p.id === 3)).toMatchObject({Benevole: null, Verrouillee: false});
+    expect(places.find((p) => p.id === 4)).toMatchObject({Benevole: TOM, Verrouillee: true});
   });
 
   it('relance l’algorithme dans le brouillon, sans rien écrire ni verrouiller, et sans replacer un absent', async () => {

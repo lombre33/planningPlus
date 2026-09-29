@@ -56,19 +56,24 @@ function modifier(m, brouillon, placeId, valeur) {
   }
 }
 
+/** Une place que quelqu'un quitte sans que personne n'y arrive : vide et
+ *  libre, l'algorithme pourra la reprendre (demande d'Antoine du
+ *  2026-09-24 pour « désaffecter », et correction de l'audit UX : aucun
+ *  geste ne verrouille plus une place vide en silence). */
+const PLACE_LIBEREE = {Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0};
+
 /**
  * Ajoute un scénario (liste de mouvements `{benevoleId, de, vers}`) : c'est
  * une correction à la main, donc chaque place qu'il pourvoit est verrouillée
  * (origine Manuel), comme `Magasin.assignerPlace` — l'algorithme ne la
- * reprendra pas sans déverrouillage explicite.
+ * reprendra pas sans déverrouillage explicite. Une place seulement quittée
+ * redevient libre.
  */
 export function ajouterScenario(m, brouillon, mouvements) {
   sauver(brouillon);
   const arrivees = new Set(mouvements.filter((mv) => mv.vers != null).map((mv) => mv.vers));
   for (const mv of mouvements) {
-    if (mv.de != null && !arrivees.has(mv.de)) {
-      modifier(m, brouillon, mv.de, {Benevole: null, Origine: 'Manuel', Verrouillee: true, Score: 0});
-    }
+    if (mv.de != null && !arrivees.has(mv.de)) { modifier(m, brouillon, mv.de, PLACE_LIBEREE); }
   }
   for (const mv of mouvements) {
     if (mv.vers != null) {
@@ -77,22 +82,31 @@ export function ajouterScenario(m, brouillon, mouvements) {
   }
 }
 
-/** Retire la personne d'une place, dans le brouillon : la place reste vide et
- *  verrouillée, exactement comme « Vider » ailleurs dans le widget. */
+/** Retire la personne d'une place, dans le brouillon : la place redevient
+ *  libre. La verrouiller ensuite la garde vide. */
 export function retirerDeLaPlace(m, brouillon, placeId) {
   sauver(brouillon);
-  modifier(m, brouillon, placeId, {Benevole: null, Origine: 'Manuel', Verrouillee: true, Score: 0});
+  modifier(m, brouillon, placeId, PLACE_LIBEREE);
 }
 
-/** Déverrouille une place que le brouillon a verrouillée (scénario, retrait) :
- *  une place verrouillée dans le planning réel se déverrouille, elle, tout
- *  de suite dans le réel (`Magasin.basculerVerrouillage`). */
-export function deverrouillerDansBrouillon(m, brouillon, placeId) {
+function changerVerrou(m, brouillon, placeId, verrouillee) {
   const modif = brouillon.modifs.get(placeId);
   if (!modif) { return false; }
   sauver(brouillon);
-  modifier(m, brouillon, placeId, {...modif, Verrouillee: false});
+  modifier(m, brouillon, placeId, {...modif, Verrouillee: verrouillee});
   return true;
+}
+
+/** Déverrouille une place que le brouillon change. Renvoie `false` pour une
+ *  place qu'il ne change pas : celle-là se déverrouille tout de suite dans
+ *  le réel (`Magasin.basculerVerrouillage`), comme dans la maquette. */
+export function deverrouillerDansBrouillon(m, brouillon, placeId) {
+  return changerVerrou(m, brouillon, placeId, false);
+}
+
+/** Verrouille une place que le brouillon change (même règle que ci-dessus). */
+export function verrouillerDansBrouillon(m, brouillon, placeId) {
+  return changerVerrou(m, brouillon, placeId, true);
 }
 
 /**

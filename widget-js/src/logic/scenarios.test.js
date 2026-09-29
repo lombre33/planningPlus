@@ -3,7 +3,9 @@ import {Magasin} from '../store.js';
 import {regrouperParJour} from './derive.js';
 import {construireJournee} from './journee.js';
 import {HUGO, jeuJournee, LEA, NINA, PAUL, REMI, SOFIA, TOM, ZOE} from './journee-fixtures.js';
-import {ameliore, echangesPourPlace, placesPourBenevole, preparerMoteur, scenariosPourPlace} from './scenarios.js';
+import {
+  ameliore, choixPourPlace, deplacementsPourBenevole, deplacementsPourPlace, echangesPourPlace, placesPourBenevole, preparerMoteur, scenariosPourPlace,
+} from './scenarios.js';
 
 function contexte(options, modifier = () => {}) {
   const jeu = jeuJournee(options);
@@ -75,5 +77,47 @@ describe('placesPourBenevole', () => {
     const {scenarios, ecartes} = placesPourBenevole(journee, moteur, PAUL);
     expect(resume(scenarios)).toEqual([`${PAUL}:->4`, `${PAUL}:->8`]);
     expect(ecartes).toEqual([{etiquette: 'B1 #1', raison: 'pas disponible sur tous ses créneaux'}]);
+  });
+});
+
+describe('choixPourPlace', () => {
+  it('propose chaque présent du jour, même contre les critères, en disant ce que le choix enfreint', () => {
+    const {journee, moteur} = contexte();
+    const options = new Map(choixPourPlace(journee, moteur, 4).map((o) => [o.benevoleId, o])); // A2 #2, vide
+    expect([...options.keys()]).toEqual([LEA, HUGO, SOFIA, TOM, ZOE, NINA, PAUL]); // jamais Rémi, absent
+    expect(options.get(SOFIA)).toMatchObject({mouvements: [{benevoleId: SOFIA, de: 6, vers: 4}], raison: 'pas disponible sur tous ses créneaux'});
+    expect(options.get(ZOE)).toMatchObject({mouvements: [{benevoleId: ZOE, de: null, vers: 4}], raison: null});
+    expect(options.get(TOM)).toMatchObject({mouvements: null, raison: 'déjà en A2 #1'});
+  });
+
+  it('fait quitter la place à son occupant présent', () => {
+    const {journee, moteur} = contexte();
+    const zoe = choixPourPlace(journee, moteur, 3).find((o) => o.benevoleId === ZOE); // A2 #1, Tom
+    expect(zoe.mouvements).toEqual([{benevoleId: ZOE, de: null, vers: 3}, {benevoleId: TOM, de: 3, vers: null}]);
+  });
+
+  it('ne touche ni une place verrouillée, ni la place verrouillée de la personne choisie', () => {
+    const cible = contexte({}, (jeu) => { jeu.places[3].Verrouillee = true; });
+    expect(choixPourPlace(cible.journee, cible.moteur, 4)).toEqual([]);
+    const sienne = contexte({}, (jeu) => { jeu.places[6].Verrouillee = true; }); // R1 #1, Nina
+    expect(choixPourPlace(sienne.journee, sienne.moteur, 4).find((o) => o.benevoleId === NINA))
+      .toMatchObject({mouvements: null, raison: 'sa place R1 #1 est verrouillée'});
+  });
+});
+
+describe('deplacementsPourPlace', () => {
+  it('liste les places à couvrir des autres indicatifs, même contre les critères', () => {
+    const {journee, moteur} = contexte();
+    const options = deplacementsPourPlace(journee, moteur, 6); // Sofia, B1 #2 ; B1 #1 est dans son indicatif
+    expect(options.map((o) => [o.placeId, o.raison])).toEqual([[4, 'pas disponible sur tous ses créneaux'], [8, 'pas disponible sur tous ses créneaux']]);
+    expect(options[0].mouvements).toEqual([{benevoleId: SOFIA, de: 6, vers: 4}]);
+  });
+
+  it('place une personne libre, sans rien lui faire quitter', () => {
+    const {journee, moteur} = contexte();
+    const options = deplacementsPourBenevole(journee, moteur, PAUL);
+    expect(options.map((o) => [o.placeId, o.raison])).toEqual([[4, null], [5, 'pas disponible sur tous ses créneaux'], [8, null]]);
+    expect(options[0].mouvements).toEqual([{benevoleId: PAUL, de: null, vers: 4}]);
+    expect(deplacementsPourBenevole(journee, moteur, REMI)).toEqual([]); // absent à l'appel
   });
 });

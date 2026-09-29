@@ -228,3 +228,85 @@ export function placesPourBenevole(journee, moteur, benevoleId) {
   evaluerEtTrier(journee, scenarios);
   return {scenarios, ecartes, verrouillee: false, tenues: placesTenues(journee, benevoleId)};
 }
+
+const macrosDe = (g) => new Set(g.positions.map(({sousCreneau}) => sousCreneau.Macro_creneau));
+const etiquetteDe = (journee, placeId) => `${journee.groupeDePlace.get(placeId).groupe.Code} #${journee.placeParId.get(placeId).Rang}`;
+
+/** Places d'un bénévole qu'il quitterait pour rejoindre `groupeCible` : un
+ *  seul indicatif par macro-créneau (§6.3, `autre_indicatif_meme_jour`). */
+function placesAQuitter(journee, benevoleId, groupeCible, sauf) {
+  const macros = macrosDe(groupeCible);
+  return placesTenues(journee, benevoleId).filter((id) => id !== sauf
+    && [...macrosDe(journee.groupeDePlace.get(id))].some((ma) => macros.has(ma)));
+}
+
+/**
+ * « Choisir quelqu'un d'autre » pour une place : chaque bénévole présent du
+ * jour, même contre les critères — une suggestion n'empêche jamais un choix
+ * (règle des deux maquettes, et du glisser-déposer qu'elles remplacent).
+ * Qui tient déjà un indicatif sur ce créneau du jour le quitte, sa place
+ * redevient libre ; l'occupant présent de la place la quitte aussi.
+ * `raison` dit ce que le choix enfreint (null s'il est dans les règles) ;
+ * sans `mouvements`, le choix est impossible et `raison` dit pourquoi.
+ */
+export function choixPourPlace(journee, moteur, placeId) {
+  const g = journee.groupeDePlace.get(placeId);
+  const place = journee.placeParId.get(placeId);
+  if (!g || !place || place.Verrouillee) { return []; }
+  const occupant = journee.occupantParPlace.get(placeId) ?? null;
+  const options = [];
+  for (const w of candidatsDuJour(journee, new Set([occupant]))) {
+    const quittees = placesAQuitter(journee, w, g, placeId);
+    const memeIndicatif = quittees.find((id) => journee.groupeDePlace.get(id) === g);
+    if (memeIndicatif != null) { options.push({benevoleId: w, mouvements: null, raison: `déjà en ${etiquetteDe(journee, memeIndicatif)}`}); continue; }
+    const verrou = quittees.find((id) => journee.placeParId.get(id).Verrouillee);
+    if (verrou != null) { options.push({benevoleId: w, mouvements: null, raison: `sa place ${etiquetteDe(journee, verrou)} est verrouillée`}); continue; }
+    const mouvements = [
+      {benevoleId: w, de: quittees[0] ?? null, vers: placeId},
+      ...quittees.slice(1).map((id) => ({benevoleId: w, de: id, vers: null})),
+    ];
+    if (occupant != null && !journee.absents.has(occupant)) { mouvements.push({benevoleId: occupant, de: placeId, vers: null}); }
+    const statut = eligibilite(moteur, g.groupe.id, w, quittees.map((id) => ({groupeId: journee.groupeDePlace.get(id).groupe.id, benevoleId: w})));
+    options.push({benevoleId: w, mouvements, raison: statut.eligible ? null : raisonLisible(statut), quittees});
+  }
+  return options;
+}
+
+function deplacements(journee, moteur, p, placeId) {
+  const g = placeId != null ? journee.groupeDePlace.get(placeId) : null;
+  const options = [];
+  for (const [cibleId, occupant] of journee.occupantParPlace) {
+    const cible = journee.groupeDePlace.get(cibleId);
+    if (cible === g || !estACouvrir(journee, occupant)) { continue; }
+    const quittees = [...(placeId != null ? [placeId] : []), ...placesAQuitter(journee, p, cible, placeId)];
+    if (quittees.some((id) => journee.groupeDePlace.get(id) === cible)) { continue; } // déjà dans cet indicatif
+    if (journee.placeParId.get(cibleId).Verrouillee) { options.push({placeId: cibleId, mouvements: null, raison: 'place verrouillée'}); continue; }
+    const verrou = quittees.find((id) => id !== placeId && journee.placeParId.get(id).Verrouillee);
+    if (verrou != null) { options.push({placeId: cibleId, mouvements: null, raison: `sa place ${etiquetteDe(journee, verrou)} est verrouillée`}); continue; }
+    const mouvements = [
+      {benevoleId: p, de: quittees[0] ?? null, vers: cibleId},
+      ...quittees.slice(1).map((id) => ({benevoleId: p, de: id, vers: null})),
+    ];
+    const statut = eligibilite(moteur, cible.groupe.id, p, quittees.map((id) => ({groupeId: journee.groupeDePlace.get(id).groupe.id, benevoleId: p})));
+    options.push({placeId: cibleId, mouvements, raison: statut.eligible ? null : raisonLisible(statut)});
+  }
+  return options;
+}
+
+/**
+ * « Déplacer vers une autre place » pour une personne présente sur une
+ * place : chaque place à couvrir d'un autre indicatif du jour, même contre
+ * les critères (voir `choixPourPlace`). Sa place actuelle redevient libre.
+ */
+export function deplacementsPourPlace(journee, moteur, placeId) {
+  const place = journee.placeParId.get(placeId);
+  const p = journee.occupantParPlace.get(placeId) ?? null;
+  if (!place || p == null || place.Verrouillee) { return []; }
+  return deplacements(journee, moteur, p, placeId);
+}
+
+/** Même chose pour une personne présente sans indicatif ce jour. */
+export function deplacementsPourBenevole(journee, moteur, benevoleId) {
+  if (journee.absents.has(benevoleId)) { return []; }
+  return deplacements(journee, moteur, benevoleId, null);
+}

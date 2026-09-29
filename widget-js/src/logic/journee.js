@@ -223,6 +223,26 @@ export function mesurer(journee, occupant = journee.occupantParPlace, seulement 
   };
 }
 
+/** Pour un bénévole présent : chaque artiste qu'il veut voir ce jour, vu ou raté. */
+export function souhaitsDuBenevole(journee, occupant, benevoleId) {
+  const groupes = groupesParBenevole(journee, occupant, new Set([benevoleId]));
+  return [...(journee.souhaits.get(benevoleId) ?? [])].map((artisteId) => ({
+    artiste: journee.ix.artiste.get(artisteId),
+    vu: voitArtiste(journee, groupes, benevoleId, artisteId),
+  }));
+}
+
+/** Pour un bénévole présent : chaque binôme souhaité du jour, réuni ou non, et où est l'autre. */
+export function binomesDuBenevole(journee, occupant, benevoleId) {
+  const partenaires = journee.partenaires.get(benevoleId) ?? [];
+  const groupes = groupesParBenevole(journee, occupant, new Set([benevoleId, ...partenaires]));
+  return partenaires.map((partenaireId) => ({
+    partenaireId,
+    reunis: partagentUnIndicatif(groupes, benevoleId, partenaireId),
+    codes: (groupes.get(partenaireId) ?? []).map((g) => g.groupe.Code),
+  }));
+}
+
 /**
  * Occupation après une liste de mouvements `{benevoleId, de, vers}` (ids de
  * place, `null` pour « sans place ») : les départs d'abord, puis les
