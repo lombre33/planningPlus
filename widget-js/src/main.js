@@ -18,6 +18,7 @@
  */
 
 import {demarrerApp} from './app.js';
+import {appliquerLangue, t, traductions} from './i18n.js';
 import {
   actionsActualiserBenevolesSource,
   actionsAjouterColonneManquante,
@@ -38,6 +39,20 @@ import {
 } from './grist/index.js';
 import {Magasin, SuppressionApresCreationEchouee} from './store.js';
 import {appliquerTheme, themeMemorise} from './ui/reglages.js';
+
+traductions({
+  'Document Grist connecté': 'Connected Grist document',
+  'Document Grist non reconnu': 'Grist document not recognized',
+  "La table « {table} », attendue par PlanningPlus, n'a pas pu être créée automatiquement.":
+    'The “{table}” table, which PlanningPlus needs, could not be created automatically.',
+  "Les tables suivantes, attendues par PlanningPlus, n'ont pas pu être créées automatiquement : {tables}.":
+    'The following tables, which PlanningPlus needs, could not be created automatically: {tables}.',
+  "Vérifiez que ce widget dispose de l'accès complet au document, puis rechargez la page.":
+    'Check that this widget has full access to the document, then reload the page.',
+  'Échec de connexion au document Grist': 'Could not connect to the Grist document',
+  'La table "{table}" ne porte pas notre schéma Bénévoles — peuplement refusé pour ne pas risquer d\'écrire dans une table qui n\'est pas la nôtre.':
+    'The “{table}” table does not have our Volunteers schema: filling it was refused so as not to risk writing to a table that is not ours.',
+});
 
 /** Les 14 tables que lit `construireModele` (`./grist/modele.js`), plus
  *  `Parametres` : elle ne nourrit pas `Modele` (voir `demarrer`, qui la lit
@@ -275,7 +290,7 @@ function construireEcritureGrist(
       const colonnesSchemaAttendues = ['Quota_heures_min', 'Quota_heures_max', 'Statut', 'Competences'];
       if (!colonnesSchemaAttendues.every((c) => colonnesCible.has(c))) {
         throw new Error(
-          `La table "${idBenevoles}" ne porte pas notre schéma Bénévoles — peuplement refusé pour ne pas risquer d'écrire dans une table qui n'est pas la nôtre.`,
+          t('La table "{table}" ne porte pas notre schéma Bénévoles — peuplement refusé pour ne pas risquer d\'écrire dans une table qui n\'est pas la nôtre.', {table: idBenevoles}),
         );
       }
 
@@ -359,18 +374,18 @@ function afficherDocumentNonReconnu(racine, tablesManquantes) {
   racine.textContent = '';
 
   const titre = document.createElement('h1');
-  titre.textContent = 'Document Grist non reconnu';
+  titre.textContent = t('Document Grist non reconnu');
   racine.append(titre);
 
   const libelles = tablesManquantes.map((id) => LIBELLE_PAR_TABLE[id] ?? id);
   const message = document.createElement('p');
   message.textContent = tablesManquantes.length === 1
-    ? `La table « ${libelles[0]} », attendue par PlanningPlus, n'a pas pu être créée automatiquement.`
-    : `Les tables suivantes, attendues par PlanningPlus, n'ont pas pu être créées automatiquement : ${libelles.join(', ')}.`;
+    ? t("La table « {table} », attendue par PlanningPlus, n'a pas pu être créée automatiquement.", {table: libelles[0]})
+    : t("Les tables suivantes, attendues par PlanningPlus, n'ont pas pu être créées automatiquement : {tables}.", {tables: libelles.join(', ')});
   racine.append(message);
 
   const note = document.createElement('p');
-  note.textContent = "Vérifiez que ce widget dispose de l'accès complet au document, puis rechargez la page.";
+  note.textContent = t("Vérifiez que ce widget dispose de l'accès complet au document, puis rechargez la page.");
   racine.append(note);
 }
 
@@ -384,7 +399,7 @@ function afficherErreurConnexion(racine, erreur) {
   racine.textContent = '';
 
   const titre = document.createElement('h1');
-  titre.textContent = 'Échec de connexion au document Grist';
+  titre.textContent = t('Échec de connexion au document Grist');
   racine.append(titre);
 
   const message = document.createElement('p');
@@ -392,7 +407,7 @@ function afficherErreurConnexion(racine, erreur) {
   racine.append(message);
 
   const note = document.createElement('p');
-  note.textContent = "Vérifiez que ce widget dispose de l'accès complet au document, puis rechargez la page.";
+  note.textContent = t("Vérifiez que ce widget dispose de l'accès complet au document, puis rechargez la page.");
   racine.append(note);
 }
 
@@ -437,18 +452,20 @@ async function demarrer() {
   const racine = document.getElementById('app');
   if (!racine) { return; }
   // Avant la connexion au document, qui peut durer : sinon l'attente
-  // s'affiche dans le thème du système, puis bascule.
+  // s'affiche dans le thème du système, puis bascule. Même chose pour la
+  // langue (`lang` de <html>).
   appliquerTheme(themeMemorise());
+  appliquerLangue();
 
   window.grist.ready({requiredAccess: 'full'});
 
   try {
     let resultatFinal = await lireDocument(window.grist.docApi);
-    const tablesManquantes = TABLES_REQUISES.filter((t) => !(t in resultatFinal.resolution));
+    const tablesManquantes = TABLES_REQUISES.filter((table) => !(table in resultatFinal.resolution));
     if (tablesManquantes.length > 0) {
       await creerTablesManquantes(window.grist.docApi, tablesManquantes);
       const relu = await lireDocument(window.grist.docApi);
-      const encoreManquantes = TABLES_REQUISES.filter((t) => !(t in relu.resolution));
+      const encoreManquantes = TABLES_REQUISES.filter((table) => !(table in relu.resolution));
       if (encoreManquantes.length > 0) {
         afficherDocumentNonReconnu(racine, encoreManquantes);
         return;
@@ -460,7 +477,7 @@ async function demarrer() {
     magasin.brancherEcriture(
       construireEcritureGrist(window.grist.docApi, resultatFinal.resolution, resultatFinal.parametres),
     );
-    demarrerApp(racine, magasin, 'Document Grist connecté');
+    demarrerApp(racine, magasin, () => t('Document Grist connecté'));
   } catch (erreur) {
     afficherErreurConnexion(racine, erreur);
   }

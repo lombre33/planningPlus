@@ -2,6 +2,7 @@ import {afterEach, describe, expect, it} from 'vitest';
 import {demarrerApp} from './app.js';
 import {jeuMinimal} from './dev/jeu-minimal.js';
 import {normaliser} from './donnees/normaliser.js';
+import {choisirLangue} from './i18n.js';
 import {Magasin} from './store.js';
 
 const texte = (el) => el?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
@@ -14,7 +15,11 @@ describe.each([
   ['jeu minimal', () => new Magasin(jeuMinimal())],
   ['jeu réaliste', () => new Magasin(normaliser())],
 ])('démarrage de toutes les vues — %s', (_nom, creerMagasin) => {
-  afterEach(() => { document.body.innerHTML = ''; });
+  afterEach(() => {
+    choisirLangue('fr');
+    localStorage.clear();
+    document.body.innerHTML = '';
+  });
 
   function verifierVue(racine, contexte) {
     expect(racine.querySelector('h1')?.textContent, contexte).toBeTruthy();
@@ -71,6 +76,31 @@ describe.each([
       'Feuille de route bénévole', 'Indicatifs et équipes', 'Missions × sous-créneaux', 'Planning d’équipe sur tout le festival',
       'Plannings équipes imprimables', 'Roster bénévoles imprimable', 'Terrain',
     ].sort());
+  });
+
+  it('changer de langue redessine le menu et la vue active, sans rien recharger', () => {
+    document.body.innerHTML = '<div id="app"></div>';
+    const racine = document.getElementById('app');
+    demarrerApp(racine, creerMagasin(), 'test');
+    [...racine.querySelectorAll('.rail__item')].find((b) => texte(b) === '5Affectation').click();
+    const rail = () => [...racine.querySelector('.rail').children].slice(1).map((el) => (
+      el.classList.contains('rail__section') ? `[${texte(el)}]` : texte(el)
+    ));
+
+    choisirLangue('en');
+    expect(rail()).toEqual([
+      '[Steps]', '1Agenda', '2Tasks', '3Call signs', '4Volunteers', '5Assignment',
+      '[On the day]', 'On site',
+      '[Share]', 'Printouts',
+    ]);
+    expect(texte(racine.querySelector('h1'))).toBe('Assignment · day table');
+    expect(racine.querySelector('.rail__item[aria-current="true"]').textContent).toContain('Assignment');
+    expect(racine.querySelector('.rail').getAttribute('aria-label')).toBe('Schedule views');
+
+    choisirLangue('fr');
+    expect(texte(racine.querySelector('h1'))).toBe('Affectation · table du jour');
+    expect(rail()[1]).toBe('1Agenda');
+    expect(rail()[2]).toBe('2Missions');
   });
 
   it('Impressions : « par bénévole ou par équipe », « un jour ou tout le festival » ; le bandeau des jours seulement pour un jour', () => {
