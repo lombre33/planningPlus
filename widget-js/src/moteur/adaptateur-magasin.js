@@ -37,7 +37,9 @@
  *    du verrouillage.
  */
 
-import {couvertureBesoin, missionsCouvertesParGroupe, positionsDuGroupe} from '../logic/derive.js';
+import {
+  couvertureBesoin, missionsCouvertesParGroupe, positionsDuGroupe, regrouperParJour,
+} from '../logic/derive.js';
 
 import {classerCandidats as moteurClasserCandidats} from './affectation.js';
 import {detecterAnomalies as moteurDetecterAnomalies} from './anomalies.js';
@@ -91,6 +93,28 @@ function versAffinite(a) {
   return {benevoleAId: a.Benevole_A, benevoleBId: a.Benevole_B, type: a.Type};
 }
 
+/**
+ * Absences pointées à l'appel (`Presences`, `Present` faux), traduites en
+ * macro-créneaux : le moteur ne connaît pas les jours de festival, et un jour
+ * peut en réunir plusieurs (§6.2, coupure à 6h). Un absent à l'appel n'est
+ * plus éligible à aucun indicatif positionné ce jour-là — constat de l'audit
+ * UX du 2026-09-29 : l'appel n'était lu nulle part dans le moteur, un absent
+ * restait proposé en remplaçant et plaçable par l'algorithme. L'appel ne
+ * touche toujours à aucune place (choix d'Antoine du 2026-09-24).
+ */
+function absencesAppel(m) {
+  const absents = (m.presences ?? []).filter((p) => p.Present === false);
+  if (absents.length === 0) { return []; }
+  const macrosParJour = new Map(regrouperParJour(m.macroCreneaux).map((j) => [j.cle, j.macros]));
+  const resultat = [];
+  for (const presence of absents) {
+    for (const macro of macrosParJour.get(presence.Jour) ?? []) {
+      resultat.push({benevoleId: presence.Benevole, macroCreneauId: macro.id});
+    }
+  }
+  return resultat;
+}
+
 /** Conversion pure et sans état du `Magasin` vers `DonneesPlanning`. */
 export function versDonneesPlanning(m) {
   return {
@@ -107,6 +131,7 @@ export function versDonneesPlanning(m) {
     souhaitsMissions: m.souhaitsMissions.map((s) => ({benevoleId: s.Benevole, missionId: s.Mission, preference: s.Preference})),
     affinites: m.affinites.map(versAffinite),
     artistes: m.artistes.map(versArtiste),
+    absencesAppel: absencesAppel(m),
   };
 }
 
@@ -198,6 +223,7 @@ const LIBELLE_RAISON = {
   autre_indicatif_meme_jour: 'les bénévoles disponibles tiennent déjà un autre indicatif ce jour-là',
   refus_mission: 'les bénévoles disponibles ont refusé cette mission',
   statut_absent: 'les seuls bénévoles qui conviendraient sont marqués absents',
+  absent_appel: "les seuls bénévoles qui conviendraient sont absents à l'appel ce jour-là",
 };
 
 /**
@@ -248,6 +274,7 @@ const LIBELLE_RAISON_BENEVOLE = {
   autre_indicatif_meme_jour: 'tient déjà un autre indicatif ce jour-là',
   refus_mission: 'a refusé les missions encore ouvertes',
   statut_absent: 'marqué(e) absent(e)',
+  absent_appel: "absent(e) à l'appel ce jour-là",
 };
 
 /**

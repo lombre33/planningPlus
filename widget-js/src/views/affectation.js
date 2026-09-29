@@ -1,851 +1,754 @@
 /**
- * Vue « affectation manuelle » (cahier des charges §7.5 et §8.5) : le
- * parcours le plus critique de l'outil, et jusqu'ici le moins abouti. On
- * glisse un bénévole du roster vers une place, ou l'occupant d'une place
- * vers une autre pour l'échanger — chaque dépôt applique immédiatement
- * `Magasin.assignerPlace` et affiche aussitôt ce que le geste a réparé ou
- * cassé (§7.3), sans étape de confirmation intermédiaire : un glisser-déposer
- * direct n'a pas d'effet caché, contrairement à un recalcul algorithmique
- * qui peut permuter des places qu'on n'a pas touchées du doigt (ça, c'est la
- * vue Jour J, `views/jourJ.js`).
+ * Étape 5, « Affectation » : la table du jour (maquette B, validée par
+ * Antoine le 2026-09-29, brouillon compris). Une ligne par place, sur les
+ * heures du jour choisi dans le bandeau commun ; binômes côte à côte,
+ * indisponibilités hachurées et artistes souhaités dans le fond de chaque
+ * ligne. Un clic sur une ligne ouvre le panneau Scénarios : tous les
+ * remplacements, chaînes et échanges possibles, classés dans l'ordre
+ * d'Antoine (disponibilité, binôme, 30 minutes de chaque artiste
+ * souhaité), avec ce que chacun gagne et sacrifie.
  *
- * Un dépôt est refusé dans deux cas seulement (voir `logic/glisser-deposer.js`) :
- * la place visée est verrouillée, ou le bénévole se retrouverait sur deux
- * créneaux qui se chevauchent. Tout le reste (souhait refusé, indisponibilité…)
- * est autorisé mais se voit aussitôt comme anomalie — l'utilisateur reste
- * libre de traiter un cas impossible en connaissance de cause.
+ * Tout passe par le brouillon (`logic/brouillon.js`) : scénarios et
+ * algorithme s'y empilent, les compteurs montrent l'effet, et « Appliquer
+ * au planning » écrit tout d'un coup. Seul l'appel vaut tout de suite,
+ * comme avant : il ne touche aucune place (choix du 2026-09-24), la place
+ * d'un absent passe en jaune « à couvrir » et ses remplacements
+ * s'affichent. Le brouillon est gardé par magasin, d'un onglet à l'autre.
+ *
+ * Remplace l'ancienne vue à cartes et glisser-déposer : ici, un clic ouvre
+ * les options, au clavier comme à la souris.
  */
 
-import {TYPE_BENEVOLE_DRAG as TYPE_BENEVOLE, TYPE_PLACE_DRAG as TYPE_PLACE} from '../logic/dnd-types.js';
+import {indexerDisponibilites, regrouperParJour} from '../logic/derive.js';
 import {
-  benevolesDisponiblesCeJour, couvertureBesoin, heuresAffectees, indexer,
-  positionsDuGroupe, quartsDuJour, regrouperParJour,
-} from '../logic/derive.js';
-import {apercuAffectation, apercuEchange, verifierDepot} from '../logic/glisser-deposer.js';
-import {lancerAlgorithme} from '../logic/moteur-pont.js';
-import {classerCandidats, raisonsNonAffecte, raisonsPlaceVide} from '../moteur/adaptateur-magasin.js';
-import {carteCandidatCompacte} from '../ui/candidat-carte.js';
-import {formatHeures, h, icone, ICONES, vider} from '../ui/dom.js';
+  ajouterScenario, annulerDernier, appliquerBrouillon, creerBrouillon, deverrouillerDansBrouillon,
+  placesChangees, planningDuBrouillon, relancerAlgorithme, retirerDeLaPlace, toutAnnuler, verrouillerDansBrouillon,
+} from '../logic/brouillon.js';
+import {
+  appliquerMouvements, binomesDuBenevole, construireJournee, estACouvrir, jourAffiche, mesurer, souhaitsDuBenevole,
+} from '../logic/journee.js';
+import {nomsCompletsDepuisSource} from '../logic/noms-complets.js';
+import {
+  ameliore, choixPourPlace, deplacementsPourBenevole, deplacementsPourPlace, echangesPourPlace, placesPourBenevole,
+  preparerMoteur, scenariosPourPlace,
+} from '../logic/scenarios.js';
+import {libelleHeure, libelleHeurePlage, PAS_SECONDES} from '../temps.js';
+import {h, vider} from '../ui/dom.js';
 
-const LIBELLE_ANOMALIE = {
-  sous_effectif: 'Sous-effectifs',
-  sur_effectif: 'Sur-effectifs',
-  souhait_refuse: 'Souhaits refusés forcés',
-  indisponibilite: 'Indisponibilités forcées',
-  conflit_artiste: 'Conflits artiste',
-  chevauchement_creneaux: 'Chevauchements de créneaux',
-  double_engagement: 'Doubles engagements',
-  hors_quota: 'Quotas dépassés',
-};
+const ORDRE_TEXTE = 'Classés par : disponibilité (obligatoire), puis binômes souhaités, puis 30 min de chaque artiste souhaité, puis le moins de changements.';
+const AUTRES_AFFICHES = 40;
+
+/** Un brouillon par magasin, pour qu'il survive à un changement d'onglet. */
+const brouillons = new WeakMap();
+function brouillonDe(m) {
+  let b = brouillons.get(m);
+  if (!b) { b = creerBrouillon(); brouillons.set(m, b); }
+  return b;
+}
+
+const pluriel = (n, un, plusieurs = `${un}s`) => (n > 1 ? plusieurs : un);
+/** Les scénarios sont recalculés à chaque rendu : l'aperçu les reconnaît à leurs mouvements. */
+const cleScenario = (sc) => sc.mouvements.map((mv) => `${mv.benevoleId}:${mv.de}>${mv.vers}`).join(' ');
 
 export function montrerAffectation(container, m) {
-  let jourIndex = 0;
-  let equipeFiltre = 'toutes';
-  let rechercheRoster = '';
-  let nonAffectesSeulement = false;
-  let voirTout = false;
-  let dernierMessage = null;
-  let dernierResume = null;
-  // Repro confirmée sur le banc (2026-09-24, signalement d'Antoine « je
-  // dépose mais rien ne se passe ») : un dépôt qui couvre entièrement un
-  // besoin le fait aussitôt disparaître du tableau (filtré par défaut,
-  // `voirTout` étant décoché) — la carte que l'œil suivait s'efface sous le
-  // curseur, seul un bandeau ailleurs sur l'écran confirme que ça a marché.
-  // Garde visibles, pour le rendu suivant seulement, les besoins touchés par
-  // le dernier geste manuel — remis à zéro à toute navigation qui n'est pas
-  // ce geste (jour, case à cocher, algorithme, réinitialisation).
-  let besoinsIdsGardesVisibles = new Set();
-  // Point 4 de la nuit (2026-09-24, 4h34) : « quand je clique sur un
-  // bénévole j'aimerais voir où il est affecté... et pouvoir le
-  // désaffecter ». Un seul roster peut être ouvert à la fois.
-  let benevoleIdOuvert = null;
+  const brouillon = brouillonDe(m);
+  let selection = null;
+  let apercu = null;
+  let message = null;
+  let nomsComplets = new Map();
+  let vueActive = true;
+  let cleJourAffiche = null;
+  // Rendu courant, pour les gestes (voir `rafraichir`).
+  let r = null;
 
-  function basculerRosterOuvert(benevoleId) {
-    benevoleIdOuvert = benevoleIdOuvert === benevoleId ? null : benevoleId;
+  nomsCompletsDepuisSource(m).then((trouves) => {
+    if (!vueActive || trouves.size === 0) { return; }
+    nomsComplets = trouves;
+    rafraichir();
+  }).catch(() => { /* jamais bloquant : la table garde Benevole.Nom */ });
+
+  const nom = (id) => nomsComplets.get(id) ?? m.benevoles.find((b) => b.id === id)?.Nom ?? 'Bénévole introuvable';
+  const etiquette = (placeId) => {
+    const place = r.journee.placeParId.get(placeId);
+    return `${r.journee.groupeDePlace.get(placeId).groupe.Code} #${place.Rang}`;
+  };
+
+  // --- Gestes ---------------------------------------------------------------
+
+  function choisir(nouvelle) {
+    selection = nouvelle;
+    apercu = null;
     rafraichir();
   }
 
-  function messageDepuisDiff(base, diff) {
-    if (diff.creees.length === 0 && diff.resolues.length === 0) { return {texte: base, ton: 'ok'}; }
-    const parties = [base];
-    if (diff.resolues.length > 0) {
-      parties.push(`${diff.resolues.length} anomalie${diff.resolues.length > 1 ? 's' : ''} résolue${diff.resolues.length > 1 ? 's' : ''}`);
-    }
-    if (diff.creees.length > 0) {
-      parties.push(`${diff.creees.length} anomalie${diff.creees.length > 1 ? 's' : ''} créée${diff.creees.length > 1 ? 's' : ''}`);
-    }
-    return {texte: parties.join(' — '), ton: diff.creees.length > 0 ? 'danger' : 'ok'};
+  /** `malgre` : ce qu'un choix libre enfreint, redit une fois ajouté. */
+  function ajouter(mouvements, malgre = null) {
+    const liberees = mouvements.filter((mv) => mv.de != null && !mouvements.some((a) => a.vers === mv.de)).map((mv) => etiquette(mv.de));
+    ajouterScenario(m, brouillon, mouvements);
+    apercu = null;
+    const notes = [];
+    if (malgre) { notes.push(`Ajouté au brouillon malgré : ${malgre}.`); }
+    if (liberees.length > 0) { notes.push(`${liberees.join(', ')} ${liberees.length > 1 ? 'redeviennent libres' : 'redevient libre'} : l'algorithme pourra ${liberees.length > 1 ? 'les' : 'la'} reprendre.`); }
+    message = notes.length > 0 ? {ton: malgre ? 'danger' : 'info', texte: notes.join(' ')} : null;
+    const arrivee = mouvements.find((mv) => mv.vers != null);
+    if (arrivee) { selection = {type: 'place', placeId: arrivee.vers}; }
+    rafraichir();
   }
 
-  /** Besoins couverts par un groupe, via ses positions — sert à savoir quels
-   *  besoins garder visibles après un dépôt qui vient de les compléter. */
-  function besoinIdsDuGroupe(groupeId) {
-    return m.positionsGroupe.filter((p) => p.Groupe === groupeId).map((p) => p.Besoin);
+  function retirer(placeId, benevoleId) {
+    retirerDeLaPlace(m, brouillon, placeId);
+    apercu = null;
+    message = {ton: 'info', texte: `${nom(benevoleId)} retiré·e de ${etiquette(placeId)} dans le brouillon : la place redevient libre, l'algorithme pourra la reprendre. Verrouillez-la pour la garder vide.`};
+    rafraichir();
   }
 
-  /**
-   * Confirmé par Antoine (2026-09-24 4h38) : « l'algo ne doit tourner que
-   * dans le contexte d'un même jour ». Avant ce correctif, `lancerAlgorithme`
-   * était appelé sans périmètre et libérait/reremplissait tout le planning
-   * non verrouillé, tous les jours confondus — un lancement fait en
-   * regardant un jour pouvait donc redistribuer des places d'un autre jour
-   * sous ses yeux, sans que rien à l'écran ne le montre. Le périmètre suit
-   * maintenant le jour affiché (§6.2 : un « jour » peut réunir plusieurs
-   * macro-créneaux via la coupure à 6h, d'où `jour.macros`).
-   */
-  async function executerAlgorithme() {
-    besoinsIdsGardesVisibles = new Set();
-    dernierMessage = null;
-    const joursActuels = regrouperParJour(m.macroCreneaux);
-    const jourActuel = joursActuels[Math.min(jourIndex, Math.max(joursActuels.length - 1, 0))];
-    dernierResume = await lancerAlgorithme(
-      m,
-      jourActuel ? {perimetre: {macroCreneauIds: jourActuel.macros.map((macro) => macro.id)}} : undefined,
-    );
-    if (dernierResume.echecEcriture) {
-      dernierMessage = {texte: dernierResume.echecEcriture, ton: 'danger'};
+  /** Un verrou se pose ou s'ôte dans le brouillon sur une place qu'il
+   *  change, sinon tout de suite dans le planning (comme dans la maquette). */
+  async function changerVerrou(placeId, verrouillee) {
+    const libelle = etiquette(placeId);
+    const effet = verrouillee
+      ? 'verrouillée : ni les scénarios ni l’algorithme n’y toucheront.'
+      : 'déverrouillée : les scénarios et l’algorithme peuvent de nouveau la modifier.';
+    apercu = null;
+    if ((verrouillee ? verrouillerDansBrouillon : deverrouillerDansBrouillon)(m, brouillon, placeId)) {
+      message = {ton: 'info', texte: `${libelle} ${effet.replace(' :', ' dans le brouillon :')}`};
+      rafraichir();
+      return;
+    }
+    const resultat = await m.basculerVerrouillage(placeId);
+    message = resultat.ok
+      ? {ton: 'info', texte: `${libelle} ${effet.replace(' :', ' dans le planning :')}`}
+      : {ton: 'danger', texte: resultat.raison};
+    rafraichir();
+  }
+
+  async function pointer(benevoleId, present) {
+    const {jour, journee} = r;
+    try {
+      await m.definirPresence(benevoleId, jour.cle, present);
+    } catch {
+      message = {ton: 'danger', texte: "Échec de l'écriture dans le document Grist connecté. Réessayez."};
+      rafraichir();
+      return;
+    }
+    apercu = null;
+    message = null;
+    if (!present) {
+      const placeId = [...journee.occupantParPlace].find(([, b]) => b === benevoleId)?.[0];
+      if (placeId != null) { selection = {type: 'place', placeId}; }
+      message = {ton: 'info', texte: placeId != null
+        ? `${nom(benevoleId)} pointé·e absent·e : sa place ${etiquette(placeId)} reste à son nom, en jaune. Choisissez un remplacement pour l'ajouter au brouillon.`
+        : `${nom(benevoleId)} pointé·e absent·e : ne sera plus proposé·e aujourd'hui.`};
     }
     rafraichir();
   }
 
-  /**
-   * Réinitialise tout le planning (demande d'Antoine, 2026-09-23) : détruit
-   * sans recours toute correction manuelle sur l'ensemble du festival, pas
-   * seulement le jour affiché — un geste irréversible, donc confirmé
-   * explicitement (point soulevé par le coordinateur), avec le nombre de
-   * places concernées annoncé avant de trancher.
-   */
-  async function executerReinitialisation() {
-    const nbAffectees = m.places.filter((p) => p.Benevole != null || p.Verrouillee).length;
-    if (nbAffectees === 0) { return; }
+  function lancerAlgorithme() {
+    const n = relancerAlgorithme(m, brouillon, [...r.journee.macroIds]);
+    apercu = null;
+    message = n > 0
+      ? {ton: 'info', texte: `L'algorithme a ajouté ${n} ${pluriel(n, 'changement')} au brouillon. Rien n'est encore écrit.`}
+      : {ton: 'info', texte: "L'algorithme ne trouve rien à changer ce jour."};
+    rafraichir();
+  }
+
+  async function appliquer() {
+    const etiquettes = new Map([...r.journee.placeParId.keys()].map((id) => [id, etiquette(id)]));
+    const resultat = await appliquerBrouillon(m, brouillon);
+    apercu = null;
+    if (!resultat.ok) {
+      message = {ton: 'danger', texte: resultat.raison};
+    } else {
+      const refus = resultat.refusees.length > 0
+        ? ` ${resultat.refusees.length} ${pluriel(resultat.refusees.length, 'place avait', 'places avaient')} changé entre-temps dans le planning et n'${pluriel(resultat.refusees.length, 'a', 'ont')} pas été écrite${resultat.refusees.length > 1 ? 's' : ''} : ${resultat.refusees.map((id) => etiquettes.get(id) ?? `place ${id}`).join(', ')}.`
+        : '';
+      message = {ton: resultat.refusees.length > 0 ? 'danger' : 'ok', texte: `Planning mis à jour : ${resultat.ecrites} ${pluriel(resultat.ecrites, 'place écrite', 'places écrites')} d'un coup. Les places corrigées à la main restent verrouillées.${refus}`};
+    }
+    rafraichir();
+  }
+
+  async function reinitialiser() {
+    const nb = m.places.filter((p) => p.Benevole != null || p.Verrouillee).length;
+    if (nb === 0) { return; }
     const confirme = window.confirm(
-      `Réinitialiser TOUT le planning (${nbAffectees} place${nbAffectees > 1 ? 's' : ''} affectée${nbAffectees > 1 ? 's' : ''} ou verrouillée${nbAffectees > 1 ? 's' : ''}, tous les jours confondus) ?\n\n`
+      `Réinitialiser TOUT le planning (${nb} ${pluriel(nb, 'place affectée ou verrouillée', 'places affectées ou verrouillées')}, tous les jours confondus) ?\n\n`
       + "Ce geste vide et déverrouille chaque place, y compris vos corrections manuelles : irréversible. Vous pourrez ensuite relancer l'algorithme sur une ardoise vierge.",
     );
     if (!confirme) { return; }
-    besoinsIdsGardesVisibles = new Set();
-    dernierMessage = null;
-    dernierResume = null;
     const resultat = await m.reinitialiserAffectations();
-    dernierMessage = resultat.ok
-      ? {texte: `${nbAffectees} place${nbAffectees > 1 ? 's' : ''} réinitialisée${nbAffectees > 1 ? 's' : ''}.`, ton: 'ok'}
-      : {texte: resultat.raison, ton: 'danger'};
+    message = resultat.ok
+      ? {ton: 'ok', texte: `${nb} ${pluriel(nb, 'place réinitialisée', 'places réinitialisées')}.`}
+      : {ton: 'danger', texte: resultat.raison};
     rafraichir();
   }
 
-  function resumeAlgorithmeVue(resume) {
-    if (resume.placesTraitees === 0) {
-      const aucunePlace = m.places.length === 0;
-      // `placesTraitees` compte les propositions (un changement réel), pas
-      // le périmètre : une place non verrouillée mais qui reste vide faute
-      // de candidat (pénurie) ne produit aucune proposition non plus, donc
-      // ne doit pas être confondue avec « tout est verrouillé » — message
-      // qui pousserait à déverrouiller des places déjà libres, sans jamais
-      // pointer vers l'explication (juste en dessous, sur chaque place).
-      const toutVerrouille = !aucunePlace && m.places.every((p) => p.Verrouillee);
-      return h('div', {class: 'card', style: {marginBottom: '12px'}},
-        h('p', {class: 'view__intro', style: {margin: '0'}}, aucunePlace
-          ? "Rien à affecter : aucune place n'est encore positionnée sur un besoin. Positionnez des indicatifs (binômes) depuis la vue Indicatifs, puis relancez l'algorithme."
-          : toutVerrouille
-            ? "Rien à affecter : toutes les places existantes sont verrouillées (affectées à la main). Déverrouillez-en pour que l'algorithme puisse les reprendre."
-            : "Aucune place n'a pu être pourvue ou modifiée : les places non verrouillées restent sans candidat possible. Voir la raison affichée sur chacune, juste en dessous."),
-      );
+  // --- Table ----------------------------------------------------------------
+
+  function position(debut, fin) {
+    const {debut: d, fin: f} = r.journee;
+    const largeur = f - d;
+    return {left: `${((debut - d) / largeur) * 100}%`, width: `${((fin - debut) / largeur) * 100}%`};
+  }
+
+  function piste(elements, onclick) {
+    return h('div', {class: 'tj-piste', onclick}, ...elements.filter(Boolean));
+  }
+
+  /** Même vérité que le moteur : un quart « Artiste » est disponible. */
+  const libreAuQuart = (benevoleId, q) => {
+    const statut = r.dispos.get(`${benevoleId}:${q}`);
+    return statut === 'Disponible' || statut === 'Artiste';
+  };
+
+  function disponibleSur(benevoleId, sousCreneau) {
+    for (let q = sousCreneau.Debut; q < sousCreneau.Fin; q += PAS_SECONDES) {
+      if (!libreAuQuart(benevoleId, q)) { return false; }
     }
-    const groupes = new Map();
-    for (const a of resume.resultat.anomalies) {
-      const entree = groupes.get(a.code);
-      if (entree) { entree.nombre++; } else { groupes.set(a.code, {gravite: a.gravite, nombre: 1}); }
+    return true;
+  }
+
+  /** Hachures sur les quarts du jour où la personne n'est pas disponible. */
+  function indisponibilites(benevoleId) {
+    const segments = [];
+    let debut = null;
+    for (const q of r.quartsTries) {
+      const libre = libreAuQuart(benevoleId, q);
+      if (!libre && debut == null) { debut = q; }
+      if (libre && debut != null) { segments.push([debut, q]); debut = null; }
     }
-    const tries = [...groupes.entries()].sort(([, a], [, b]) => (
-      a.gravite === b.gravite ? 0 : a.gravite === 'a_corriger' ? -1 : 1
-    ));
-    return h('div', {class: 'card', style: {marginBottom: '12px'}},
-      h('div', {style: {display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap'}},
-        h('span', {class: 'pill pill--ok'}, `${resume.placesRemplies}/${resume.placesTraitees} places remplies`),
-        ...tries.map(([code, {gravite, nombre}]) => h(
-          'span', {class: `pill pill--${gravite === 'a_corriger' ? 'danger' : 'warn'}`},
-          `${nombre} ${LIBELLE_ANOMALIE[code].toLowerCase()}`,
-        )),
-      ),
-      tries.length === 0
-        ? h('p', {class: 'view__intro', style: {margin: '8px 0 0'}}, 'Aucune anomalie : le planning est entièrement couvert.')
-        : h('p', {class: 'view__intro', style: {margin: '8px 0 0'}},
-          'Les besoins à traiter en priorité (à corriger) apparaissent déjà dans le tableau ci-dessous.'),
+    if (debut != null) { segments.push([debut, r.journee.fin]); }
+    return segments.map(([a, z]) => h('span', {
+      class: 'tj-indispo', style: position(a, z), title: `Indisponible ${libelleHeurePlage(a, z)}`,
+    }));
+  }
+
+  function marquesArtistes(benevoleId) {
+    return souhaitsDuBenevole(r.journee, r.affiche, benevoleId).map(({artiste, vu}) => h('span', {
+      class: `tj-art${vu ? '' : ' tj-art--rate'}`, style: position(artiste.Debut, artiste.Fin),
+      title: `${vu ? 'Voit' : 'Rate'} ${artiste.Nom} (${libelleHeurePlage(artiste.Debut, artiste.Fin)})`,
+    }));
+  }
+
+  function boutonsAppel(benevoleId) {
+    const absent = r.journee.absents.has(benevoleId);
+    const present = r.journee.presents.has(benevoleId);
+    return h('div', {class: 'tj-appel', role: 'group', 'aria-label': `Appel : ${nom(benevoleId)}`, onclick: (e) => e.stopPropagation(), onkeydown: (e) => e.stopPropagation()},
+      h('button', {
+        type: 'button', class: 'tj-appel__ok', 'aria-pressed': String(present), title: 'Présent·e',
+        'aria-label': `${nom(benevoleId)} présent·e`, onclick: () => void pointer(benevoleId, true),
+      }, '✓'),
+      h('button', {
+        type: 'button', class: 'tj-appel__abs', 'aria-pressed': String(absent), title: 'Absent·e aujourd’hui',
+        'aria-label': `${nom(benevoleId)} absent·e`, onclick: () => void pointer(benevoleId, false),
+      }, '✗'),
     );
   }
 
-  // Filet du 2026-09-24 6h56 (Antoine bloqué depuis 6h34, demandé par le
-  // coordinateur) : `deposerBenevoleSurPlace`, `deposerPlaceSurPlace` et
-  // `viderPlace` sont toutes appelées depuis un gestionnaire d'événement
-  // DOM sans `await` ni `.catch()` (un dépôt glisser-déposer ne peut pas
-  // attendre) — jusqu'ici, une exception inattendue n'importe où dans leur
-  // chemin (par ex. `apercuAffectation`, qui traverse tout le modèle)
-  // devenait une promesse rejetée MUETTE : rien à l'écran, rien écrit,
-  // aucune piste. Chacune tourne maintenant dans un try/catch/finally qui
-  // garantit un message ET un rafraîchissement sur toute issue.
-  async function deposerBenevoleSurPlace(benevoleId, placeId) {
-    try {
-      const verdict = verifierDepot(m, benevoleId, placeId);
-      if (!verdict.ok) { dernierMessage = {texte: verdict.motif, ton: 'danger'}; return; }
-      const diff = apercuAffectation(m, placeId, benevoleId);
-      const groupeId = m.places.find((p) => p.id === placeId)?.Groupe;
-      const resultat = await m.assignerPlace(placeId, benevoleId, 'Manuel');
-      if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; return; }
-      if (groupeId != null) { besoinsIdsGardesVisibles = new Set(besoinIdsDuGroupe(groupeId)); }
-      const nom = indexer(m).benevole.get(benevoleId)?.Nom ?? 'Bénévole';
-      dernierMessage = messageDepuisDiff(`${nom} affecté(e).`, diff);
-    } catch (erreur) {
-      dernierMessage = {
-        texte: `Erreur inattendue en affectant : ${erreur instanceof Error ? erreur.message : String(erreur)}`,
-        ton: 'danger',
-      };
-    } finally {
-      rafraichir();
+  function celluleNom(contenu, onChoisir, libelle) {
+    return h('div', {
+      class: 'tj-nom', role: 'button', tabindex: '0', 'aria-label': libelle, onclick: onChoisir,
+      onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onChoisir(); } },
+    }, ...contenu);
+  }
+
+  function lignePlace(g, place, premiere) {
+    const {journee, reelle} = r;
+    const b = r.affiche.get(place.id) ?? null;
+    const avant = reelle.occupantParPlace.get(place.id) ?? null;
+    const dansBrouillon = journee.occupantParPlace.get(place.id) ?? null;
+    const changeReel = b !== avant;
+    const enApercu = apercu != null && b !== dansBrouillon;
+    const absent = b != null && journee.absents.has(b);
+    const verrouillee = journee.placeParId.get(place.id).Verrouillee;
+    const choisie = selection?.type === 'place' && selection.placeId === place.id;
+    const onChoisir = () => choisir({type: 'place', placeId: place.id});
+    const code = `${g.groupe.Code} #${place.Rang}`;
+
+    const coeur = b != null && !absent && binomesDuBenevole(journee, r.affiche, b).some((x) => x.reunis)
+      ? h('span', {class: 'tj-coeur', title: 'Avec son binôme souhaité'}, '♥') : null;
+    const rates = b != null && !absent ? souhaitsDuBenevole(journee, r.affiche, b).filter((s) => !s.vu) : [];
+    const horsDispo = b != null && !absent && g.positions.some(({sousCreneau}) => !disponibleSur(b, sousCreneau));
+    const sousTitre = [h('span', {class: 'tj-code'}, code)];
+    if (changeReel) { sousTitre.push(' · avant : ', h('s', null, avant != null ? nom(avant) : 'vide')); }
+    else if (absent) { sousTitre.push(' · absent·e à l’appel'); }
+    else if (horsDispo) { sousTitre.push(' · hors disponibilité'); }
+    else if (rates.length > 0) { sousTitre.push(` · rate ${rates.map((s) => s.artiste.Nom).join(', ')}`); }
+    else if (r.ix.equipe.get(g.groupe.Equipe)) { sousTitre.push(` · ${r.ix.equipe.get(g.groupe.Equipe).Nom}`); }
+
+    const libelle = b != null ? `${nom(b)}${absent ? ', absent·e' : ''}, ${code}` : `${code} à pourvoir`;
+    const cellule = celluleNom([
+      b != null ? boutonsAppel(b) : h('span', {class: 'tj-appel-vide'}),
+      h('div', {class: 'tj-nom__txt'},
+        h('strong', null, b != null ? nom(b) : '! À pourvoir', coeur, verrouillee ? h('span', {title: 'Verrouillée : corrigée à la main'}, '🔒') : null),
+        h('small', null, ...sousTitre),
+      ),
+    ], onChoisir, libelle);
+
+    const blocs = g.positions.map(({sousCreneau, mission}) => {
+      const classes = ['tj-bloc'];
+      const horsDispo = b != null && !absent && !disponibleSur(b, sousCreneau);
+      if (b == null) { classes.push('tj-bloc--vide'); if (g.critique) { classes.push('tj-bloc--vide-critique'); } }
+      else if (absent) { classes.push('tj-bloc--absent'); }
+      else if (mission?.Priorite === 'Critique') { classes.push('tj-bloc--critique'); }
+      if (horsDispo) { classes.push('tj-bloc--hors-dispo'); }
+      if (changeReel && b != null) { classes.push(enApercu ? 'tj-bloc--apercu' : 'tj-bloc--change'); }
+      const nomMission = mission?.Nom ?? 'Mission introuvable';
+      const etat = b == null ? ' · à pourvoir' : absent ? ' · absent·e' : horsDispo ? ' · hors disponibilité' : '';
+      return h('span', {
+        class: classes.join(' '), style: position(sousCreneau.Debut, sousCreneau.Fin),
+        title: `${nomMission} ${libelleHeurePlage(sousCreneau.Debut, sousCreneau.Fin)}${etat}`,
+      }, `${nomMission}${etat}`);
+    });
+    const fond = b != null && !absent ? [...indisponibilites(b), ...marquesArtistes(b)] : [];
+    const classes = ['tj-ligne'];
+    if (choisie) { classes.push('tj-ligne--choisie'); }
+    if (changeReel) { classes.push('tj-ligne--change'); }
+    if (premiere) { classes.push('tj-groupe-debut'); }
+    return h('div', {class: classes.join(' ')}, cellule, piste([...fond, ...blocs], onChoisir));
+  }
+
+  function ligneLibre(benevoleId, absent) {
+    const choisie = selection?.type === 'benevole' && selection.benevoleId === benevoleId;
+    const onChoisir = () => choisir({type: 'benevole', benevoleId});
+    const detail = absent ? 'absent·e à l’appel · sans place' : `libre · ${disponibiliteTexte(benevoleId) || 'aucune disponibilité ce jour'}`;
+    return h('div', {class: `tj-ligne${choisie ? ' tj-ligne--choisie' : ''}`},
+      celluleNom([boutonsAppel(benevoleId), h('div', {class: 'tj-nom__txt'}, h('strong', null, nom(benevoleId)), h('small', null, detail))],
+        onChoisir, `${nom(benevoleId)}, ${detail}`),
+      piste(absent ? [] : [...indisponibilites(benevoleId), ...marquesArtistes(benevoleId)], onChoisir));
+  }
+
+  function disponibiliteTexte(benevoleId) {
+    const plages = [];
+    let debut = null;
+    for (const q of r.quartsTries) {
+      const dispo = libreAuQuart(benevoleId, q);
+      if (dispo && debut == null) { debut = q; }
+      if (!dispo && debut != null) { plages.push([debut, q]); debut = null; }
     }
+    if (debut != null) { plages.push([debut, r.journee.fin]); }
+    return plages.length > 0 ? `dispo ${plages.map(([a, z]) => libelleHeurePlage(a, z)).join(', ')}` : '';
   }
 
-  async function deposerPlaceSurPlace(placeSourceId, placeCibleId) {
-    try {
-      const source = m.places.find((p) => p.id === placeSourceId);
-      const cible = m.places.find((p) => p.id === placeCibleId);
-      if (!source || !cible || source.Benevole == null) { return; }
-      if (source.Verrouillee || cible.Verrouillee) {
-        dernierMessage = {texte: 'Place verrouillée : déverrouillez-la avant de la modifier.', ton: 'danger'};
-        return;
-      }
-      if (source.Benevole != null) {
-        const verdict = verifierDepot(m, source.Benevole, placeCibleId, [placeSourceId]);
-        if (!verdict.ok) { dernierMessage = {texte: verdict.motif, ton: 'danger'}; return; }
-      }
-      if (cible.Benevole != null) {
-        const verdict = verifierDepot(m, cible.Benevole, placeSourceId, [placeCibleId]);
-        if (!verdict.ok) { dernierMessage = {texte: verdict.motif, ton: 'danger'}; return; }
-      }
-
-      const diff = apercuEchange(m, placeSourceId, placeCibleId);
-      const benevoleSource = source.Benevole;
-      const benevoleCible = cible.Benevole;
-      const resultat1 = await m.assignerPlace(placeSourceId, benevoleCible, 'Manuel');
-      if (!resultat1.ok) { dernierMessage = {texte: resultat1.raison, ton: 'danger'}; return; }
-      const resultat2 = await m.assignerPlace(placeCibleId, benevoleSource, 'Manuel');
-      if (!resultat2.ok) { dernierMessage = {texte: resultat2.raison, ton: 'danger'}; return; }
-      besoinsIdsGardesVisibles = new Set([...besoinIdsDuGroupe(source.Groupe), ...besoinIdsDuGroupe(cible.Groupe)]);
-      dernierMessage = messageDepuisDiff(benevoleCible != null ? 'Échange effectué.' : 'Déplacé.', diff);
-    } catch (erreur) {
-      dernierMessage = {
-        texte: `Erreur inattendue en échangeant : ${erreur instanceof Error ? erreur.message : String(erreur)}`,
-        ton: 'danger',
-      };
-    } finally {
-      rafraichir();
+  function table() {
+    const {journee} = r;
+    const heures = [];
+    const premiereHeure = Math.ceil(journee.debut / 3600) * 3600;
+    const pas = journee.fin - journee.debut > 10 * 3600 ? 2 : 1;
+    for (let t = premiereHeure; t <= journee.fin; t += 3600) {
+      const bord = t === journee.debut ? 'tj-axe__debut' : t === journee.fin ? 'tj-axe__fin' : null;
+      heures.push(h('span', {class: bord, style: {left: position(t, t).left}}, ((t - premiereHeure) / 3600) % pas === 0 ? libelleHeure(t) : ''));
     }
-  }
-
-  async function viderPlace(place) {
-    try {
-      if (place.Verrouillee) {
-        dernierMessage = {texte: 'Place verrouillée : déverrouillez-la avant de la modifier.', ton: 'danger'};
-        return;
-      }
-      const diff = apercuAffectation(m, place.id, null);
-      const resultat = await m.assignerPlace(place.id, null);
-      if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; return; }
-      dernierMessage = messageDepuisDiff('Place vidée.', diff);
-    } catch (erreur) {
-      dernierMessage = {
-        texte: `Erreur inattendue en vidant la place : ${erreur instanceof Error ? erreur.message : String(erreur)}`,
-        ton: 'danger',
-      };
-    } finally {
-      rafraichir();
+    const lignes = [
+      h('div', {class: 'tj-ligne tj-axe', 'aria-hidden': 'true'}, h('div', {class: 'tj-nom'}, h('span', {class: 'tj-note'}, 'Heure')),
+        h('div', {class: 'tj-piste'}, ...heures)),
+    ];
+    const artistes = m.artistes.filter((a) => a.Fin > journee.debut && a.Debut < journee.fin);
+    if (artistes.length > 0) {
+      lignes.push(h('div', {class: 'tj-ligne tj-artistes'},
+        h('div', {class: 'tj-nom'}, h('div', {class: 'tj-nom__txt'}, h('strong', null, '♪ Artistes'), h('small', null, 'passages du jour'))),
+        h('div', {class: 'tj-piste'}, ...artistes.map((a) => h('span', {
+          class: 'tj-bloc', style: position(Math.max(a.Debut, journee.debut), Math.min(a.Fin, journee.fin)),
+          title: `${a.Nom} ${libelleHeurePlage(a.Debut, a.Fin)}`,
+        }, a.Nom)))));
     }
-  }
-
-  /**
-   * Vide une place puis la déverrouille aussitôt — à la différence de
-   * `viderPlace` (le « vider » du tableau, qui verrouille volontairement une
-   * place laissée vide à la main, un choix voulu, voir `corrigerPlace` dans
-   * le moteur), tout geste du roster (point 4 de la nuit, 2026-09-24 : voir/
-   * désaffecter/réaffecter) vise à libérer le bénévole pour le réaffecter
-   * « facilement » ailleurs (mot d'Antoine). La place ne doit donc jamais
-   * rester verrouillée-vide : ni un glisser-déposer, ni un nouveau lancement
-   * de l'algorithme ne pourraient plus la reprendre — même piège que celui
-   * qu'évite déjà `executerReinitialisation` en déverrouillant, signalé par
-   * le coordinateur avant que ça atterrisse. Une seule fonction pour ce
-   * comportement : `desaffecterDepuisRoster` et `changerIndicatifDepuisRoster`
-   * (choix « Aucun » du dropdown) s'appuient toutes les deux dessus plutôt
-   * que de le répéter chacune à sa façon.
-   */
-  async function libererPlaceEtDeverrouiller(place) {
-    const resultat = await m.assignerPlace(place.id, null);
-    if (!resultat.ok) { return resultat; }
-    return m.basculerVerrouillage(place.id);
-  }
-
-  async function desaffecterDepuisRoster(place) {
-    try {
-      if (place.Verrouillee) {
-        dernierMessage = {texte: 'Place verrouillée : déverrouillez-la avant de la modifier.', ton: 'danger'};
-        return;
-      }
-      const diff = apercuAffectation(m, place.id, null);
-      const resultat = await libererPlaceEtDeverrouiller(place);
-      if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; return; }
-      dernierMessage = messageDepuisDiff('Désaffecté(e), place libre pour un glisser-déposer ou un nouveau lancement.', diff);
-    } catch (erreur) {
-      // Filet du 2026-09-24 6h56 (demandé par le coordinateur, Antoine
-      // toujours bloqué après deux correctifs) : sans ça, une exception
-      // inattendue ici (donnée manuelle qui ne respecte pas la forme que le
-      // code suppose, par exemple) interrompait le geste EN SILENCE — rien
-      // à l'écran, rien écrit, aucune piste. Voir le même filet sur
-      // `changerIndicatifDepuisRoster` juste en dessous.
-      dernierMessage = {
-        texte: `Erreur inattendue en désaffectant : ${erreur instanceof Error ? erreur.message : String(erreur)}`,
-        ton: 'danger',
-      };
-    } finally {
-      rafraichir();
+    if (journee.groupes.length === 0) {
+      lignes.push(h('p', {class: 'tj-vide'}, 'Aucun indicatif positionné ce jour-là. Positionnez des indicatifs depuis la vue Indicatifs (étape 3), puis revenez ici.'));
     }
-  }
-
-  /**
-   * Colonne indicatif du roster, demandée par Antoine en plus du point 4
-   * (2026-09-24 5h02) : choisir « Aucun » désaffecte (même chemin que
-   * `desaffecterDepuisRoster` ci-dessus, un seul comportement pour les
-   * deux — demandé explicitement par le coordinateur) ; choisir un autre
-   * indicatif du jour affiché y cherche une place encore ouverte (vide, non
-   * verrouillée). Un indicatif déjà complet reste dans la liste (pour rester
-   * visible) mais refuse avec un message clair plutôt qu'échouer en
-   * silence ou évincer quelqu'un d'autre à sa place.
-   *
-   * Bug bloquant corrigé le 2026-09-24 (5h52, signalé par Antoine : « je
-   * change l'indicatif, ça remet à Aucun, ça ne prend pas en compte ») :
-   * l'ancienne place était libérée AVANT que la nouvelle ne soit assignée.
-   * Si l'écriture Grist de la nouvelle affectation échouait (l'ancienne,
-   * elle, ayant réussi), le bénévole se retrouvait sans aucune place —
-   * exactement le symptôme observé — malgré un message d'erreur affiché.
-   * On assigne maintenant la nouvelle place D'ABORD ; l'ancienne n'est
-   * libérée qu'une fois la nouvelle confirmée, donc un échec laisse le
-   * bénévole sur son affectation de départ plutôt que sans aucune.
-   *
-   * Filet du 2026-09-24 6h56 (Antoine toujours bloqué après deux
-   * correctifs, demandé par le coordinateur) : toute la fonction tourne
-   * maintenant dans un try/catch qui garantit un message ET un
-   * rafraîchissement sur CHAQUE issue, y compris une exception qu'aucune
-   * branche ci-dessous ne prévoyait explicitement — jusqu'ici, une telle
-   * exception interrompait le geste sans rien montrer à l'écran ni rien
-   * écrire, un vrai échec devenant indiscernable d'un geste qui n'aurait
-   * simplement rien eu à faire.
-   */
-  async function changerIndicatifDepuisRoster(
-    benevole, placeActuelle, nouveauGroupeId,
-  ) {
-    try {
-      if (placeActuelle?.Verrouillee) {
-        dernierMessage = {texte: 'Place verrouillée : déverrouillez-la avant de la modifier.', ton: 'danger'};
-        return;
-      }
-      if (nouveauGroupeId == null) {
-        if (placeActuelle) { await desaffecterDepuisRoster(placeActuelle); }
-        return;
-      }
-      // Une place vide reste candidate même verrouillée : le verrou protège
-      // un occupant (`Benevole == null` l'exclut déjà) contre une éviction
-      // silencieuse, pas une place vide contre CE geste-ci — choisir un
-      // indicatif dans ce menu déroulant EST la correction manuelle que le
-      // verrou existe pour laisser passer (`assignerPlace` la reverrouille
-      // de toute façon, origine Manuel). Exclure aussi les places vides
-      // verrouillées bloquait tout indicatif déjà touché à la main cette
-      // nuit — sans aucun message d'erreur visible, puisque le geste
-      // s'arrêtait avant même de tenter une écriture (bug bloquant
-      // confirmé le 2026-09-24 6h42 sur une vraie instance : l'écriture
-      // qui part persiste bien, celle-ci ne partait jamais).
-      const placeCible = m.places.find((p) => p.Groupe === nouveauGroupeId && p.Benevole == null);
-      if (!placeCible) {
-        // Message plus précis (2026-09-24 7h05) : le nombre de places
-        // réellement trouvées pour ce groupe, pour distinguer un vrai
-        // complet d'un décompte inattendu plutôt qu'un « complet » générique.
-        const placesDeCeGroupe = m.places.filter((p) => p.Groupe === nouveauGroupeId);
-        dernierMessage = {
-          texte: `Indicatif complet (${placesDeCeGroupe.length} place${placesDeCeGroupe.length > 1 ? 's' : ''}, toutes occupées ou verrouillées) : libérez-y une place avant de le choisir.`,
-          ton: 'danger',
-        };
-        return;
-      }
-      const diff = apercuAffectation(m, placeCible.id, benevole.id);
-      const resultat = await m.assignerPlace(placeCible.id, benevole.id);
-      if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; return; }
-      if (placeActuelle) {
-        const resultatLiberation = await libererPlaceEtDeverrouiller(placeActuelle);
-        if (!resultatLiberation.ok) {
-          dernierMessage = {
-            texte: `Réaffecté(e), mais l'ancienne place n'a pas pu être libérée : ${resultatLiberation.raison}`,
-            ton: 'danger',
-          };
-          return;
-        }
-      }
-      dernierMessage = messageDepuisDiff(`${benevole.Nom} réaffecté(e).`, diff);
-    } catch (erreur) {
-      dernierMessage = {
-        texte: `Erreur inattendue en changeant l'indicatif : ${erreur instanceof Error ? erreur.message : String(erreur)}`,
-        ton: 'danger',
-      };
-    } finally {
-      rafraichir();
+    for (const g of journee.groupes) {
+      g.places.forEach((place, i) => lignes.push(lignePlace(g, place, i === 0)));
     }
+    const tenus = new Set([...r.affiche.values()].filter((b) => b != null));
+    const libres = [...journee.duJour].filter((b) => !journee.absents.has(b) && !tenus.has(b)).sort((a, b) => nom(a).localeCompare(nom(b), 'fr'));
+    lignes.push(h('div', {class: 'tj-ligne tj-section'}, h('div', {class: 'tj-nom'}, `Sans indicatif aujourd’hui (${libres.length})`), h('div', {class: 'tj-piste'})));
+    for (const b of libres) { lignes.push(ligneLibre(b, false)); }
+    const absentsSansPlace = [...journee.absents].filter((b) => journee.duJour.has(b) && !tenus.has(b)).sort((a, b) => nom(a).localeCompare(nom(b), 'fr'));
+    if (absentsSansPlace.length > 0) {
+      lignes.push(h('div', {class: 'tj-ligne tj-section'}, h('div', {class: 'tj-nom'}, `Absents sans place (${absentsSansPlace.length})`), h('div', {class: 'tj-piste'})));
+      for (const b of absentsSansPlace) { lignes.push(ligneLibre(b, true)); }
+    }
+    const grille = h('div', {class: 'tj-table', role: 'region', 'aria-label': 'Table du jour'}, ...lignes);
+    // Un trait par heure pleine dans le fond de chaque ligne (voir `.tj-piste`).
+    const largeur = journee.fin - journee.debut;
+    grille.style.setProperty('--tj-pas', `${(3600 / largeur) * 100}%`);
+    grille.style.setProperty('--tj-decalage', `${((premiereHeure - journee.debut) / largeur) * 100}%`);
+    return h('div', {class: 'tj-table-cadre'}, grille);
   }
 
-  function accepteDepot(e) {
-    const types = e.dataTransfer?.types ?? [];
-    return types.includes(TYPE_BENEVOLE) || types.includes(TYPE_PLACE);
+  // --- Panneau --------------------------------------------------------------
+
+  function texteMouvements(mouvements) {
+    const {journee} = r;
+    const remplace = (vers) => {
+      const q = journee.occupantParPlace.get(vers);
+      return q != null && journee.absents.has(q) ? `, à la place de ${nom(q)} (absent·e)` : '';
+    };
+    const [a, b] = mouvements;
+    if (mouvements.length === 2 && a.de != null && a.vers != null && b.de != null && b.vers != null && a.de === b.vers && b.de === a.vers) {
+      return [h('li', null, h('strong', null, nom(a.benevoleId)), ' et ', h('strong', null, nom(b.benevoleId)), ` échangent leurs places (${etiquette(a.de)} ↔ ${etiquette(b.de)})`)];
+    }
+    return mouvements.map((mv) => {
+      if (mv.de != null && mv.vers != null) { return h('li', null, h('strong', null, nom(mv.benevoleId)), ` passe de ${etiquette(mv.de)} à ${etiquette(mv.vers)}${remplace(mv.vers)}`); }
+      if (mv.vers != null) {
+        const tientDeja = [...journee.occupantParPlace].some(([, q]) => q === mv.benevoleId);
+        return h('li', null, h('strong', null, nom(mv.benevoleId)), `${tientDeja ? ' prend aussi' : ', sans indicatif, prend'} ${etiquette(mv.vers)}${remplace(mv.vers)}`);
+      }
+      return h('li', null, h('strong', null, nom(mv.benevoleId)), ` quitte ${etiquette(mv.de)} et reste disponible`);
+    });
   }
 
-  /**
-   * Pourquoi ce bénévole est ici plutôt qu'un autre (question du
-   * coordinateur, 2026-09-23) : les mêmes tags qu'un remplaçant proposé
-   * (`classerCandidats`, déjà utilisés en Jour J), mais pour l'occupant
-   * actuel plutôt qu'une suggestion — un arbitrage gagné (« avec un binôme
-   * souhaité ») se lit à côté d'un arbitrage perdu accepté quand même
-   * (« veut voir un artiste »), sans jamais montrer le score.
-   */
-  function pourquoiCeBenevole(ix, place, benevoleId) {
-    const groupe = ix.groupe.get(place.Groupe);
-    if (!groupe) { return null; }
-    return classerCandidats(m, ix, groupe.id, {placeIdCible: place.id}).find((c) => c.benevoleId === benevoleId) ?? null;
+  function criteres(scenario) {
+    const e = scenario.eval;
+    const paire = ([x, y]) => `${nom(x)} et ${nom(y)}`;
+    const artiste = ([b, a]) => `${nom(b)} voit ${r.ix.artiste.get(a)?.Nom ?? '?'}`;
+    const artisteRate = ([b, a]) => `${nom(b)} rate ${r.ix.artiste.get(a)?.Nom ?? '?'}`;
+    const liste = [h('span', {class: 'tj-crit tj-crit--ok'}, '✓ Disponibles sur tous leurs créneaux')];
+    if (e.binomesGagnes.length) { liste.push(h('span', {class: 'tj-crit tj-crit--ok'}, `♥ +${e.binomesGagnes.length} binôme souhaité : ${e.binomesGagnes.map(paire).join(', ')}`)); }
+    if (e.binomesPerdus.length) { liste.push(h('span', {class: 'tj-crit tj-crit--moins'}, `♥ −${e.binomesPerdus.length} : ${e.binomesPerdus.map(paire).join(', ')} séparés`)); }
+    if (!e.binomesGagnes.length && !e.binomesPerdus.length) { liste.push(h('span', {class: 'tj-crit'}, '♥ Binômes inchangés')); }
+    if (e.artistesGagnes.length) { liste.push(h('span', {class: 'tj-crit tj-crit--ok'}, `♪ +${e.artistesGagnes.length} : ${e.artistesGagnes.map(artiste).join(', ')}`)); }
+    if (e.artistesPerdus.length) { liste.push(h('span', {class: 'tj-crit tj-crit--moins'}, `♪ −${e.artistesPerdus.length} : ${e.artistesPerdus.map(artisteRate).join(', ')}`)); }
+    if (!e.artistesGagnes.length && !e.artistesPerdus.length) { liste.push(h('span', {class: 'tj-crit'}, '♪ Aucun artiste perdu')); }
+    for (const b of e.restauPerdue) { liste.push(h('span', {class: 'tj-crit tj-crit--attention'}, `${nom(b)} quitte la restauration souhaitée`)); }
+    for (const b of e.restauGagnee) { liste.push(h('span', {class: 'tj-crit tj-crit--ok'}, `${nom(b)} rejoint la restauration souhaitée`)); }
+    return h('div', {class: 'tj-scn__criteres'}, ...liste);
   }
 
-  /**
-   * Pourquoi cette place reste vide, en langage métier — le pendant côté
-   * échec de `pourquoiCeBenevole` (question du coordinateur, 2026-09-23).
-   * Seulement pour une place non verrouillée : une place vidée à la main
-   * (verrouillée) est un choix d'Antoine, pas un échec de l'algorithme à
-   * expliquer.
-   */
-  function pourquoiVide(place) {
-    if (place.Verrouillee) { return []; }
-    return raisonsPlaceVide(m, place.Groupe);
-  }
-
-  /**
-   * Qui choisir pour une place vide (question du coordinateur, 2026-09-23) :
-   * le roster seul ne dit ni qui convient, ni qui est déjà pris ailleurs sur
-   * ce créneau — le moteur le sait déjà, puisqu'il s'en sert pour classer.
-   * Purement informatif, comme `pourquoiCeBenevole` : le glisser-déposer
-   * libre reste inchangé, on n'empêche aucun choix que l'algorithme réprouve.
-   */
-  function candidatsPourPlaceVide(ix, place) {
-    if (place.Verrouillee) { return []; }
-    const groupe = ix.groupe.get(place.Groupe);
-    if (!groupe) { return []; }
-    return classerCandidats(m, ix, groupe.id);
-  }
-
-  /**
-   * Point 4 (nuit du 2026-09-23, corrigé après relecture du coordinateur) :
-   * Antoine veut des bénévoles SANS indicatif ce jour-là qui pourraient
-   * prendre une place vide d'une mission prioritaire au prix d'une
-   * contrainte qu'il peut choisir de lever lui-même (voir un artiste,
-   * binôme…) — pas les contraintes dures (compétence, indisponibilité) qui
-   * ne se lèvent pas sur un coup de tête. `classerCandidats` ne renvoie déjà
-   * que des éligibles ; un tag "moins" dessus est justement une de ces
-   * contraintes molles. On ne recalcule rien de nouveau côté moteur.
-   */
-  function candidatsBloquesVide(
-    classement, missionPrioritaire, candidatsVide, nonAffectesCeJour,
-  ) {
-    if (!missionPrioritaire || candidatsVide.length > 0) { return []; }
-    return classement
-      .filter((c) => nonAffectesCeJour.has(c.benevoleId) && c.tags.some((t) => t.sens === 'moins'))
-      .slice(0, 5);
-  }
-
-  function placeSlot(ix, place, missionPrioritaire, nonAffectesCeJour) {
-    const benevole = place.Benevole != null ? ix.benevole.get(place.Benevole) : null;
-    const pourquoi = benevole ? pourquoiCeBenevole(ix, place, benevole.id) : null;
-    const raisonsVide = benevole ? [] : pourquoiVide(place);
-    const classementVide = benevole ? [] : candidatsPourPlaceVide(ix, place);
-    const candidatsVide = classementVide.filter((c) => c.tags.every((t) => t.sens !== 'moins')).slice(0, 5);
-    const candidatsBloques = benevole ? [] : candidatsBloquesVide(classementVide, missionPrioritaire, candidatsVide, nonAffectesCeJour);
-    const classes = ['place-slot'];
-    classes.push(benevole ? 'place-slot--occupee' : 'place-slot--vide');
-    if (place.Verrouillee) { classes.push('place-slot--verrouillee'); }
-
-    const slot = h('div', {
-      class: classes.join(' '),
-      draggable: benevole && !place.Verrouillee ? 'true' : 'false',
-      ondragstart: benevole ? (e) => {
-        const dt = e.dataTransfer;
-        dt?.setData(TYPE_PLACE, String(place.id));
-        if (dt) { dt.effectAllowed = 'move'; }
-      } : undefined,
-      ondragover: (e) => {
-        const de = e;
-        if (!accepteDepot(de)) { return; }
-        de.preventDefault();
-        slot.classList.add('place-slot--survol');
-      },
-      ondragleave: () => slot.classList.remove('place-slot--survol'),
-      ondrop: (e) => {
-        const de = e;
-        de.preventDefault();
-        slot.classList.remove('place-slot--survol');
-        const benevoleRaw = de.dataTransfer?.getData(TYPE_BENEVOLE);
-        const placeRaw = de.dataTransfer?.getData(TYPE_PLACE);
-        if (benevoleRaw) { deposerBenevoleSurPlace(Number(benevoleRaw), place.id); }
-        else if (placeRaw && Number(placeRaw) !== place.id) { deposerPlaceSurPlace(Number(placeRaw), place.id); }
-      },
-    },
-      h('span', {class: 'place-slot__rang mono'}, `#${place.Rang}`),
-      benevole
-        ? h('div', {class: 'place-slot__contenu'},
-          h('span', {class: 'place-slot__nom'}, benevole.Nom),
-          pourquoi && pourquoi.tags.length > 0
-            ? h('div', {class: 'place-slot__pourquoi'}, ...pourquoi.tags.map((t) => h('span', {class: `tag tag--${t.sens}`}, t.texte)))
-            : null,
-        )
-        : h('div', {class: 'place-slot__contenu'},
-          h('span', {class: 'place-slot__vide-texte'}, 'Glissez un bénévole ici'),
-          raisonsVide.length > 0
-            ? h('span', {class: 'place-slot__raison-vide'}, raisonsVide.map((r) => r[0].toUpperCase() + r.slice(1)).join(' · '))
-            : null,
-          candidatsVide.length > 0
-            ? h('div', {class: 'place-slot__candidats'}, ...candidatsVide.map((c) => carteCandidatCompacte(
-              c,
-              () => deposerBenevoleSurPlace(c.benevoleId, place.id),
-              {avecScore: false},
-            )))
-            : null,
-          candidatsBloques.length > 0
-            ? h('div', {class: 'place-slot__candidats'},
-              h('span', {class: 'place-slot__raison-vide'}, 'Mission prioritaire : candidats possibles au prix d\'une contrainte'),
-              ...candidatsBloques.map((c) => carteCandidatCompacte(
-                c,
-                () => deposerBenevoleSurPlace(c.benevoleId, place.id),
-                {avecScore: false},
-              )))
-            : null,
+  function carteScenario(scenario, rang) {
+    const vu = apercu != null && cleScenario(apercu) === cleScenario(scenario);
+    const n = scenario.mouvements.length;
+    return h('article', {class: `tj-scn${rang === 0 ? ' tj-scn--premier' : ''}${vu ? ' tj-scn--apercu' : ''}`},
+      h('span', {class: 'tj-scn__rang'}, String(rang + 1)),
+      h('div', {class: 'tj-scn__corps'},
+        rang === 0 ? h('span', {class: 'tj-meilleur'}, 'Le mieux classé') : null,
+        h('ul', {class: 'tj-scn__mouvements'}, ...texteMouvements(scenario.mouvements)),
+        criteres(scenario),
+        h('div', {class: 'tj-scn__pied'},
+          h('span', {class: 'tj-scn__cout'}, `${n} ${pluriel(n, 'changement')}`),
+          h('button', {
+            class: 'btn btn--sm', type: 'button', 'aria-pressed': String(vu),
+            onclick: () => { apercu = vu ? null : scenario; rafraichir(); },
+          }, vu ? 'Masquer l’aperçu' : 'Voir dans la table'),
+          h('button', {class: 'btn btn--sm btn--primary', type: 'button', onclick: () => ajouter(scenario.mouvements)}, 'Ajouter au brouillon'),
         ),
-      place.Verrouillee
-        ? h('span', {class: 'pill pill--neutral'}, icone(ICONES.cadenas), 'Verrouillée')
-        : null,
-      h('div', {class: 'place-slot__actions'},
-        h('button', {
-          class: 'btn btn--ghost btn--sm', type: 'button',
-          title: place.Verrouillee ? 'Déverrouiller cette place' : 'Verrouiller cette place',
-          onclick: () => { void (async () => {
-            const resultat = await m.basculerVerrouillage(place.id);
-            if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; rafraichir(); }
-          })(); },
-        }, icone(ICONES.cadenas)),
-        benevole ? h('button', {
-          class: 'btn btn--ghost btn--sm', type: 'button', title: 'Vider',
-          onclick: () => viderPlace(place),
-        }, icone(ICONES.fermer)) : null,
       ),
-    );
-    return slot;
-  }
-
-  function groupeCarte(ix, groupe, missionPrioritaire, nonAffectesCeJour) {
-    const places = m.places.filter((p) => p.Groupe === groupe.id).sort((a, b) => a.Rang - b.Rang);
-    return h('div', {class: 'groupe-carte'},
-      h('span', {class: 'groupe-carte__code'}, groupe.Code),
-      ...places.map((place) => placeSlot(ix, place, missionPrioritaire, nonAffectesCeJour)),
     );
   }
 
-  function besoinCarte(ix, besoin, nonAffectesCeJour) {
-    // Mission/sous-créneau orphelins possibles (référence vers une ligne
-    // supprimée ailleurs, même défaut que l'équipe corrigé le 2026-09-23) :
-    // ne doit pas planter tout l'écran Affectation.
-    const mission = ix.mission.get(besoin.Mission);
-    const sousCreneau = ix.sousCreneau.get(besoin.Sous_creneau);
-    const c = couvertureBesoin(m, ix, besoin.id);
-    const fourchette = besoin.Effectif_max > besoin.Effectif_min
-      ? `${c.pourvues}/${besoin.Effectif_min}–${besoin.Effectif_max}` : `${c.pourvues}/${besoin.Effectif_min}`;
-    // Point 4 (nuit du 2026-09-23) : « mission prioritaire » = Critique,
-    // même seuil que le rouge/orange de la vue Indicatifs (point 3).
-    const missionPrioritaire = mission?.Priorite === 'Critique';
-    return h('div', {class: 'besoin-carte'},
-      h('div', {class: 'besoin-carte__tete'},
-        h('div', null,
-          h('span', {class: 'besoin-carte__mission'}, mission?.Nom ?? '?'),
-          h('br'),
-          h('span', {class: 'besoin-carte__sous-creneau'}, sousCreneau?.Libelle ?? '?'),
-        ),
-        h('span', {class: `pill pill--${c.statut === 'ok' ? 'ok' : c.statut === 'partiel' ? 'warn' : 'danger'}`}, fourchette),
-      ),
-      c.groupesPositionnes.length === 0
-        ? h('p', {class: 'empty'}, "Aucun indicatif n'est encore positionné sur ce besoin.")
-        : h('div', {class: 'besoin-carte__groupes'}, ...c.groupesPositionnes.map((g) => groupeCarte(ix, g.groupe, missionPrioritaire, nonAffectesCeJour))),
+  function listeScenarios(scenarios, visibles) {
+    if (scenarios.length === 0) { return []; }
+    const cartes = scenarios.slice(0, visibles).map((sc, i) => carteScenario(sc, i));
+    const reste = scenarios.slice(visibles, visibles + AUTRES_AFFICHES);
+    if (reste.length === 0) { return cartes; }
+    const caches = scenarios.length - visibles - reste.length;
+    const n = scenarios.length - visibles;
+    return [...cartes, h('details', {class: 'tj-autres'},
+      h('summary', null, `${n} ${pluriel(n, 'autre possibilité, moins bien classée', 'autres possibilités, moins bien classées')}`),
+      h('div', null, ...reste.map((sc, i) => carteScenario(sc, i + visibles)),
+        caches > 0 ? h('p', {class: 'tj-note'}, `Et ${caches} de plus, encore moins bien ${pluriel(caches, 'classée', 'classées')}.`) : null),
+    )];
+  }
+
+  function blocEcartes(ecartes, titre) {
+    if (ecartes.length === 0) { return null; }
+    return h('details', {class: 'tj-ecartes'},
+      h('summary', null, `${titre} (${ecartes.length})`),
+      h('ul', null, ...ecartes.map((e) => h('li', null, `${e.etiquette ?? nom(e.benevoleId)} : ${e.raison}`))),
     );
   }
 
-  function rosterCard(
-    ix, benevole, placeCeJour,
-    groupeIdsOuvertsCeJour, groupesDuJourTries,
-  ) {
-    // `ix.equipe.get(...)` peut renvoyer `undefined` si l'équipe du bénévole
-    // ne correspond plus à aucune équipe existante (référence orpheline,
-    // vue confirmée cassée sur le banc le 2026-09-23 : ça faisait planter
-    // tout le rendu d'Affectation, roster compris, plutôt que de simplement
-    // afficher ce bénévole sans couleur d'équipe).
-    const equipe = ix.equipe.get(benevole.Equipe);
-    const actif = benevole.Statut === 'Actif';
-    const heures = heuresAffectees(m, ix, benevole.id);
-    const ouvert = benevoleIdOuvert === benevole.id;
-    const carte = h('div', {
-      class: `roster-card${actif ? '' : ' roster-card--absent'}`,
-      draggable: actif ? 'true' : 'false',
-      title: actif
-        ? (placeCeJour
-          ? 'Glissez sur une place, ou changez son indicatif à droite pour le réaffecter'
-          : "Glissez sur une place pour affecter, cliquez pour voir pourquoi il n'est pas affecté")
-        : 'Absent : non affectable',
-      onclick: () => basculerRosterOuvert(benevole.id),
-      ondragstart: actif ? (e) => {
-        const dt = e.dataTransfer;
-        dt?.setData(TYPE_BENEVOLE, String(benevole.id));
-        if (dt) { dt.effectAllowed = 'move'; }
-      } : undefined,
-    },
-      h('span', {class: 'dot', style: {background: equipe?.Couleur ?? 'var(--text-faint)', flexShrink: '0'}}),
-      // `minWidth: '0'` indispensable sur un enfant flex à côté d'un
-      // `<select>` : sans lui, le nom peut se faire écraser à rien plutôt
-      // que de laisser le sélecteur prendre sa vraie taille (piège déjà
-      // rencontré sur Indicatifs, voir la mémoire de ce fil-là — régression
-      // visuelle signalée par Antoine le 2026-09-24 avant ce correctif).
-      h('span', {
-        class: 'roster-card__nom',
-        style: {flex: '1 1 auto', minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'},
-      }, benevole.Nom),
-      h('span', {class: 'roster-card__meta mono', style: {flexShrink: '0'}}, `${formatHeures(heures)}/${benevole.Quota_heures_max} h`),
-      // Colonne indicatif (demande d'Antoine, 2026-09-24 5h02, en plus du
-      // clic-pour-voir ci-dessus) : « Aucun » en tête, puis les indicatifs
-      // du jour affiché par ordre alphabétique — stopPropagation partout
-      // pour ne pas aussi basculer le panneau du clic sur la carte, et sur
-      // mousedown en plus de click : une carte `draggable` peut sinon voler
-      // l'interaction avant qu'un <select> imbriqué ne la reçoive. Largeur
-      // fixe et étroite (le code fait 2-3 caractères) : jamais dépendante
-      // du contenu, sans quoi le sélecteur peut redevenir large et écraser
-      // le nom si une option plus longue s'y glisse un jour.
-      h('select', {
-        class: 'roster-card__indicatif',
-        title: 'Changer son indicatif du jour affiché',
-        style: {flexShrink: '0', width: '56px', fontSize: '12px'},
-        onclick: (e) => e.stopPropagation(),
-        onmousedown: (e) => e.stopPropagation(),
-        onchange: (e) => {
-          const valeur = e.target.value;
-          void changerIndicatifDepuisRoster(benevole, placeCeJour?.place, valeur === '' ? null : Number(valeur));
-        },
-      },
-        h('option', {value: '', selected: placeCeJour == null}, 'Aucun'),
-        ...groupesDuJourTries.map((g) => h('option', {
-          value: String(g.id), selected: placeCeJour?.place.Groupe === g.id,
-        }, g.code)),
-      ),
-    );
-    // Un bénévole affecté n'ouvre plus de bandeau : sa mission tournant
-    // d'un besoin à l'autre au fil de la soirée, en montrer une seule était
-    // trompeur (déjà corrigé une fois pour le dropdown, même défaut ici) et
-    // redondant avec la colonne indicatif — signalé par Antoine, 2026-09-24
-    // 5h28 : « on s'en fiche, à retirer proprement ». Désaffecter reste
-    // possible, via « Aucun » dans le menu déroulant ci-dessus
-    // (`changerIndicatifDepuisRoster`, qui appelle `desaffecterDepuisRoster`
-    // pour ce cas). Le panneau « pourquoi il n'est pas affecté » (point 1)
-    // n'est pas concerné, il reste.
-    if (!ouvert || placeCeJour) { return carte; }
+  function horairesGroupe(g) {
+    return g.positions.map(({sousCreneau, mission}) => `${mission?.Nom ?? 'Mission introuvable'} ${libelleHeurePlage(sousCreneau.Debut, sousCreneau.Fin)}`).join(' · ');
+  }
 
-    return h('div', {class: 'roster-card-wrap', style: {display: 'flex', flexDirection: 'column'}},
-      carte,
-      h('div', {
-        class: 'roster-card__detail',
-        style: {padding: '6px 10px', fontSize: '13px', background: 'var(--bg-subtle, #f4f4f5)', borderRadius: '4px'},
-      },
-        h('span', {class: 'view__intro', style: {margin: '0'}},
-          `Non affecté(e) aujourd'hui — ${raisonsNonAffecte(m, benevole.id, groupeIdsOuvertsCeJour).join(' ; ')}.`),
-      ),
+  function blocVerrou(placeId, texte) {
+    return [
+      h('p', {class: 'tj-panneau__vide'}, texte),
+      h('button', {class: 'btn btn--sm tj-panneau__bouton', type: 'button', onclick: () => void changerVerrou(placeId, false)}, 'Déverrouiller'),
+    ];
+  }
+
+  /**
+   * Choix libre : une liste de tous les choix possibles, y compris ceux
+   * qu'aucun scénario ne propose (une suggestion n'empêche jamais un
+   * choix) ; ce qu'un choix enfreint s'affiche à côté, un choix impossible
+   * reste listé mais grisé avec sa raison.
+   */
+  function blocChoixLibre(titre, note, options, libelle) {
+    if (options.length === 0) { return null; }
+    const select = h('select', {class: 'select', 'aria-label': titre},
+      h('option', {value: ''}, 'Choisir…'),
+      ...options.map((o, i) => h('option', {value: String(i), disabled: o.mouvements == null},
+        `${libelle(o)}${o.raison ? ` · ${o.mouvements == null ? '' : 'contre : '}${o.raison}` : ''}`)),
     );
+    const bouton = h('button', {class: 'btn btn--sm', type: 'button', disabled: true, onclick: () => {
+      const o = options[Number(select.value)];
+      if (select.value === '' || !o?.mouvements) { return; }
+      ajouter(o.mouvements, o.raison ? `${libelle(o)}, ${o.raison}` : null);
+    }}, 'Ajouter au brouillon');
+    select.addEventListener('change', () => { bouton.disabled = select.value === ''; });
+    return h('details', {class: 'tj-choix'},
+      h('summary', null, titre),
+      h('p', {class: 'tj-note'}, note),
+      h('div', {class: 'tj-choix__ligne'}, select, bouton),
+    );
+  }
+
+  function blocAutreChoix(placeId) {
+    const options = choixPourPlace(r.journee, r.moteur(), placeId)
+      .sort((a, b) => nom(a.benevoleId).localeCompare(nom(b.benevoleId), 'fr'));
+    return blocChoixLibre('Choisir quelqu’un d’autre',
+      'Tous les présents du jour, même hors de vos critères : ce que le choix enfreint s’affiche à côté du nom. Qui tient déjà un indicatif sur ce créneau le quitte.',
+      options, (o) => `${nom(o.benevoleId)}${o.quittees?.length ? ` (quitte ${o.quittees.map(etiquette).join(', ')})` : ''}`);
+  }
+
+  function blocDeplacer(options, benevoleId) {
+    return blocChoixLibre(`Placer ${nom(benevoleId)} sur une autre place à couvrir`,
+      'Toutes les places à couvrir du jour, même hors de vos critères : ce que le choix enfreint s’affiche à côté.',
+      options, (o) => `${etiquette(o.placeId)} (${horairesGroupe(r.journee.groupeDePlace.get(o.placeId))})`);
+  }
+
+  function etatPersonne(benevoleId) {
+    const pills = [];
+    for (const {artiste, vu} of souhaitsDuBenevole(r.journee, r.journee.occupantParPlace, benevoleId)) {
+      pills.push(vu
+        ? h('span', {class: 'pill tj-pill--art'}, `♪ voit ${artiste.Nom} (${libelleHeure(artiste.Debut)})`)
+        : h('span', {class: 'pill pill--danger'}, `♪ rate ${artiste.Nom} (${libelleHeurePlage(artiste.Debut, artiste.Fin)})`));
+    }
+    for (const {partenaireId, reunis, codes} of binomesDuBenevole(r.journee, r.journee.occupantParPlace, benevoleId)) {
+      pills.push(reunis
+        ? h('span', {class: 'pill pill--ok'}, `♥ avec ${nom(partenaireId)}, binôme souhaité`)
+        : h('span', {class: 'pill pill--neutral'}, `♡ souhaite être avec ${nom(partenaireId)}${codes.length ? ` (${codes.join(', ')})` : ''}`));
+    }
+    return pills.length > 0 ? h('div', {class: 'tj-panneau__etat'}, ...pills) : null;
+  }
+
+  function panneauPlace(placeId) {
+    const {journee} = r;
+    const place = journee.placeParId.get(placeId);
+    const g = journee.groupeDePlace.get(placeId);
+    const occupant = journee.occupantParPlace.get(placeId) ?? null;
+    const code = etiquette(placeId);
+    const autre = g.places.map((p) => journee.occupantParPlace.get(p.id)).find((b, i) => g.places[i].id !== placeId && b != null && !journee.absents.has(b));
+    const tete = h('div', {class: 'tj-panneau__tete'},
+      h('h2', null, occupant != null ? `Remplacer ${nom(occupant)} en ${code}` : `${code} à pourvoir`),
+      h('p', null, horairesGroupe(g)),
+      occupant != null ? h('p', null, `Pointé·e absent·e à l’appel : la place reste à son nom tant que vous ne choisissez pas un remplacement.${autre != null ? ` Reste en place : ${nom(autre)}.` : ''}`) : null,
+    );
+    if (place.Verrouillee) {
+      return [tete, ...blocVerrou(placeId, '🔒 Place verrouillée : corrigée à la main, jamais touchée par un scénario ni par l’algorithme. Déverrouillez-la pour voir ses remplacements.')];
+    }
+    const {scenarios, ecartes} = scenariosPourPlace(journee, r.moteur(), placeId);
+    return [
+      tete,
+      h('p', {class: 'tj-panneau__ordre'}, ORDRE_TEXTE),
+      scenarios.length === 0 ? h('p', {class: 'tj-panneau__vide'}, 'Aucun remplacement ni chaîne ne respecte les disponibilités. Voir ci-dessous qui a été écarté et pourquoi.') : null,
+      ...listeScenarios(scenarios, 4),
+      h('p', {class: 'tj-laisser-vide'},
+        `${occupant != null ? 'Ou ne rien changer' : 'Ou laisser la place vide'} : ${autre != null ? `${nom(autre)} tiendra ${g.groupe.Code} seul·e` : `personne ne tiendra ${g.groupe.Code}`} sur ${g.positions.length === 1 ? 'son créneau' : `ses ${g.positions.length} créneaux`} (${g.critique ? 'mission critique : reste en rouge' : 'reste en orange'}).`,
+        occupant == null ? [' Verrouillée, elle restera vide même si vous relancez l’algorithme. ',
+          h('button', {class: 'btn btn--sm btn--ghost', type: 'button', onclick: () => void changerVerrou(placeId, true)}, 'Verrouiller vide')] : null),
+      blocAutreChoix(placeId),
+      blocEcartes(ecartes, 'Écartés'),
+    ];
+  }
+
+  function panneauPersonneEnPlace(placeId, benevoleId) {
+    const {journee} = r;
+    const place = journee.placeParId.get(placeId);
+    const g = journee.groupeDePlace.get(placeId);
+    const equipe = r.ix.equipe.get(g.groupe.Equipe)?.Nom;
+    const tete = h('div', {class: 'tj-panneau__tete'},
+      h('h2', null, nom(benevoleId)),
+      h('p', null, [etiquette(placeId), equipe, horairesGroupe(g)].filter(Boolean).join(' · ')),
+    );
+    if (place.Verrouillee) {
+      return [tete, etatPersonne(benevoleId), ...blocVerrou(placeId, '🔒 Place verrouillée : corrigée à la main, jamais déplacée par un scénario ni par l’algorithme. Déverrouillez-la pour voir ses échanges.')];
+    }
+    const {scenarios, ecartes} = echangesPourPlace(journee, r.moteur(), placeId);
+    const positifs = scenarios.filter(ameliore).length;
+    return [
+      tete,
+      etatPersonne(benevoleId),
+      h('h3', null, 'Échanges possibles'),
+      h('p', {class: 'tj-panneau__ordre'}, `${positifs === 0 ? 'Aucun échange n’améliore vos critères.' : `${positifs} ${pluriel(positifs, 'échange améliore', 'échanges améliorent')} vos critères.`} ${ORDRE_TEXTE}`),
+      scenarios.length === 0 ? h('p', {class: 'tj-panneau__vide'}, 'Aucun échange ne respecte les disponibilités des deux personnes.') : null,
+      ...listeScenarios(scenarios, 3),
+      h('div', {class: 'tj-laisser-vide'},
+        h('p', null, `Ou garder ${nom(benevoleId)} ici quoi qu’il arrive : verrouillée, la place ne bougera plus, ni par un scénario ni par l’algorithme. `,
+          h('button', {class: 'btn btn--sm btn--ghost', type: 'button', onclick: () => void changerVerrou(placeId, true)}, 'Verrouiller')),
+        h('p', null, `Ou retirer ${nom(benevoleId)} de ${etiquette(placeId)} : la place redevient libre. `,
+          h('button', {class: 'btn btn--sm btn--ghost', type: 'button', onclick: () => retirer(placeId, benevoleId)}, 'Retirer de la place')),
+      ),
+      blocDeplacer(deplacementsPourPlace(journee, r.moteur(), placeId), benevoleId),
+      blocEcartes(ecartes, 'Échanges écartés'),
+    ];
+  }
+
+  function panneauPersonneLibre(benevoleId) {
+    const {journee} = r;
+    const tete = h('div', {class: 'tj-panneau__tete'}, h('h2', null, nom(benevoleId)));
+    if (journee.absents.has(benevoleId)) {
+      tete.append(h('p', null, 'Pointé·e absent·e à l’appel aujourd’hui, sans indicatif.'));
+      return [tete, h('p', {class: 'tj-panneau__vide'}, 'S’il ou elle arrive finalement, ✓ à l’appel le ou la rend disponible pour les remplacements.')];
+    }
+    tete.append(h('p', null, `Sans indicatif aujourd’hui${disponibiliteTexte(benevoleId) ? ` · ${disponibiliteTexte(benevoleId)}` : ''}`));
+    const {scenarios, ecartes} = placesPourBenevole(journee, r.moteur(), benevoleId);
+    const aCouvrir = [...journee.occupantParPlace.values()].some((b) => estACouvrir(journee, b));
+    return [
+      tete,
+      etatPersonne(benevoleId),
+      h('h3', null, 'Places à couvrir qu’il ou elle peut prendre'),
+      h('p', {class: 'tj-panneau__ordre'}, ORDRE_TEXTE),
+      scenarios.length === 0 ? h('p', {class: 'tj-panneau__vide'}, aCouvrir
+        ? 'Aucune place à couvrir ne lui convient en ce moment.'
+        : 'Toutes les places du jour sont couvertes : il ou elle reste en renfort.') : null,
+      ...listeScenarios(scenarios, 3),
+      blocDeplacer(deplacementsPourBenevole(journee, r.moteur(), benevoleId), benevoleId),
+      blocEcartes(ecartes, 'Places écartées'),
+    ];
+  }
+
+  function panneau() {
+    let contenu;
+    if (selection?.type === 'place' && r.journee.placeParId.has(selection.placeId)) {
+      const occupant = r.journee.occupantParPlace.get(selection.placeId) ?? null;
+      contenu = occupant != null && !r.journee.absents.has(occupant)
+        ? panneauPersonneEnPlace(selection.placeId, occupant)
+        : panneauPlace(selection.placeId);
+    } else if (selection?.type === 'benevole' && r.journee.duJour.has(selection.benevoleId)) {
+      contenu = panneauPersonneLibre(selection.benevoleId);
+    } else {
+      contenu = [h('p', {class: 'tj-panneau__vide'}, 'Cliquez une place à pourvoir ou une personne pour voir toutes les options, classées selon vos priorités.')];
+    }
+    return h('aside', {class: 'tj-panneau', 'aria-live': 'polite', 'aria-label': 'Scénarios'}, ...contenu.filter(Boolean));
+  }
+
+  // --- Barre d'outils et brouillon -------------------------------------------
+
+  function compteurs(mes) {
+    const aCouvrir = mes.aCouvrir.length;
+    return h('div', {class: 'tj-compteurs'},
+      h('span', {class: `pill ${aCouvrir ? 'pill--warn' : 'pill--ok'}`}, `${aCouvrir ? '! ' : '✓ '}${mes.couvertes} / ${mes.totalPlaces} places couvertes`),
+      h('span', {class: `pill ${mes.binomes === mes.binomesTotal ? 'pill--ok' : 'pill--neutral'}`}, `♥ Binômes souhaités ${mes.binomes} / ${mes.binomesTotal}`),
+      h('span', {class: `pill ${mes.artistes === mes.artistesTotal ? 'pill--ok' : 'tj-pill--art'}`}, `♪ Artistes souhaités vus ${mes.artistes} / ${mes.artistesTotal}`),
+    );
+  }
+
+  function barreBrouillon() {
+    const changees = placesChangees(m, brouillon);
+    const ailleurs = changees.filter((id) => !r.journee.placeParId.has(id)).length;
+    const avant = mesurer(r.reelle);
+    const apres = mesurer(r.journee);
+    const delta = (libelle, a, b, plusEstMieux) => h('span', null, `${libelle} `,
+      h('span', {class: `tj-delta${a === b ? '' : (b > a) === plusEstMieux ? ' tj-delta--mieux' : ' tj-delta--pire'}`}, `${a} → ${b}`));
+    const n = changees.length;
+    // Une place dont seul le verrou change (même occupant) s'écrit aussi.
+    const verrous = [...brouillon.modifs].filter(([id, modif]) => {
+      const reelle = m.places.find((p) => p.id === id);
+      return reelle && (reelle.Benevole ?? null) === modif.Benevole && reelle.Verrouillee !== modif.Verrouillee;
+    }).length;
+    let titre = 'Brouillon vide';
+    if (n > 0) { titre = `Brouillon : ${n} ${pluriel(n, 'place change', 'places changent')}${ailleurs > 0 ? ` (dont ${ailleurs} un autre jour)` : ''}`; }
+    else if (verrous > 0) { titre = `Brouillon : ${verrous} ${pluriel(verrous, 'verrou change', 'verrous changent')}`; }
+    return h('div', {class: 'tj-brouillon', role: 'region', 'aria-label': 'Brouillon'},
+      h('div', {class: 'tj-brouillon__txt'},
+        h('strong', null, titre),
+        ...(n + verrous > 0
+          ? [delta('♥ Binômes', avant.binomes, apres.binomes, true), delta('♪ Artistes', avant.artistes, apres.artistes, true), delta('À couvrir', avant.aCouvrir.length, apres.aCouvrir.length, false)]
+          : [h('span', {class: 'tj-note'}, 'Ajoutez un scénario ou lancez l’algorithme : rien n’est écrit dans le planning avant « Appliquer au planning ».')]),
+      ),
+      h('button', {class: 'btn btn--sm', type: 'button', disabled: brouillon.pile.length === 0, onclick: () => { annulerDernier(brouillon); apercu = null; rafraichir(); }}, 'Annuler le dernier'),
+      h('button', {class: 'btn btn--sm', type: 'button', disabled: brouillon.modifs.size === 0, onclick: () => {
+        toutAnnuler(brouillon); apercu = null; message = {ton: 'info', texte: 'Brouillon vidé : le planning n’a pas bougé.'}; rafraichir();
+      }}, 'Tout annuler'),
+      h('button', {class: 'btn btn--primary', type: 'button', disabled: brouillon.modifs.size === 0, onclick: () => void appliquer()}, 'Appliquer au planning'),
+    );
+  }
+
+  // --- Rendu ------------------------------------------------------------------
+
+  /** La vue se redessine entière à chaque geste : on garde ce que la
+   *  personne regardait (défilement de la table et du panneau, rubriques
+   *  ouvertes du panneau tant qu'il montre la même chose). */
+  function memoriser() {
+    const panneauActuel = container.querySelector('.tj-panneau');
+    return {
+      selection: JSON.stringify(selection),
+      tableGauche: container.querySelector('.tj-table-cadre')?.scrollLeft ?? 0,
+      panneauHaut: panneauActuel?.scrollTop ?? 0,
+      ouvertes: [...(panneauActuel?.querySelectorAll('details') ?? [])].map((d) => d.open),
+    };
+  }
+
+  function restaurer(avant) {
+    const cadre = container.querySelector('.tj-table-cadre');
+    if (cadre) { cadre.scrollLeft = avant.tableGauche; }
+    if (avant.selection !== JSON.stringify(selection)) { return; }
+    const panneauActuel = container.querySelector('.tj-panneau');
+    if (!panneauActuel) { return; }
+    const details = [...panneauActuel.querySelectorAll('details')];
+    if (details.length === avant.ouvertes.length) { details.forEach((d, i) => { d.open = avant.ouvertes[i]; }); }
+    panneauActuel.scrollTop = avant.panneauHaut;
   }
 
   function rafraichir() {
-    const ix = indexer(m);
-    const jours = regrouperParJour(m.macroCreneaux);
-    jourIndex = Math.min(jourIndex, Math.max(jours.length - 1, 0));
-    const jour = jours[jourIndex];
-    const sousCreneauxDuJour = jour
-      ? new Set(m.sousCreneaux.filter((sc) => jour.macros.some((ma) => ma.id === sc.Macro_creneau)).map((sc) => sc.id))
-      : new Set();
-
-    const besoinsExistantsDuJour = m.besoins.filter((b) => sousCreneauxDuJour.has(b.Sous_creneau));
-    const besoinsDuJour = besoinsExistantsDuJour
-      .map((besoin) => ({besoin, c: couvertureBesoin(m, ix, besoin.id)}))
-      .filter(({besoin, c}) => voirTout || c.statut !== 'ok' || besoinsIdsGardesVisibles.has(besoin.id))
-      .sort((a, b) => {
-        const rang = {sous: 0, partiel: 1, ok: 2};
-        return rang[a.c.statut] - rang[b.c.statut];
-      });
-
-    // Roster limité aux bénévoles ayant une vraie disponibilité ce jour-là
-    // (demande d'Antoine, 2026-09-23 ; prédicat corrigé le 2026-09-24, voir
-    // `benevolesDisponiblesCeJour` — un souhait « voir un artiste » n'en est
-    // pas une). Les quarts du jour affiché viennent des mêmes macro-créneaux
-    // que `sousCreneauxDuJour` ci-dessus, pas des sous-créneaux (une dispo se
-    // déclare par macro-créneau, voir l'écran Disponibilités).
-    const benevolesDisposCeJour = benevolesDisponiblesCeJour(m, quartsDuJour(jour));
-
-    // Point 5 (nuit du 2026-09-23, corrigé après relecture du coordinateur) :
-    // un simple filtre, pas un nouveau classement — mais "affecté" doit
-    // suivre le même filtre par jour que le reste de la vue (roster compris,
-    // demande d'Antoine du 20h38), pas "tous jours confondus" : un bénévole
-    // pris samedi mais libre dimanche doit pouvoir ressortir non affecté le
-    // dimanche. Réutilisé tel quel par `candidatsBloquesVide` (point 4).
-    const benevolesAffectesCeJour = new Set(
-      m.places
-        .filter((p) => p.Benevole != null)
-        .filter((p) => positionsDuGroupe(m, ix, p.Groupe).some(({sousCreneau}) => sousCreneauxDuJour.has(sousCreneau.id)))
-        .map((p) => p.Benevole),
-    );
-    const nonAffectesCeJour = new Set(m.benevoles.filter((b) => !benevolesAffectesCeJour.has(b.id)).map((b) => b.id));
-
-    // Point 4 de la nuit : place du jour affiché pour un bénévole donné (au
-    // plus une, l'exclusivité par jour du moteur en garantit une seule en
-    // temps normal — une correction manuelle pourrait en théorie en créer
-    // plusieurs, la première trouvée suffit pour ce qu'affiche le roster).
-    const placeCeJourParBenevole = new Map();
-    for (const place of m.places) {
-      if (place.Benevole == null || placeCeJourParBenevole.has(place.Benevole)) { continue; }
-      const position = positionsDuGroupe(m, ix, place.Groupe).find(({sousCreneau}) => sousCreneauxDuJour.has(sousCreneau.id));
-      if (!position) { continue; }
-      const mission = ix.mission.get(position.besoin.Mission);
-      const groupe = ix.groupe.get(place.Groupe);
-      placeCeJourParBenevole.set(place.Benevole, {place, libelle: `${mission?.Nom ?? '?'} — ${groupe?.Code ?? '?'}`});
-    }
-
-    // Point 1 de la nuit (2026-09-24 4h24) : groupes encore ouverts
-    // aujourd'hui (au moins une place vide non verrouillée), pour expliquer
-    // pourquoi un bénévole non affecté ne l'est sur aucun d'eux.
-    const groupeIdsOuvertsCeJour = [...new Set(
-      m.places
-        .filter((p) => p.Benevole == null && !p.Verrouillee)
-        .filter((p) => positionsDuGroupe(m, ix, p.Groupe).some(({sousCreneau}) => sousCreneauxDuJour.has(sousCreneau.id)))
-        .map((p) => p.Groupe),
-    )];
-
-    // Colonne indicatif du roster (2026-09-24 5h02) : tous les indicatifs du
-    // jour affiché, complets ou non (voir changerIndicatifDepuisRoster pour
-    // ce qui se passe si l'un d'eux est complet), triés par code.
-    const groupeIdsDuJour = [...new Set(
-      m.places
-        .filter((p) => positionsDuGroupe(m, ix, p.Groupe).some(({sousCreneau}) => sousCreneauxDuJour.has(sousCreneau.id)))
-        .map((p) => p.Groupe),
-    )];
-    // Juste le code (pas la mission, corrigé le 2026-09-24 : un même
-    // indicatif tourne d'une mission à l'autre au fil de la soirée — lui
-    // accoler une mission arbitraire n'a pas de sens et cassait la mise en
-    // page en plus, régression signalée par Antoine).
-    const groupesDuJourTries = groupeIdsDuJour
-      .map((id) => ix.groupe.get(id))
-      .filter((g) => g != null)
-      .map((g) => ({id: g.id, code: g.Code}))
-      .sort((a, b) => a.code.localeCompare(b.code, 'fr'));
-    const rosterFiltreEquipeRecherche = m.benevoles
-      .filter((b) => equipeFiltre === 'toutes' || b.Equipe === equipeFiltre)
-      .filter((b) => rechercheRoster.trim() === '' || b.Nom.toLowerCase().includes(rechercheRoster.trim().toLowerCase()))
-      .filter((b) => !nonAffectesSeulement || nonAffectesCeJour.has(b.id));
-    const roster = rosterFiltreEquipeRecherche
-      .filter((b) => benevolesDisposCeJour.has(b.id))
-      .sort((a, b) => a.Nom.localeCompare(b.Nom, 'fr'));
-
+    const avant = memoriser();
     vider(container);
-    container.append(
-      h('div', {class: 'affectation__lancement', style: {display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', flexWrap: 'wrap'}},
+    const jour = jourAffiche(regrouperParJour(m.macroCreneaux), m.macroCreneauSelectionne);
+    if (!jour) {
+      r = null;
+      container.append(h('p', {class: 'empty'}, 'Aucun jour de festival : créez d’abord un macro-créneau dans l’Agenda (étape 1).'));
+      return;
+    }
+    if (jour.cle !== cleJourAffiche) {
+      // Autre jour choisi dans le bandeau : la sélection et l'aperçu visaient l'ancien.
+      if (cleJourAffiche != null) { selection = null; apercu = null; message = null; }
+      cleJourAffiche = jour.cle;
+    }
+    const planning = planningDuBrouillon(m, brouillon);
+    const journee = construireJournee(planning, jour);
+    let moteur = null;
+    r = {
+      jour, journee, reelle: construireJournee(m, jour), ix: journee.ix,
+      affiche: apercu ? appliquerMouvements(journee.occupantParPlace, apercu.mouvements) : journee.occupantParPlace,
+      dispos: indexerDisponibilites(m),
+      quartsTries: [...journee.quarts].sort((a, b) => a - b),
+      moteur: () => { moteur ??= preparerMoteur(planning); return moteur; },
+    };
+    if (r.quartsTries.length === 0) { r.quartsTries = [journee.debut]; }
+
+    const brouillonNonVide = brouillon.modifs.size > 0;
+    container.append(...[
+      h('div', {class: 'tj-outils'},
+        h('button', {class: 'btn btn--primary', type: 'button', onclick: lancerAlgorithme}, 'Relancer l’algorithme dans le brouillon'),
+        compteurs(mesurer(journee)),
         h('button', {
-          class: 'btn btn--primary', type: 'button', title: 'Ne remplit que le jour affiché — les autres jours ne sont jamais touchés',
-          onclick: executerAlgorithme,
-        }, "Lancer l'algorithme"),
-        h('button', {
-          class: 'btn btn--ghost', type: 'button', title: 'Vide et déverrouille tout le planning, tous les jours confondus',
-          onclick: () => { void executerReinitialisation(); },
+          class: 'btn btn--ghost btn--sm tj-outils__fin', type: 'button', disabled: brouillonNonVide,
+          title: brouillonNonVide ? 'Appliquez ou annulez d’abord le brouillon' : 'Vide et déverrouille tout le planning, tous les jours confondus',
+          onclick: () => void reinitialiser(),
         }, 'Réinitialiser tout'),
-        h('span', {class: 'view__intro', style: {margin: '0'}},
-          "Remplit le jour affiché, non verrouillé, à partir des indicatifs positionnés et des disponibilités (§7.5.1). Peut se relancer à volonté : les corrections manuelles, verrouillées, ne sont jamais reprises, et les autres jours ne sont jamais touchés."),
       ),
-      h('div', null, dernierResume ? resumeAlgorithmeVue(dernierResume) : null),
-      h('div', {class: 'affectation__banniere'},
-        dernierMessage
-          ? h('span', {class: `pill pill--${dernierMessage.ton}`}, dernierMessage.texte)
-          : h('span', {class: 'pill pill--neutral'}, 'Glissez un bénévole du roster vers une place, ou une place vers une autre pour échanger.'),
+      h('div', {class: 'tj-legende', 'aria-label': 'Légende'},
+        h('span', null, h('i', {class: 'tj-l-bloc'}), 'mission'),
+        h('span', null, h('i', {class: 'tj-l-vide'}), 'à pourvoir'),
+        h('span', null, h('i', {class: 'tj-l-absent'}), 'absent·e à remplacer'),
+        h('span', null, h('i', {class: 'tj-l-indispo'}), 'indisponible'),
+        h('span', null, h('i', {class: 'tj-l-hors-dispo'}), 'placé·e hors disponibilité'),
+        h('span', null, h('i', {class: 'tj-l-art'}), 'voit son artiste'),
+        h('span', null, h('i', {class: 'tj-l-rate'}), 'rate son artiste'),
+        h('span', null, h('i', {class: 'tj-l-change'}), 'changé dans le brouillon'),
+        h('span', null, '♥ binôme souhaité · 🔒 verrouillée'),
       ),
-      h('div', {class: 'agenda__toolbar', style: {marginBottom: '12px'}},
-        ...jours.map((j, i) => h('button', {
-          class: `btn btn--sm${i === jourIndex ? ' btn--primary' : ''}`, type: 'button',
-          onclick: () => { jourIndex = i; besoinsIdsGardesVisibles = new Set(); benevoleIdOuvert = null; rafraichir(); },
-        }, j.libelle.split(' ').slice(0, 1).join(' '))),
-        h('label', {class: 'field', style: {flexDirection: 'row', alignItems: 'center', gap: '6px'}},
-          h('input', {
-            type: 'checkbox', checked: voirTout,
-            onchange: (e) => {
-              voirTout = e.target.checked;
-              besoinsIdsGardesVisibles = new Set();
-              rafraichir();
-            },
-          }),
-          h('span', null, 'Afficher aussi les besoins déjà couverts'),
-        ),
-      ),
-      h('div', {class: 'affectation__layout'},
-        h('div', {class: 'affectation__roster'},
-          h('div', {class: 'affectation__roster-toolbar'},
-            h('input', {
-              class: 'input', type: 'search', placeholder: 'Rechercher un bénévole…', value: rechercheRoster,
-              oninput: (e) => { rechercheRoster = e.target.value; rafraichir(); },
-            }),
-            h('select', {
-              class: 'select',
-              onchange: (e) => {
-                const v = e.target.value;
-                equipeFiltre = v === 'toutes' ? 'toutes' : Number(v);
-                rafraichir();
-              },
-            },
-              h('option', {value: 'toutes'}, 'Toutes les équipes'),
-              ...m.equipes.map((eq) => h('option', {value: String(eq.id), selected: equipeFiltre === eq.id}, eq.Nom)),
-            ),
-            h('label', {class: 'field', style: {flexDirection: 'row', alignItems: 'center', gap: '6px'}},
-              h('input', {
-                type: 'checkbox', checked: nonAffectesSeulement,
-                onchange: (e) => { nonAffectesSeulement = e.target.checked; rafraichir(); },
-              }),
-              h('span', null, 'Non affectés seulement'),
-            ),
-          ),
-          h('div', {class: 'affectation__roster-liste'},
-            roster.length === 0
-              ? h('p', {class: 'empty'}, m.benevoles.length === 0
-                ? "Aucun bénévole importé pour l'instant : rien à affecter tant que le fil Disponibilités n'a pas importé les bénévoles."
-                : rosterFiltreEquipeRecherche.length === 0
-                  ? 'Aucun bénévole ne correspond à ce filtre.'
-                  : `Aucun bénévole disponible ${jour ? jour.libelle.toLowerCase() : 'ce jour'} : le roster n'affiche que ceux qui ont déclaré au moins une disponibilité ce jour-là.`)
-              : roster.map((b) => rosterCard(
-                ix, b, placeCeJourParBenevole.get(b.id), groupeIdsOuvertsCeJour, groupesDuJourTries,
-              )),
-          ),
-        ),
-        h('div', {class: 'affectation__board'},
-          besoinsDuJour.length === 0
-            ? h('p', {class: 'empty'}, besoinsExistantsDuJour.length === 0
-              ? "Aucun besoin positionné ce jour : créez-en depuis la vue Missions."
-              : "Rien à traiter ce jour : tous les besoins sont couverts. Cochez « afficher aussi les besoins déjà couverts » pour les revoir.")
-            : besoinsDuJour.map(({besoin}) => besoinCarte(ix, besoin, nonAffectesCeJour)),
-        ),
-      ),
-    );
+      message ? h('div', {class: `tj-message tj-message--${message.ton}`, role: 'status'}, message.texte) : null,
+      apercu ? h('div', {class: 'tj-message tj-message--info', role: 'status'}, 'Aperçu : les lignes marquées en pointillé changeraient. Ajoutez au brouillon pour garder ce scénario.') : null,
+      h('div', {class: 'tj-corps'}, table(), panneau()),
+      barreBrouillon(),
+    ].filter(Boolean));
+    restaurer(avant);
   }
 
   const desabonner = m.subscribe(rafraichir);
   rafraichir();
-  return desabonner;
+  return () => { vueActive = false; desabonner(); };
 }
+

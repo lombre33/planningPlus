@@ -179,7 +179,7 @@ describe('démarrage du widget', () => {
     expect(messageErreur).not.toContain('annulé');
   });
 
-  it("sur un document vide, lancer l'algorithme depuis l'onglet Affectation dit ce qui manque en langage métier plutôt que de prétendre que tout est couvert", async () => {
+  it("sur un document vide, l'onglet Affectation dit ce qui manque en langage métier plutôt que de prétendre que tout est couvert", async () => {
     window.grist = {
       ready: () => {},
       docApi: {
@@ -194,16 +194,12 @@ describe('démarrage du widget', () => {
     const ongletAffectation = Array.from(document.querySelectorAll('.rail__item'))
       .find((b) => b.textContent?.includes('Affectation'));
     ongletAffectation.click();
-    const boutonLancer = Array.from(document.querySelectorAll('button'))
-      .find((b) => b.textContent === "Lancer l'algorithme");
-    boutonLancer.click();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    // Rien n'est positionné (aucun indicatif) : ni le faux « 0/0 places
-    // remplies, aucune anomalie » de l'ancien comportement, ni un message
-    // technique — juste ce qui manque et où aller le faire.
+    // Aucun jour, donc rien à affecter : ni un faux « tout est couvert », ni
+    // un message technique — juste ce qui manque et où aller le faire.
     expect(document.body.textContent).not.toContain('entièrement couvert');
-    expect(document.body.textContent).toContain("Positionnez des indicatifs");
+    expect(document.body.textContent).toContain('créez d’abord un macro-créneau dans l’Agenda');
   });
 
   it("si une seule table manque (ex. Macro-créneaux), nomme précisément celle-là plutôt que de démarrer avec un trou silencieux", async () => {

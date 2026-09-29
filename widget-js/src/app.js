@@ -58,9 +58,10 @@ const ONGLETS = [
   },
   {
     id: 'affectation', libelle: 'Affectation', icone: ICONES.affectation,
-    titre: 'Lancer l’algorithme et affecter',
-    sousTitre: 'Lancez l’algorithme sur tout ce qui n’est pas verrouillé, puis corrigez à la main juste en dessous : glissez un bénévole vers une place, ou une place vers une autre pour l’échanger (§7.5).',
+    titre: 'Affectation · table du jour',
+    sousTitre: 'Une ligne par place, sur les heures du jour. Cliquez une ligne pour voir ses options ; tout passe par le brouillon avant d’être écrit.',
     montrer: montrerAffectation,
+    filtreJour: true,
     etape: 5,
   },
   {

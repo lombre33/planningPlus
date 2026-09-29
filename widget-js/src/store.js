@@ -965,11 +965,18 @@ export class Magasin {
    *  l'a demandé (jamais le cas pour une proposition d'algorithme — seule
    *  une correction manuelle verrouille, voir `logic/moteur-pont.js`). */
   async appliquerPropositionsAlgorithme(propositions) {
-    if (propositions.length === 0) { return {ok: true}; }
-    const patches = propositions.map((p) => ({
+    return this.appliquerPlaces(propositions.map((p) => ({
       id: p.placeId, benevoleId: p.benevoleIdApres, origine: p.origineApres,
       verrouillee: p.verrouilleeApres, score: p.score ?? 0,
-    }));
+    })));
+  }
+
+  /** Écrit plusieurs places d'un coup, en un seul aller-retour Grist
+   *  (`modifierPlaces`) : occupant, origine et verrou tels que donnés, sans
+   *  règle ajoutée — celles-ci sont à l'appelant (algorithme, brouillon de la
+   *  table d'affectation, `logic/brouillon.js`). */
+  async appliquerPlaces(patches) {
+    if (patches.length === 0) { return {ok: true}; }
     if (this.ecriture) {
       try {
         await this.ecriture.modifierPlaces(patches);
