@@ -51,7 +51,7 @@ describe('assemblerSite', () => {
     const sortie = path.join(await dossierTemporaire(), 'site');
     const fichiers = await assemblerSite({sortie});
     expect(await listerFichiers(sortie)).toEqual(fichiers);
-    for (const attendu of ['index.html', 'src/main.js', 'src/app.js', 'src/style.css', 'src/ui/impression.css', 'vendor/grist-plugin-api.js']) {
+    for (const attendu of ['index.html', 'src/main.js', 'src/app.js', 'src/style.css', 'src/ui/impression.css', 'vendor/grist-plugin-api.js', 'img/grist-factory-logo.jpg']) {
       expect(fichiers, attendu).toContain(attendu);
     }
     const intrus = fichiers.filter((f) => /\.test\.js$|\.d\.ts$|^scripts\/|^src\/dev\/|dev-bench|test-fixtures|^outils\/|node_modules/.test(f));

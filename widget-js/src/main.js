@@ -37,6 +37,7 @@ import {
   LIBELLE_PAR_TABLE, lireDocument, tablesDuDocument, zipperTable,
 } from './grist/index.js';
 import {Magasin, SuppressionApresCreationEchouee} from './store.js';
+import {appliquerTheme, themeMemorise} from './ui/reglages.js';
 
 /** Les 14 tables que lit `construireModele` (`./grist/modele.js`), plus
  *  `Parametres` : elle ne nourrit pas `Modele` (voir `demarrer`, qui la lit
@@ -435,6 +436,9 @@ async function reglerAffichageTablesCreees(
 async function demarrer() {
   const racine = document.getElementById('app');
   if (!racine) { return; }
+  // Avant la connexion au document, qui peut durer : sinon l'attente
+  // s'affiche dans le thème du système, puis bascule.
+  appliquerTheme(themeMemorise());
 
   window.grist.ready({requiredAccess: 'full'});
 

@@ -59,9 +59,12 @@ export function formatHeures(heures) {
 }
 
 /** Icône générique minimale (contour), pour ne dépendre d'aucune police
- *  d'icônes ni bibliothèque externe. */
-export function icone(chemin) {
+ *  d'icônes ni bibliothèque externe. Elle prend la couleur du texte qui
+ *  l'entoure, donc suit le thème. */
+export function icone(chemin, classe) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  if (classe) { svg.setAttribute('class', classe); }
+  svg.setAttribute('aria-hidden', 'true');
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('fill', 'none');
   svg.setAttribute('stroke', 'currentColor');
@@ -89,6 +92,11 @@ export const ICONES = {
   imprimante: 'M6 9V3h12v6M6 18h12v4H6zM4 9h16v7H4zM8 13h8',
   disponibilites: 'M4 4h4v4H4zM10 4h4v4h-4zM16 4h4v4h-4zM4 10h4v4H4zM10 10h4v4h-4zM16 10h4v4h-4zM4 16h4v4H4zM10 16h4v4h-4zM16 16h4v4h-4z',
   terrain: 'M12 21s7-7.5 7-12a7 7 0 1 0-14 0c0 4.5 7 12 7 12ZM12 11a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z',
+  cadenasOuvert: 'M6 11V8a6 6 0 0 1 11.2-3M5 11h14v9H5z',
+  crayon: 'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z',
+  corbeille: 'M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14',
+  // Même roue crantée que les Réglages de Publipostage+.
+  reglages: 'M15.2 12a3.2 3.2 0 1 1-6.4 0 3.2 3.2 0 0 1 6.4 0ZM19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z',
 };
 
 /** Ouvre une boîte de dialogue modale simple ; `contenu` reçoit une fonction

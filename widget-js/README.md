@@ -29,6 +29,11 @@ exécuté (choix d'Antoine, 2026-09-29).
   jamais par un `import` dans un module (`npm run site` échoue dessus).
 - **Un seul script classique**, `vendor/grist-plugin-api.js` : il expose
   `window.grist` (voir `vendor/README.md` pour sa provenance et son empreinte).
+- **Une image n'arrive dans le site que citée par la page.** Le logo Grist
+  Factory (`img/grist-factory-logo.jpg`, le même que sur Publipostage+) est
+  l'icône d'onglet de `index.html`, ce qui le fait copier ; le coin haut-droit
+  de chaque vue l'affiche ensuite (`src/ui/reglages.js`). Une image citée
+  seulement depuis le JS ou le CSS ne serait pas copiée.
 - **JSON importé avec son attribut** : `import jeu from './festival.json' with {type: 'json'}`
   (jeu de données de démonstration, jamais chargé par le widget en production).
 - **Plus de types écrits.** Ceux de TypeScript ont été effacés. Le modèle de
