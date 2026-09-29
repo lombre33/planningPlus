@@ -7,7 +7,11 @@
    système uniquement (contrainte B : aucune requête réseau hors API Grist,
    donc pas de police distante ni de CDN). */
 
-:root {
+/* La zone d'impression (`#zone-impression`, posée par `app.ts`) redéclare les
+   jetons CLAIRS : le papier reste blanc quel que soit le thème de l'écran.
+   Sans ça, un ordinateur en thème sombre imprimait du texte presque blanc
+   (`--text` du thème sombre, `#e8eaed`) sur une feuille blanche. */
+:root, #zone-impression {
   color-scheme: light;
 
   --bg: #f6f7f9;
@@ -52,7 +56,9 @@
   --font-display: ui-sans-serif, "Segoe UI Semibold", "Helvetica Neue", Arial, sans-serif;
   --font-body: ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Consolas, monospace;
+}
 
+:root {
   padding-top: env(safe-area-inset-top, 0px);
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
@@ -1956,9 +1962,14 @@ table.grille .mission-cell .lieu {
 
 #zone-impression {
   display: none;
+  color: var(--text);
 }
 
 @media print {
+  body.impression-active {
+    background: #fff;
+  }
+
   body.impression-active > :not(#zone-impression) {
     display: none !important;
   }
