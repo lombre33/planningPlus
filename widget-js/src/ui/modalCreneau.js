@@ -38,6 +38,7 @@ traductions({
   Jour: 'Day',
   'Sous-créneaux générés automatiquement': 'Automatically generated slots',
   'Merci de renseigner un jour et des horaires valides.': 'Please enter a valid day and times.',
+  'Créneau du {date}': 'Time block of {date}',
   Créer: 'Create',
 });
 
@@ -185,7 +186,7 @@ export function ouvrirModalCreationCreneau(m, jourCle, dureeSousCreneauParDefaut
           if (debut == null || fin == null) { erreur.afficher(t('Merci de renseigner un jour et des horaires valides.')); return; }
           if (fin <= debut) { erreur.afficher(t("L'heure de fin doit être après l'heure de début.")); return; }
           erreur.effacer();
-          const nom = champNom.value.trim() || `Créneau du ${champDate.value}`;
+          const nom = champNom.value.trim() || t('Créneau du {date}', {date: champDate.value});
           try {
             // Deux allers-retours liés : `redecouperSousCreneaux` a besoin de
             // l'id réel rendu par Grist, jamais d'un id local provisoire.

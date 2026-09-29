@@ -33,7 +33,7 @@ traductions({
   "Échec de l'écriture dans le document Grist pour la mission « {mission} » : la copie s'est arrêtée là. Ce qui a déjà été copié avant ({besoins} besoin(s), {indicatifs} indicatif(s)) est conservé ; relancez la copie pour continuer, elle ne redouble jamais ce qui est déjà là.":
     'Could not write to the Grist document for the “{mission}” task: the copy stopped there. What had already been copied ({besoins} need(s), {indicatifs} call sign(s)) is kept; run the copy again to continue, it never duplicates what is already there.',
   "Échec du repositionnement d'un indicatif pour la mission « {mission} » : la copie s'est arrêtée là. Ce qui a déjà été copié avant ({besoins} besoin(s), {indicatifs} indicatif(s)) est conservé ; relancez la copie pour continuer, elle ne redouble jamais ce qui est déjà là.":
-    'Could not reposition a call sign for the “{mission}” task: the copy stopped there. What had already been copied ({besoins} need(s), {indicatifs} call sign(s)) is kept; run the copy again to continue, it never duplicates what is already there.',
+    'Could not place a call sign again for the “{mission}” task: the copy stopped there. What had already been copied ({besoins} need(s), {indicatifs} call sign(s)) is kept; run the copy again to continue, it never duplicates what is already there.',
   'Sous-créneau introuvable.': 'Slot not found.',
   "Échec de l'écriture dans le document Grist : la conversion a été annulée.":
     'Could not write to the Grist document: the conversion was cancelled.',

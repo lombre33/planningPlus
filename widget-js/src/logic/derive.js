@@ -4,9 +4,14 @@
  * trajectoire d'un indicatif. Aucune fonction ici ne mute le magasin.
  */
 
+import {t, traductions} from '../i18n.js';
 import {
   cleJourFestival, epochDebutJourFestival, HEURE_COUPURE_JOUR_FESTIVAL, libelleJourLong, PAS_SECONDES,
 } from '../temps.js';
+
+traductions({
+  'un artiste souhaité': 'a wished-for artist',
+});
 
 // --- Index -------------------------------------------------------------
 
@@ -261,7 +266,7 @@ export function calculerAnomalies(m, ix) {
       const nomArtiste = dispo?.Artiste != null ? ix.artiste.get(dispo.Artiste)?.Nom : undefined;
       anomalies.push({
         type: 'conflit-artiste', gravite: 'warn', place,
-        benevoleNom: benevole.Nom, artisteNom: nomArtiste ?? 'un artiste souhaité', groupeCode: groupe.Code,
+        benevoleNom: benevole.Nom, artisteNom: nomArtiste ?? t('un artiste souhaité'), groupeCode: groupe.Code,
       });
     }
   }

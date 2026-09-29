@@ -24,6 +24,7 @@
  * celui du bandeau commun.
  */
 
+import {t, tn, traductions} from '../i18n.js';
 import {
   couvertureBesoin, indexer, placesDuGroupe, positionsDuGroupe,
   quartsCouvertsParGroupe, regrouperParJour, sousCreneauxApplicables,
@@ -34,6 +35,58 @@ import {peutVoirArtiste, SEUIL_MINUTES_VOIR_ARTISTE, seChevauchent} from '../mot
 import {PAS_SECONDES} from '../temps.js';
 import {fermerPanneau, h, ICONES, icone, ouvrirPanneau, vider} from '../ui/dom.js';
 import {construireFrise} from '../ui/frise.js';
+
+traductions({
+  "Échec de l'écriture dans le document Grist connecté. Réessayez.": 'Could not write to the connected Grist document. Try again.',
+  "Aucun macro-créneau défini pour l'instant. Commencez par l'étape 1 (Agenda), puis définissez des sous-créneaux, avant de positionner des indicatifs ici.":
+    'No time blocks defined yet. Start with step 1 (Agenda), then define slots, before placing call signs here.',
+  'Aucun sous-créneau ce jour. Définissez-en depuis l’agenda avant de positionner des indicatifs.':
+    'No slots on this day. Define some from the agenda before placing call signs.',
+  'Aucune mission définie. Créez vos missions avant de positionner des indicatifs.':
+    'No tasks defined. Create your tasks before placing call signs.',
+  'Aucune mission pour cette équipe. Changez de filtre ou créez-en une.': 'No tasks for this team. Change the filter or create one.',
+  'Toutes les équipes': 'All teams',
+  'Choisissez la case où repositionner {code}.': 'Choose the cell to move {code} to.',
+  'Choisissez la case où ajouter une nouvelle position pour {code}.': 'Choose the cell for a new placement of {code}.',
+  Annuler: 'Cancel',
+  'Indicatifs ne déplace pas les créneaux — utilisez la vue Missions.': 'The Call signs view does not move slots — use the Tasks view.',
+  'Indicatifs ne redimensionne pas les créneaux — utilisez la vue Missions.': 'The Call signs view does not resize slots — use the Tasks view.',
+  'min {min}': 'min {min}',
+  '≈{n} binôme': '≈{n} pair',
+  '≈{n} binômes': '≈{n} pairs',
+  'Indication : {min} places ÷ 2, arrondi au-dessus — pas une création automatique':
+    'Suggestion: headcount {min} ÷ 2, rounded up — never created automatically',
+  'Dépasse le maximum — signalé, pas bloquant': 'Over the maximum — flagged, not blocking',
+  'Positionner un binôme sur ce besoin (§6.3)': 'Place a buddy pair on this need (§6.3)',
+  'Ajouter un binôme supplémentaire sur ce besoin (§6.3)': 'Add another buddy pair to this need (§6.3)',
+  '{nom} (absent·e)': '{nom} (absent)',
+  'Aucun bénévole disponible ne ressort du classement.': 'The ranking brings up no available volunteer.',
+  binôme: 'buddy pair',
+  'place seule': 'single spot',
+  '{n}-uplet': 'group of {n}',
+  Fermer: 'Close',
+  Composition: 'Members',
+  'Voir des bénévoles suggérés pour cette place': 'See suggested volunteers for this spot',
+  'Non pourvue': 'Unfilled',
+  Déverrouiller: 'Unlock',
+  Verrouiller: 'Lock',
+  "L'affectation des bénévoles se fait depuis la vue Missions — ici, une place se verrouille et peut vous suggérer des candidats classés (#1/#2), mais ne se pourvoit pas depuis ce panneau.":
+    'Volunteers are assigned from the Tasks view — here, a spot can be locked and can suggest ranked candidates (#1/#2), but it is not filled from this panel.',
+  'Trajectoire du jour': 'Route for the day',
+  'Pas encore positionné sur ce jour.': 'Not yet placed on this day.',
+  'Déplacer…': 'Move…',
+  'Supprimer cette position': 'Delete this placement',
+  Supprimer: 'Delete',
+  '+ Ajouter une position': '+ Add a placement',
+  'Glissez une puce vers une autre case du planning pour la repositionner directement.':
+    'Drag a chip to another cell of the schedule to move it there directly.',
+  'Artistes à voir': 'Artists to see',
+  "Aucun passage n'est visible sur les créneaux libres de ce jour.": 'No set can be seen during this day’s free slots.',
+  'Souhaité par {noms}': 'Wished for by {noms}',
+  '★ souhaité': '★ wished for',
+  "Au moins {minutes} minutes libres pendant le passage, sur les créneaux où ce binôme n'est pas positionné ce jour.":
+    'At least {minutes} free minutes during the set, on the slots where this buddy pair is not placed that day.',
+});
 
 export function montrerIndicatifs(container, m) {
   let equipeFiltre = 'toutes';
@@ -62,7 +115,7 @@ export function montrerIndicatifs(container, m) {
       await action();
       dernierMessage = null;
     } catch {
-      dernierMessage = {texte: "Échec de l'écriture dans le document Grist connecté. Réessayez.", ton: 'danger'};
+      dernierMessage = {texte: t("Échec de l'écriture dans le document Grist connecté. Réessayez."), ton: 'danger'};
     }
     // `action` notifie déjà les abonnés sur un succès (`Magasin.notifier`),
     // donc ce rafraîchissement peut sembler redondant dans ce cas — mais un
@@ -106,13 +159,13 @@ export function montrerIndicatifs(container, m) {
         dernierMessage ? h('span', {class: `pill pill--${dernierMessage.ton}`}, dernierMessage.texte) : null,
         modeCible ? bandeauCible() : null,
         jours.length === 0
-          ? h('p', {class: 'empty'}, "Aucun macro-créneau défini pour l'instant. Commencez par l'étape 1 (Agenda), puis définissez des sous-créneaux, avant de positionner des indicatifs ici.")
+          ? h('p', {class: 'empty'}, t("Aucun macro-créneau défini pour l'instant. Commencez par l'étape 1 (Agenda), puis définissez des sous-créneaux, avant de positionner des indicatifs ici."))
           : tousSousCreneaux.length === 0
-            ? h('p', {class: 'empty'}, 'Aucun sous-créneau ce jour. Définissez-en depuis l’agenda avant de positionner des indicatifs.')
+            ? h('p', {class: 'empty'}, t('Aucun sous-créneau ce jour. Définissez-en depuis l’agenda avant de positionner des indicatifs.'))
             : missions.length === 0
               ? h('p', {class: 'empty'}, equipeFiltre === 'toutes'
-                ? 'Aucune mission définie. Créez vos missions avant de positionner des indicatifs.'
-                : 'Aucune mission pour cette équipe. Changez de filtre ou créez-en une.')
+                ? t('Aucune mission définie. Créez vos missions avant de positionner des indicatifs.')
+                : t('Aucune mission pour cette équipe. Changez de filtre ou créez-en une.'))
               : construireTimelineIndicatifs(ix, missions, jour, tousSousCreneaux),
       ),
     );
@@ -146,7 +199,7 @@ export function montrerIndicatifs(container, m) {
           rafraichir();
         },
       },
-        h('option', {value: 'toutes'}, 'Toutes les équipes'),
+        h('option', {value: 'toutes'}, t('Toutes les équipes')),
         ...m.equipes.map((eq) => h('option', {value: String(eq.id), selected: equipeFiltre === eq.id}, eq.Nom)),
       ),
     );
@@ -155,12 +208,13 @@ export function montrerIndicatifs(container, m) {
   function bandeauCible() {
     const mode = modeCible;
     const groupe = m.groupes.find((g) => g.id === mode.groupeId);
+    const code = groupe?.Code ?? '';
     const texte = mode.mode === 'deplacer'
-      ? `Choisissez la case où repositionner ${groupe?.Code ?? ''}.`
-      : `Choisissez la case où ajouter une nouvelle position pour ${groupe?.Code ?? ''}.`;
+      ? t('Choisissez la case où repositionner {code}.', {code})
+      : t('Choisissez la case où ajouter une nouvelle position pour {code}.', {code});
     return h('div', {class: 'mode-bandeau'},
       h('span', null, texte),
-      h('button', {class: 'btn btn--ghost btn--sm', type: 'button', onclick: () => { modeCible = null; rafraichir(); }}, 'Annuler'),
+      h('button', {class: 'btn btn--ghost btn--sm', type: 'button', onclick: () => { modeCible = null; rafraichir(); }}, t('Annuler')),
     );
   }
 
@@ -213,9 +267,9 @@ export function montrerIndicatifs(container, m) {
       onClicPiste: () => {},
       // Jamais appelés : tous les blocs sont `deplacable: false` (voir plus
       // haut), mais le type de `construireFrise` les exige.
-      onDeplacer: async () => ({ok: false, raison: 'Indicatifs ne déplace pas les créneaux — utilisez la vue Missions.'}),
+      onDeplacer: async () => ({ok: false, raison: t('Indicatifs ne déplace pas les créneaux — utilisez la vue Missions.')}),
       onRedimensionner: async () => (
-        {ok: false, raison: 'Indicatifs ne redimensionne pas les créneaux — utilisez la vue Missions.'}
+        {ok: false, raison: t('Indicatifs ne redimensionne pas les créneaux — utilisez la vue Missions.')}
       ),
       surErreur: () => {},
     });
@@ -230,6 +284,8 @@ export function montrerIndicatifs(container, m) {
     // Indication, jamais une création automatique ni un blocage (retour
     // Antoine 2026-09-22, point 3) : deux places par binôme, arrondi au-dessus.
     const binomesRecommandes = Math.ceil(c.besoin.Effectif_min / 2);
+    const libelleMin = t('min {min}', {min: c.besoin.Effectif_min});
+    const libelleReco = tn(binomesRecommandes, '≈{n} binôme', '≈{n} binômes');
 
     const cellule = h('div', {
       class: `indicatif-cell${modeCible ? ' indicatif-cell--cible' : ''}${surlignee ? ' indicatif-cell--surlignee' : ''}`,
@@ -240,14 +296,14 @@ export function montrerIndicatifs(container, m) {
       h('span', {class: 'besoin-cell__libelle', title: sc.Libelle}, sc.Libelle),
       h('div', {
         class: `indicatif-cell__eff${sousEffectif ? ' indicatif-cell__eff--sous' : ''}`,
-        title: `min ${c.besoin.Effectif_min} · ≈${binomesRecommandes} binôme${binomesRecommandes > 1 ? 's' : ''}`,
+        title: `${libelleMin} · ${libelleReco}`,
       },
-        h('span', null, `min ${c.besoin.Effectif_min}`),
+        h('span', null, libelleMin),
         h('span', {
           class: 'indicatif-cell__reco',
-          title: `Indication : ${c.besoin.Effectif_min} places ÷ 2, arrondi au-dessus — pas une création automatique`,
-        }, `≈${binomesRecommandes} binôme${binomesRecommandes > 1 ? 's' : ''}`),
-        surEffectif ? h('span', {class: 'flag', title: 'Dépasse le maximum — signalé, pas bloquant'}, '⚑') : null,
+          title: t('Indication : {min} places ÷ 2, arrondi au-dessus — pas une création automatique', {min: c.besoin.Effectif_min}),
+        }, libelleReco),
+        surEffectif ? h('span', {class: 'flag', title: t('Dépasse le maximum — signalé, pas bloquant')}, '⚑') : null,
       ),
       ...c.groupesPositionnes.map((g) => puceGroupe(ix, g.groupe, besoinId, jourCle)),
     );
@@ -260,8 +316,8 @@ export function montrerIndicatifs(container, m) {
     cellule.append(h('button', {
       class: 'ajouter-binome', type: 'button',
       title: c.groupesPositionnes.length === 0
-        ? 'Positionner un binôme sur ce besoin (§6.3)'
-        : 'Ajouter un binôme supplémentaire sur ce besoin (§6.3)',
+        ? t('Positionner un binôme sur ce besoin (§6.3)')
+        : t('Ajouter un binôme supplémentaire sur ce besoin (§6.3)'),
       onclick: (e) => { e.stopPropagation(); selectionnerNouveauGroupe(besoinId); },
     }, '+'));
 
@@ -338,7 +394,7 @@ export function montrerIndicatifs(container, m) {
     const noms = places.map((p) => {
       if (p.Benevole == null) { return '—'; }
       const nom = courtNom(ix.benevole.get(p.Benevole).Nom);
-      return presenceDuJour(p.Benevole, jourCle) === false ? `${nom} (absent·e)` : nom;
+      return presenceDuJour(p.Benevole, jourCle) === false ? t('{nom} (absent·e)', {nom}) : nom;
     }).join(' · ');
 
     let ordre = null;
@@ -395,13 +451,13 @@ export function montrerIndicatifs(container, m) {
   function candidatsSuggeres(ix, groupeId) {
     const candidats = classerCandidats(m, ix, groupeId).slice(0, 5);
     if (candidats.length === 0) {
-      return h('p', {class: 'empty', style: {margin: '4px 0 8px'}}, 'Aucun bénévole disponible ne ressort du classement.');
+      return h('p', {class: 'empty', style: {margin: '4px 0 8px'}}, t('Aucun bénévole disponible ne ressort du classement.'));
     }
     return h('div', {style: {display: 'flex', flexDirection: 'column', gap: '6px', margin: '4px 0 8px'}},
       ...candidats.map((c) => h('div', {class: 'candidat'},
         h('div', {class: 'candidat__head'}, h('span', {class: 'candidat__nom'}, c.nom)),
         c.tags.length > 0
-          ? h('div', {class: 'candidat__raisons'}, ...c.tags.map((t) => h('span', {class: `tag tag--${t.sens}`}, t.texte)))
+          ? h('div', {class: 'candidat__raisons'}, ...c.tags.map((tag) => h('span', {class: `tag tag--${tag.sens}`}, tag.texte)))
           : null,
       )),
     );
@@ -443,7 +499,7 @@ export function montrerIndicatifs(container, m) {
     const equipe = ix.equipe.get(groupe.Equipe);
     const places = placesDuGroupe(m, groupeId);
     const positions = positionsDuGroupe(m, ix, groupeId);
-    const tailleLibelle = groupe.Taille === 2 ? 'binôme' : groupe.Taille === 1 ? 'place seule' : `${groupe.Taille}-uplet`;
+    const tailleLibelle = groupe.Taille === 2 ? t('binôme') : groupe.Taille === 1 ? t('place seule') : t('{n}-uplet', {n: groupe.Taille});
 
     const panneau = h('div', {style: {display: 'flex', flexDirection: 'column', gap: '16px'}},
       h('div', {class: 'side-panel__head'},
@@ -454,11 +510,11 @@ export function montrerIndicatifs(container, m) {
         h('button', {
           class: 'btn btn--ghost btn--sm', type: 'button',
           onclick: () => { groupeSelectionne = null; placeCandidatsVisible = null; rafraichir(); },
-        }, 'Fermer'),
+        }, t('Fermer')),
       ),
 
       h('div', null,
-        h('div', {class: 'section-title'}, h('h2', null, 'Composition')),
+        h('div', {class: 'section-title'}, h('h2', null, t('Composition'))),
         h('div', {class: 'card', style: {display: 'flex', flexDirection: 'column', gap: '6px'}},
           ...places.map((place) => {
             const suggerable = place.Benevole == null && !place.Verrouillee;
@@ -467,7 +523,7 @@ export function montrerIndicatifs(container, m) {
                 suggerable
                   ? h('button', {
                     class: 'rang mono', type: 'button', style: {background: 'none', border: 'none', cursor: 'pointer', padding: '0'},
-                    title: 'Voir des bénévoles suggérés pour cette place',
+                    title: t('Voir des bénévoles suggérés pour cette place'),
                     onclick: () => {
                       placeCandidatsVisible = placeCandidatsVisible === place.id ? null : place.id;
                       rafraichir();
@@ -476,11 +532,11 @@ export function montrerIndicatifs(container, m) {
                   : h('span', {class: 'rang mono'}, `#${place.Rang}`),
                 place.Benevole != null
                   ? h('span', {style: {flex: '1'}}, ix.benevole.get(place.Benevole).Nom)
-                  : h('span', {style: {flex: '1', color: 'var(--text-faint)'}}, 'Non pourvue'),
+                  : h('span', {style: {flex: '1', color: 'var(--text-faint)'}}, t('Non pourvue')),
                 h('button', {
                   class: 'btn btn--ghost btn--sm btn--icone', type: 'button',
-                  title: place.Verrouillee ? 'Déverrouiller' : 'Verrouiller',
-                  'aria-label': place.Verrouillee ? 'Déverrouiller' : 'Verrouiller',
+                  title: place.Verrouillee ? t('Déverrouiller') : t('Verrouiller'),
+                  'aria-label': place.Verrouillee ? t('Déverrouiller') : t('Verrouiller'),
                   onclick: () => m.basculerVerrouillage(place.id),
                 }, icone(place.Verrouillee ? ICONES.cadenas : ICONES.cadenasOuvert)),
               ),
@@ -489,17 +545,17 @@ export function montrerIndicatifs(container, m) {
           }),
         ),
         h('p', {class: 'view__intro', style: {marginTop: '8px', marginBottom: '0'}},
-          "L'affectation des bénévoles se fait depuis la vue Missions — ici, une place se verrouille et peut vous suggérer des candidats classés (#1/#2), mais ne se pourvoit pas depuis ce panneau.",
+          t("L'affectation des bénévoles se fait depuis la vue Missions — ici, une place se verrouille et peut vous suggérer des candidats classés (#1/#2), mais ne se pourvoit pas depuis ce panneau."),
         ),
       ),
 
       h('div', null,
         h('div', {class: 'section-title'},
-          h('h2', null, 'Trajectoire du jour'),
+          h('h2', null, t('Trajectoire du jour')),
           h('span', {class: 'count mono'}, String(positions.length)),
         ),
         positions.length === 0
-          ? h('p', {class: 'empty'}, "Pas encore positionné sur ce jour.")
+          ? h('p', {class: 'empty'}, t('Pas encore positionné sur ce jour.'))
           : h('ol', {class: 'trajectoire-liste'}, ...positions.map(({position, besoin, sousCreneau}, i) => h(
             'li', {class: 'trajectoire-etape'},
             positions.length > 1 ? h('span', {class: 'trajectoire-etape__badge'}, String(i + 1)) : null,
@@ -510,22 +566,22 @@ export function montrerIndicatifs(container, m) {
             h('button', {
               class: 'btn btn--ghost btn--sm', type: 'button',
               onclick: () => { modeCible = {groupeId, positionId: position.id, mode: 'deplacer'}; rafraichir(); },
-            }, 'Déplacer…'),
+            }, t('Déplacer…')),
             // Retire cette seule étape (demande d'Antoine du 2026-09-23 :
             // jusqu'ici on ne pouvait que déplacer) — ne touche jamais le
             // Groupe ni ses Places : le binôme et les bénévoles déjà
             // affectés restent, seule cette position du jour disparaît.
             h('button', {
-              class: 'btn btn--ghost btn--sm', type: 'button', title: 'Supprimer cette position',
+              class: 'btn btn--ghost btn--sm', type: 'button', title: t('Supprimer cette position'),
               onclick: () => void supprimerPosition(position.id),
-            }, 'Supprimer'),
+            }, t('Supprimer')),
           ))),
         h('button', {
           class: 'ajouter-binome', type: 'button', style: {opacity: '1', width: '100%', marginTop: '8px'},
           onclick: () => { modeCible = {groupeId, positionId: null, mode: 'ajouter'}; rafraichir(); },
-        }, '+ Ajouter une position'),
+        }, t('+ Ajouter une position')),
         h('p', {class: 'view__intro', style: {marginTop: '8px', marginBottom: '0'}},
-          'Glissez une puce vers une autre case du planning pour la repositionner directement.',
+          t('Glissez une puce vers une autre case du planning pour la repositionner directement.'),
         ),
       ),
 
@@ -534,21 +590,21 @@ export function montrerIndicatifs(container, m) {
           const visibles = artistesVisibles(ix, groupeId, jour);
           return h('div', null,
             h('div', {class: 'section-title'},
-              h('h2', null, 'Artistes à voir'),
+              h('h2', null, t('Artistes à voir')),
               h('span', {class: 'count mono'}, String(visibles.length)),
             ),
             h('div', {class: 'card', style: {display: 'flex', flexDirection: 'column', gap: '6px'}},
               visibles.length === 0
-                ? h('p', {class: 'empty'}, "Aucun passage n'est visible sur les créneaux libres de ce jour.")
+                ? h('p', {class: 'empty'}, t("Aucun passage n'est visible sur les créneaux libres de ce jour."))
                 : visibles.map(({artiste, souhaitePar}) => h('div', {class: 'membre artiste-visible'},
                   h('span', {style: {flex: '1'}}, artiste.Nom),
                   souhaitePar.length > 0
-                    ? h('span', {class: 'tag tag--plus', title: `Souhaité par ${souhaitePar.join(', ')}`}, '★ souhaité')
+                    ? h('span', {class: 'tag tag--plus', title: t('Souhaité par {noms}', {noms: souhaitePar.join(', ')})}, t('★ souhaité'))
                     : null,
                 )),
             ),
             h('p', {class: 'view__intro', style: {marginTop: '8px', marginBottom: '0'}},
-              `Au moins ${SEUIL_MINUTES_VOIR_ARTISTE} minutes libres pendant le passage, sur les créneaux où ce binôme n'est pas positionné ce jour.`,
+              t("Au moins {minutes} minutes libres pendant le passage, sur les créneaux où ce binôme n'est pas positionné ce jour.", {minutes: SEUIL_MINUTES_VOIR_ARTISTE}),
             ),
           );
         })()

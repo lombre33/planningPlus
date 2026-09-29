@@ -20,6 +20,7 @@
  * détail exact (heure, artiste souhaité).
  */
 
+import {t, tn, traductions} from '../i18n.js';
 import {benevolesDisponiblesCeJour, indexer, quartsDuJour} from '../logic/derive.js';
 import {regrouperParJour} from '../logic/derive.js';
 import {
@@ -40,10 +41,106 @@ import {
 import {libelleHeure} from '../temps.js';
 import {h, vider} from '../ui/dom.js';
 
+traductions({
+  disponible: 'available',
+  indisponible: 'unavailable',
+  'veut voir un artiste': 'wants to see an artist',
+  "Échec de l'enregistrement de ce réglage dans le document Grist connecté. Réessaie.":
+    'Could not save this setting in the connected Grist document. Try again.',
+  "Impossible de lire la liste des tables de ton document pour l'instant.":
+    'Unable to read the list of tables in your document right now.',
+  'Lecture des tables de ton document…': 'Reading your document’s tables…',
+  'Table où sont tes bénévoles': 'Table holding your volunteers',
+  '— choisir —': '— choose —',
+  '— aucune —': '— none —',
+  'identifiant de colonne (ex. Dispo_Vendredi)': 'column ID (e.g. Avail_Friday)',
+  'Lecture de tes colonnes…': 'Reading your columns…',
+  'Lecture des colonnes de ton document…': 'Reading your document’s columns…',
+  "Échec de l'écriture dans le document Grist connecté. Réessaie.": 'Could not write to the connected Grist document. Try again.',
+  "Aucun artiste ne joue à ce quart d'heure.": 'No artist is playing during this quarter hour.',
+  'Choisis la table et la colonne du nom ci-dessus avant de peupler tes bénévoles.':
+    'Choose the table and the name column above before populating your volunteers.',
+  "Crée d'abord une équipe (vue Équipe) : chaque bénévole importé lui sera provisoirement rattaché, à corriger ensuite si besoin.":
+    'Create a team first (Team view): each imported volunteer will be provisionally linked to it, to correct later if needed.',
+  'Rien à peupler : aucune ligne avec un nom dans la colonne choisie.': 'Nothing to populate: no row has a name in the chosen column.',
+  '{n} bénévole créé, {actualises}.': '{n} volunteer created, {actualises}.',
+  '{n} bénévoles créés, {actualises}.': '{n} volunteers created, {actualises}.',
+  '{n} actualisé': '{n} updated',
+  '{n} actualisés': '{n} updated',
+  'Échec du peuplement. Vérifie les colonnes associées puis réessaie.': 'Populating failed. Check the linked columns, then try again.',
+  "Choisis la table où sont tes bénévoles ci-dessus avant d'importer.": 'Choose the table holding your volunteers above before importing.',
+  "Associe au moins une colonne ci-dessus avant d'importer.": 'Link at least one column above before importing.',
+  'Import terminé.': 'Import complete.',
+  '{n} réponse non reconnue — à saisir à la main (mode édition, ci-dessus).':
+    '{n} unrecognized answer — to enter by hand (edit mode, above).',
+  '{n} réponses non reconnues — à saisir à la main (mode édition, ci-dessus).':
+    '{n} unrecognized answers — to enter by hand (edit mode, above).',
+  "{n} nom d'artiste dans la colonne souhaits ne correspond à aucun artiste connu : {noms}.":
+    '{n} artist name in the wishes column matches no known artist: {noms}.',
+  "{n} noms d'artiste dans la colonne souhaits ne correspondent à aucun artiste connu : {noms}.":
+    '{n} artist names in the wishes column match no known artist: {noms}.',
+  '{n} binôme souhaité enregistré.': '{n} wished-for buddy saved.',
+  '{n} binômes souhaités enregistrés.': '{n} wished-for buddies saved.',
+  '{n} nom dans la colonne binôme ne correspond à aucun bénévole connu : {noms}.':
+    '{n} name in the buddy column matches no known volunteer: {noms}.',
+  '{n} noms dans la colonne binôme ne correspondent à aucun bénévole connu : {noms}.':
+    '{n} names in the buddy column match no known volunteer: {noms}.',
+  "Échec de l'import. Vérifie les colonnes associées puis réessaie.": 'Import failed. Check the linked columns, then try again.',
+  "Réglages d'import": 'Import settings',
+  'Associe les colonnes que tu as toi-même ajoutées à ta table Bénévoles. Elles ne sont jamais modifiées, seulement lues.':
+    'Link the columns you added to your Volunteers table yourself. They are never modified, only read.',
+  'Lecture des colonnes de ta table Bénévoles…': 'Reading the columns of your Volunteers table…',
+  "Impossible de lire la liste de tes colonnes pour l'instant — tape l'identifiant à la main ci-dessous.":
+    'Unable to read your list of columns right now — type the ID by hand below.',
+  "Aucune colonne de ta table Bénévoles ne peut être associée ici : ajoute-lui d'abord, dans Grist, une colonne de texte ou de choix (par exemple les souhaits d'artistes, ou une réponse de disponibilité).":
+    'No column of your Volunteers table can be linked here: first add a text or choice column to it in Grist (for example artist wishes, or an availability answer).',
+  'Peuple ta table Bénévoles du widget depuis cette table-là : crée les bénévoles qui manquent, sans jamais en supprimer ni y toucher deux fois.':
+    'Populate the widget’s Volunteers table from that table: missing volunteers are created, none are ever deleted or touched twice.',
+  'Colonne du nom prénom': 'Full name column',
+  'Colonne du téléphone (optionnelle)': 'Phone column (optional)',
+  'Colonne du téléphone': 'Phone column',
+  'Peuplement en cours…': 'Populating…',
+  'Peupler mes bénévoles': 'Populate my volunteers',
+  "Colonne des souhaits d'artistes (choix multiple)": 'Artist wishes column (multiple choice)',
+  "Colonne des souhaits d'artistes": 'Artist wishes column',
+  'Colonne du binôme souhaité (le nom exact du bénévole)': 'Wished-for buddy column (the volunteer’s exact name)',
+  'Colonne du binôme souhaité': 'Wished-for buddy column',
+  "Crée d'abord tes macro-créneaux (vue Agenda) pour associer une colonne de réponse par créneau.":
+    'Create your time blocks first (Agenda view) to link one answer column per time block.',
+  'Colonne de réponse pour {macro}': 'Answer column for {macro}',
+  'Libellé "disponible sur tout le créneau"': 'Label for “available for the whole time block”',
+  'Libellé "pas disponible du tout"': 'Label for “not available at all”',
+  'Import en cours…': 'Importing…',
+  'Importer les disponibilités': 'Import availability',
+  'Filtrer par équipe': 'Filter by team',
+  'Toutes les équipes': 'All teams',
+  'Rechercher un bénévole…': 'Search volunteers…',
+  'Fermer les réglages': 'Close settings',
+  'Mode édition': 'Edit mode',
+  'Choisir un artiste au clic': 'Pick an artist on click',
+  Disponible: 'Available',
+  'Veut voir un artiste': 'Wants to see an artist',
+  Indisponible: 'Unavailable',
+  'Contrainte déclarée (survoler le nom)': 'Declared constraint (hover over the name)',
+  'Aucun macro-créneau : rien à afficher.': 'No time blocks: nothing to show.',
+  'Ce jour ne couvre aucun quart d’heure.': 'This day covers no quarter hours.',
+  'Aucun bénévole ne correspond à ce filtre.': 'No volunteer matches this filter.',
+  Bénévole: 'Volunteer',
+  'veut voir {artiste}': 'wants to see {artiste}',
+  'cliquer pour choisir un artiste': 'click to pick an artist',
+  'cliquer pour basculer': 'click to toggle',
+  '{n} bénévole affiché.': '{n} volunteer shown.',
+  '{n} bénévoles affichés.': '{n} volunteers shown.',
+  "Une case sans donnée vaut indisponible (§6.4 du cahier des charges) : seule une disponibilité déclarée ouvre la possibilité d'une affectation.":
+    'A cell with no data counts as unavailable (§6.4 of the specification): only a declared availability makes an assignment possible.',
+});
+
+/** Libellé d'un statut de disponibilité (valeur stockée) dans l'infobulle
+ *  d'une case, évalué au rendu pour suivre la langue. */
 const LIBELLE_STATUT = {
-  Disponible: 'disponible',
-  Indisponible: 'indisponible',
-  Artiste: 'veut voir un artiste',
+  Disponible: () => t('disponible'),
+  Indisponible: () => t('indisponible'),
+  Artiste: () => t('veut voir un artiste'),
 };
 
 function champ(libelle, entree) {
@@ -91,7 +188,7 @@ export function montrerDisponibilites(container, m) {
     try {
       await m.definirParametre(cle, valeur);
     } catch {
-      dernierMessage = {texte: "Échec de l'enregistrement de ce réglage dans le document Grist connecté. Réessaie.", ton: 'danger'};
+      dernierMessage = {texte: t("Échec de l'enregistrement de ce réglage dans le document Grist connecté. Réessaie."), ton: 'danger'};
       rafraichir();
     }
   }
@@ -114,16 +211,16 @@ export function montrerDisponibilites(container, m) {
     if (!Array.isArray(tablesDisponibles)) {
       return h('p', {class: tablesDisponibles === 'erreur' ? 'pill pill--warn' : 'empty'},
         tablesDisponibles === 'erreur'
-          ? "Impossible de lire la liste des tables de ton document pour l'instant."
-          : 'Lecture des tables de ton document…',
+          ? t("Impossible de lire la liste des tables de ton document pour l'instant.")
+          : t('Lecture des tables de ton document…'),
       );
     }
     return h('select', {
-      class: 'select', 'aria-label': 'Table où sont tes bénévoles',
+      class: 'select', 'aria-label': t('Table où sont tes bénévoles'),
       onchange: (e) => { void definirParametreSurveille(CLE_TABLE_BENEVOLES, e.target.value); },
     },
-      h('option', {value: '', selected: valeurActuelle === ''}, '— choisir —'),
-      ...tablesDisponibles.map((t) => h('option', {value: t.tableId, selected: t.tableId === valeurActuelle}, t.tableId)),
+      h('option', {value: '', selected: valeurActuelle === ''}, t('— choisir —')),
+      ...tablesDisponibles.map((table) => h('option', {value: table.tableId, selected: table.tableId === valeurActuelle}, table.tableId)),
     );
   }
 
@@ -142,9 +239,9 @@ export function montrerDisponibilites(container, m) {
   function chargerColonnesTousDocumentsSiBesoin() {
     if (colonnesTousDocuments != null || !Array.isArray(tablesDisponibles)) { return; }
     colonnesTousDocuments = 'chargement';
-    Promise.all(tablesDisponibles.map(async (t) => {
-      const colonnes = await m.colonnesTable(t.tableId);
-      return colonnesEligibles(colonnes).map((colonne) => ({tableId: t.tableId, colonne}));
+    Promise.all(tablesDisponibles.map(async (table) => {
+      const colonnes = await m.colonnesTable(table.tableId);
+      return colonnesEligibles(colonnes).map((colonne) => ({tableId: table.tableId, colonne}));
     }))
       .then((parTable) => { colonnesTousDocuments = parTable.flat(); rafraichir(); })
       .catch(() => { colonnesTousDocuments = 'erreur'; rafraichir(); });
@@ -175,7 +272,7 @@ export function montrerDisponibilites(container, m) {
     if (tableChoisie) {
       chargerColonnesSiBesoin(tableChoisie);
       if (Array.isArray(colonnesBenevoles) && tableChargee === tableChoisie) {
-        const options = [h('option', {value: '', selected: !valeurActuelle}, '— aucune —')];
+        const options = [h('option', {value: '', selected: !valeurActuelle}, t('— aucune —'))];
         for (const c of filtre(colonnesBenevoles)) {
           options.push(h('option', {value: c.colId, selected: c.colId === valeurActuelle}, `${c.label} (${c.colId})`));
         }
@@ -186,18 +283,18 @@ export function montrerDisponibilites(container, m) {
       }
       if (colonnesBenevoles === 'erreur') {
         return h('input', {
-          class: 'input', type: 'text', placeholder: 'identifiant de colonne (ex. Dispo_Vendredi)', 'aria-label': aria,
+          class: 'input', type: 'text', placeholder: t('identifiant de colonne (ex. Dispo_Vendredi)'), 'aria-label': aria,
           value: valeurActuelle ?? '',
           onchange: (e) => { void definirParametreSurveille(cle, e.target.value.trim()); },
         });
       }
-      return h('p', {class: 'empty'}, 'Lecture de tes colonnes…');
+      return h('p', {class: 'empty'}, t('Lecture de tes colonnes…'));
     }
 
     chargerColonnesTousDocumentsSiBesoin();
     if (Array.isArray(colonnesTousDocuments)) {
       const valeurEncodee = valeurActuelle ? colonnesTousDocuments.find((c) => c.colonne.colId === valeurActuelle) : undefined;
-      const options = [h('option', {value: '', selected: !valeurActuelle}, '— aucune —')];
+      const options = [h('option', {value: '', selected: !valeurActuelle}, t('— aucune —'))];
       for (const {tableId, colonne} of colonnesTousDocuments) {
         const value = `${tableId}${SEPARATEUR_OPTION_TOUS_DOCUMENTS}${colonne.colId}`;
         options.push(h('option', {
@@ -215,12 +312,12 @@ export function montrerDisponibilites(container, m) {
     }
     if (colonnesTousDocuments === 'erreur') {
       return h('input', {
-        class: 'input', type: 'text', placeholder: 'identifiant de colonne (ex. Dispo_Vendredi)', 'aria-label': aria,
+        class: 'input', type: 'text', placeholder: t('identifiant de colonne (ex. Dispo_Vendredi)'), 'aria-label': aria,
         value: valeurActuelle ?? '',
         onchange: (e) => { void definirParametreSurveille(cle, e.target.value.trim()); },
       });
     }
-    return h('p', {class: 'empty'}, 'Lecture des colonnes de ton document…');
+    return h('p', {class: 'empty'}, t('Lecture des colonnes de ton document…'));
   }
 
   async function basculerCellule(benevoleId, macro, quart) {
@@ -230,7 +327,7 @@ export function montrerDisponibilites(container, m) {
     try {
       await m.remplacerDisponibilites(benevoleId, macro.Debut, macro.Fin, nouvelles);
     } catch {
-      dernierMessage = {texte: "Échec de l'écriture dans le document Grist connecté. Réessaie.", ton: 'danger'};
+      dernierMessage = {texte: t("Échec de l'écriture dans le document Grist connecté. Réessaie."), ton: 'danger'};
       rafraichir();
     }
   }
@@ -250,7 +347,7 @@ export function montrerDisponibilites(container, m) {
   async function choisirArtisteCellule(benevoleId, macro, quart) {
     const candidats = artistesDuQuart(quart);
     if (candidats.length === 0) {
-      dernierMessage = {texte: "Aucun artiste ne joue à ce quart d'heure.", ton: 'danger'};
+      dernierMessage = {texte: t("Aucun artiste ne joue à ce quart d'heure."), ton: 'danger'};
       rafraichir();
       return;
     }
@@ -264,7 +361,7 @@ export function montrerDisponibilites(container, m) {
     try {
       await m.remplacerDisponibilites(benevoleId, macro.Debut, macro.Fin, nouvelles);
     } catch {
-      dernierMessage = {texte: "Échec de l'écriture dans le document Grist connecté. Réessaie.", ton: 'danger'};
+      dernierMessage = {texte: t("Échec de l'écriture dans le document Grist connecté. Réessaie."), ton: 'danger'};
       rafraichir();
     }
   }
@@ -280,13 +377,13 @@ export function montrerDisponibilites(container, m) {
     const colNom = m.parametre(CLE_COLONNE_NOM_BENEVOLES);
     const colContact = m.parametre(CLE_COLONNE_CONTACT_BENEVOLES) ?? null;
     if (!tableBenevoles || !colNom) {
-      dernierMessage = {texte: 'Choisis la table et la colonne du nom ci-dessus avant de peupler tes bénévoles.', ton: 'danger'};
+      dernierMessage = {texte: t('Choisis la table et la colonne du nom ci-dessus avant de peupler tes bénévoles.'), ton: 'danger'};
       rafraichir();
       return;
     }
     if (m.equipes.length === 0) {
       dernierMessage = {
-        texte: "Crée d'abord une équipe (vue Équipe) : chaque bénévole importé lui sera provisoirement rattaché, à corriger ensuite si besoin.",
+        texte: t("Crée d'abord une équipe (vue Équipe) : chaque bénévole importé lui sera provisoirement rattaché, à corriger ensuite si besoin."),
         ton: 'danger',
       };
       rafraichir();
@@ -300,12 +397,14 @@ export function montrerDisponibilites(container, m) {
       const {crees, actualises} = await m.peuplerBenevoles(tableBenevoles, colNom, colContact);
       dernierMessage = {
         texte: crees === 0 && actualises === 0
-          ? 'Rien à peupler : aucune ligne avec un nom dans la colonne choisie.'
-          : `${crees} bénévole${crees > 1 ? 's' : ''} créé${crees > 1 ? 's' : ''}, ${actualises} actualisé${actualises > 1 ? 's' : ''}.`,
+          ? t('Rien à peupler : aucune ligne avec un nom dans la colonne choisie.')
+          : tn(crees, '{n} bénévole créé, {actualises}.', '{n} bénévoles créés, {actualises}.', {
+            actualises: tn(actualises, '{n} actualisé', '{n} actualisés'),
+          }),
         ton: 'ok',
       };
     } catch {
-      dernierMessage = {texte: 'Échec du peuplement. Vérifie les colonnes associées puis réessaie.', ton: 'danger'};
+      dernierMessage = {texte: t('Échec du peuplement. Vérifie les colonnes associées puis réessaie.'), ton: 'danger'};
     } finally {
       peuplementEnCours = false;
       rafraichir();
@@ -334,12 +433,12 @@ export function montrerDisponibilites(container, m) {
       .filter((x) => Boolean(x.colId));
 
     if (!tableBenevoles) {
-      dernierMessage = {texte: 'Choisis la table où sont tes bénévoles ci-dessus avant d\'importer.', ton: 'danger'};
+      dernierMessage = {texte: t("Choisis la table où sont tes bénévoles ci-dessus avant d'importer."), ton: 'danger'};
       rafraichir();
       return;
     }
     if (macrosMappes.length === 0 && !colSouhaits && !colBinome) {
-      dernierMessage = {texte: "Associe au moins une colonne ci-dessus avant d'importer.", ton: 'danger'};
+      dernierMessage = {texte: t("Associe au moins une colonne ci-dessus avant d'importer."), ton: 'danger'};
       rafraichir();
       return;
     }
@@ -407,33 +506,33 @@ export function montrerDisponibilites(container, m) {
       }
       if (aCreerAffinites.length > 0) { await m.creerAffinites(aCreerAffinites); }
 
-      const morceaux = ['Import terminé.'];
+      const morceaux = [t('Import terminé.')];
       if (nbManuels > 0) {
-        morceaux.push(
-          `${nbManuels} réponse${nbManuels > 1 ? 's' : ''} non reconnue${nbManuels > 1 ? 's' : ''} — à saisir à la main (mode édition, ci-dessus).`,
-        );
+        morceaux.push(tn(nbManuels,
+          '{n} réponse non reconnue — à saisir à la main (mode édition, ci-dessus).',
+          '{n} réponses non reconnues — à saisir à la main (mode édition, ci-dessus).'));
       }
       if (nomsNonReconnus.size > 0) {
-        morceaux.push(
-          `${nomsNonReconnus.size} nom${nomsNonReconnus.size > 1 ? 's' : ''} d'artiste dans la colonne souhaits `
-          + `ne correspond${nomsNonReconnus.size > 1 ? 'ent' : ''} à aucun artiste connu : ${[...nomsNonReconnus].join(', ')}.`,
-        );
+        morceaux.push(tn(nomsNonReconnus.size,
+          "{n} nom d'artiste dans la colonne souhaits ne correspond à aucun artiste connu : {noms}.",
+          "{n} noms d'artiste dans la colonne souhaits ne correspondent à aucun artiste connu : {noms}.",
+          {noms: [...nomsNonReconnus].join(', ')}));
       }
       if (aCreerAffinites.length > 0) {
-        morceaux.push(`${aCreerAffinites.length} binôme${aCreerAffinites.length > 1 ? 's' : ''} souhaité${aCreerAffinites.length > 1 ? 's' : ''} enregistré${aCreerAffinites.length > 1 ? 's' : ''}.`);
+        morceaux.push(tn(aCreerAffinites.length, '{n} binôme souhaité enregistré.', '{n} binômes souhaités enregistrés.'));
       }
       if (nomsBinomeNonReconnus.size > 0) {
-        morceaux.push(
-          `${nomsBinomeNonReconnus.size} nom${nomsBinomeNonReconnus.size > 1 ? 's' : ''} dans la colonne binôme `
-          + `ne correspond${nomsBinomeNonReconnus.size > 1 ? 'ent' : ''} à aucun bénévole connu : ${[...nomsBinomeNonReconnus].join(', ')}.`,
-        );
+        morceaux.push(tn(nomsBinomeNonReconnus.size,
+          '{n} nom dans la colonne binôme ne correspond à aucun bénévole connu : {noms}.',
+          '{n} noms dans la colonne binôme ne correspondent à aucun bénévole connu : {noms}.',
+          {noms: [...nomsBinomeNonReconnus].join(', ')}));
       }
       dernierMessage = {
         texte: morceaux.join(' '),
         ton: nbManuels > 0 || nomsNonReconnus.size > 0 || nomsBinomeNonReconnus.size > 0 ? 'danger' : 'ok',
       };
     } catch {
-      dernierMessage = {texte: "Échec de l'import. Vérifie les colonnes associées puis réessaie.", ton: 'danger'};
+      dernierMessage = {texte: t("Échec de l'import. Vérifie les colonnes associées puis réessaie."), ton: 'danger'};
     } finally {
       importEnCours = false;
       rafraichir();
@@ -445,54 +544,51 @@ export function montrerDisponibilites(container, m) {
     const macrosTries = [...m.macroCreneaux].sort((a, b) => a.Debut - b.Debut);
 
     return h('div', {class: 'card', style: {marginBottom: '12px'}},
-      h('h3', {style: {marginTop: '0'}}, "Réglages d'import"),
+      h('h3', {style: {marginTop: '0'}}, t("Réglages d'import")),
       h('p', {class: 'view__intro'},
-        "Associe les colonnes que tu as toi-même ajoutées à ta table Bénévoles. Elles ne sont jamais modifiées, "
-        + 'seulement lues.',
+        t('Associe les colonnes que tu as toi-même ajoutées à ta table Bénévoles. Elles ne sont jamais modifiées, seulement lues.'),
       ),
-      champ('Table où sont tes bénévoles', champTableBenevoles()),
+      champ(t('Table où sont tes bénévoles'), champTableBenevoles()),
       tableChoisie && colonnesBenevoles === 'chargement'
-        ? h('p', {class: 'empty'}, 'Lecture des colonnes de ta table Bénévoles…') : null,
+        ? h('p', {class: 'empty'}, t('Lecture des colonnes de ta table Bénévoles…')) : null,
       tableChoisie && colonnesBenevoles === 'erreur'
-        ? h('p', {class: 'pill pill--warn'}, "Impossible de lire la liste de tes colonnes pour l'instant — tape l'identifiant à la main ci-dessous.")
+        ? h('p', {class: 'pill pill--warn'}, t("Impossible de lire la liste de tes colonnes pour l'instant — tape l'identifiant à la main ci-dessous."))
         : null,
       tableChoisie && tableChargee === tableChoisie && Array.isArray(colonnesBenevoles) && colonnesEligibles(colonnesBenevoles).length === 0
         ? h('p', {class: 'empty'},
-            "Aucune colonne de ta table Bénévoles ne peut être associée ici : ajoute-lui d'abord, dans Grist, une "
-            + 'colonne de texte ou de choix (par exemple les souhaits d\'artistes, ou une réponse de disponibilité).',
+            t("Aucune colonne de ta table Bénévoles ne peut être associée ici : ajoute-lui d'abord, dans Grist, une colonne de texte ou de choix (par exemple les souhaits d'artistes, ou une réponse de disponibilité)."),
           )
         : null,
       tableChoisie
         ? h('div', {style: {marginBottom: '14px', paddingBottom: '14px', borderBottom: '1px solid var(--border, #ddd)'}},
             h('p', {class: 'view__intro'},
-              'Peuple ta table Bénévoles du widget depuis cette table-là : crée les bénévoles qui manquent, sans jamais '
-              + 'en supprimer ni y toucher deux fois.',
+              t('Peuple ta table Bénévoles du widget depuis cette table-là : crée les bénévoles qui manquent, sans jamais en supprimer ni y toucher deux fois.'),
             ),
-            champ('Colonne du nom prénom', champColonne(CLE_COLONNE_NOM_BENEVOLES, 'Colonne du nom prénom', colonnesEligiblesTableExterne)),
-            champ('Colonne du téléphone (optionnelle)', champColonne(CLE_COLONNE_CONTACT_BENEVOLES, 'Colonne du téléphone', colonnesEligiblesTableExterne)),
+            champ(t('Colonne du nom prénom'), champColonne(CLE_COLONNE_NOM_BENEVOLES, t('Colonne du nom prénom'), colonnesEligiblesTableExterne)),
+            champ(t('Colonne du téléphone (optionnelle)'), champColonne(CLE_COLONNE_CONTACT_BENEVOLES, t('Colonne du téléphone'), colonnesEligiblesTableExterne)),
             h('button', {
               class: 'btn btn--sm', type: 'button', disabled: peuplementEnCours,
               onclick: () => { void peuplerBenevolesDepuisSource(); },
-            }, peuplementEnCours ? 'Peuplement en cours…' : 'Peupler mes bénévoles'),
+            }, peuplementEnCours ? t('Peuplement en cours…') : t('Peupler mes bénévoles')),
           )
         : null,
-      champ("Colonne des souhaits d'artistes (choix multiple)", champColonne(CLE_COLONNE_SOUHAITS_ARTISTES, "Colonne des souhaits d'artistes")),
+      champ(t("Colonne des souhaits d'artistes (choix multiple)"), champColonne(CLE_COLONNE_SOUHAITS_ARTISTES, t("Colonne des souhaits d'artistes"))),
       champ(
-        'Colonne du binôme souhaité (le nom exact du bénévole)',
-        champColonne(CLE_COLONNE_BINOME_SOUHAITE, 'Colonne du binôme souhaité'),
+        t('Colonne du binôme souhaité (le nom exact du bénévole)'),
+        champColonne(CLE_COLONNE_BINOME_SOUHAITE, t('Colonne du binôme souhaité')),
       ),
       macrosTries.length === 0
-        ? h('p', {class: 'empty'}, "Crée d'abord tes macro-créneaux (vue Agenda) pour associer une colonne de réponse par créneau.")
+        ? h('p', {class: 'empty'}, t("Crée d'abord tes macro-créneaux (vue Agenda) pour associer une colonne de réponse par créneau."))
         : h('div', null, ...macrosTries.map((macro) => champ(
             `${macro.Nom} (${libelleHeure(macro.Debut)})`,
-            champColonne(cleColonneReponseMacroCreneau(macro.id), `Colonne de réponse pour ${macro.Nom}`),
+            champColonne(cleColonneReponseMacroCreneau(macro.id), t('Colonne de réponse pour {macro}', {macro: macro.Nom})),
           ))),
-      champ('Libellé "disponible sur tout le créneau"', h('input', {
+      champ(t('Libellé "disponible sur tout le créneau"'), h('input', {
         class: 'input', type: 'text',
         value: m.parametre(CLE_LIBELLE_TOUT_LE_CRENEAU) ?? LIBELLES_REPONSE_PAR_DEFAUT.toutLeCreneau[0],
         onchange: (e) => { void definirParametreSurveille(CLE_LIBELLE_TOUT_LE_CRENEAU, e.target.value); },
       })),
-      champ('Libellé "pas disponible du tout"', h('input', {
+      champ(t('Libellé "pas disponible du tout"'), h('input', {
         class: 'input', type: 'text',
         value: m.parametre(CLE_LIBELLE_PAS_DISPONIBLE_DU_TOUT) ?? LIBELLES_REPONSE_PAR_DEFAUT.pasDisponibleDuTout[0],
         onchange: (e) => { void definirParametreSurveille(CLE_LIBELLE_PAS_DISPONIBLE_DU_TOUT, e.target.value); },
@@ -500,7 +596,7 @@ export function montrerDisponibilites(container, m) {
       h('button', {
         class: 'btn btn--primary btn--sm', type: 'button', disabled: importEnCours,
         onclick: () => { void importerDisponibilites(); },
-      }, importEnCours ? 'Import en cours…' : 'Importer les disponibilités'),
+      }, importEnCours ? t('Import en cours…') : t('Importer les disponibilités')),
     );
   }
 
@@ -533,24 +629,24 @@ export function montrerDisponibilites(container, m) {
     const barre = h('div', {class: 'dispos-barre'},
       h('div', {class: 'dispos-barre__filtres'},
         h('select', {
-          class: 'select', 'aria-label': 'Filtrer par équipe',
+          class: 'select', 'aria-label': t('Filtrer par équipe'),
           onchange: (e) => {
             const v = e.target.value;
             equipeFiltre = v === 'toutes' ? 'toutes' : Number(v);
             rafraichir();
           },
         },
-          h('option', {value: 'toutes', selected: equipeFiltre === 'toutes'}, 'Toutes les équipes'),
+          h('option', {value: 'toutes', selected: equipeFiltre === 'toutes'}, t('Toutes les équipes')),
           ...m.equipes.map((eq) => h('option', {value: String(eq.id), selected: equipeFiltre === eq.id}, eq.Nom)),
         ),
         h('input', {
-          class: 'input', type: 'search', placeholder: 'Rechercher un bénévole…', value: recherche,
+          class: 'input', type: 'search', placeholder: t('Rechercher un bénévole…'), value: recherche,
           oninput: (e) => { recherche = e.target.value; rafraichir(); },
         }),
         h('button', {
           class: 'btn btn--sm', type: 'button',
           onclick: () => { panneauOuvert = !panneauOuvert; rafraichir(); },
-        }, panneauOuvert ? "Fermer les réglages" : "Réglages d'import"),
+        }, panneauOuvert ? t('Fermer les réglages') : t("Réglages d'import")),
         h('label', {style: {display: 'inline-flex', alignItems: 'center', gap: '4px', marginLeft: '8px'}},
           h('input', {
             type: 'checkbox', checked: modeEdition,
@@ -560,7 +656,7 @@ export function montrerDisponibilites(container, m) {
               rafraichir();
             },
           }),
-          'Mode édition',
+          t('Mode édition'),
         ),
         h('label', {
           style: {
@@ -572,14 +668,14 @@ export function montrerDisponibilites(container, m) {
             type: 'checkbox', checked: modeArtiste, disabled: !modeEdition,
             onchange: (e) => { modeArtiste = e.target.checked; rafraichir(); },
           }),
-          'Choisir un artiste au clic',
+          t('Choisir un artiste au clic'),
         ),
       ),
       h('div', {class: 'dispos-legende'},
-        h('span', {class: 'dispos-legende__item'}, h('span', {class: 'dispos-cellule dispos-cellule--disponible'}), 'Disponible'),
-        h('span', {class: 'dispos-legende__item'}, h('span', {class: 'dispos-cellule dispos-cellule--artiste'}), 'Veut voir un artiste'),
-        h('span', {class: 'dispos-legende__item'}, h('span', {class: 'dispos-cellule dispos-cellule--indisponible'}), 'Indisponible'),
-        h('span', {class: 'dispos-legende__item'}, h('span', {class: 'contrainte-badge contrainte-badge--danger'}, '!'), 'Contrainte déclarée (survoler le nom)'),
+        h('span', {class: 'dispos-legende__item'}, h('span', {class: 'dispos-cellule dispos-cellule--disponible'}), t('Disponible')),
+        h('span', {class: 'dispos-legende__item'}, h('span', {class: 'dispos-cellule dispos-cellule--artiste'}), t('Veut voir un artiste')),
+        h('span', {class: 'dispos-legende__item'}, h('span', {class: 'dispos-cellule dispos-cellule--indisponible'}), t('Indisponible')),
+        h('span', {class: 'dispos-legende__item'}, h('span', {class: 'contrainte-badge contrainte-badge--danger'}, '!'), t('Contrainte déclarée (survoler le nom)')),
       ),
     );
     container.append(barre);
@@ -589,7 +685,7 @@ export function montrerDisponibilites(container, m) {
     }
 
     if (!jour) {
-      container.append(h('p', {class: 'empty'}, 'Aucun macro-créneau : rien à afficher.'));
+      container.append(h('p', {class: 'empty'}, t('Aucun macro-créneau : rien à afficher.')));
       return;
     }
     const blocs = blocsDuJour(jour).filter((b) => b.quarts.length > 0);
@@ -610,17 +706,17 @@ export function montrerDisponibilites(container, m) {
       .sort((a, b) => a.Nom.localeCompare(b.Nom, 'fr'));
 
     if (blocs.length === 0) {
-      container.append(h('p', {class: 'empty'}, 'Ce jour ne couvre aucun quart d’heure.'));
+      container.append(h('p', {class: 'empty'}, t('Ce jour ne couvre aucun quart d’heure.')));
       return;
     }
     if (benevoles.length === 0) {
-      container.append(h('p', {class: 'empty'}, 'Aucun bénévole ne correspond à ce filtre.'));
+      container.append(h('p', {class: 'empty'}, t('Aucun bénévole ne correspond à ce filtre.')));
       return;
     }
 
     const indexDispos = indexerDisponibilitesParBenevole(m.disponibilites);
 
-    const theadCellules = [h('th', {class: 'dispos-table__coin', scope: 'col'}, 'Bénévole')];
+    const theadCellules = [h('th', {class: 'dispos-table__coin', scope: 'col'}, t('Bénévole'))];
     blocs.forEach((bloc, iBloc) => {
       bloc.quarts.forEach((q, iQuart) => {
         const limiteMacro = iQuart === 0 && iBloc > 0;
@@ -644,8 +740,8 @@ export function montrerDisponibilites(container, m) {
         const artisteNom = artisteId != null ? ix.artiste.get(artisteId)?.Nom : undefined;
         const classe = statut === 'Disponible' ? 'disponible' : statut === 'Artiste' ? 'artiste' : 'indisponible';
         const limiteMacro = iQuart === 0 && iBloc > 0;
-        const detail = artisteNom ? `veut voir ${artisteNom}` : LIBELLE_STATUT[statut];
-        const indiceClic = modeEdition ? (modeArtiste ? ' · cliquer pour choisir un artiste' : ' · cliquer pour basculer') : '';
+        const detail = artisteNom ? t('veut voir {artiste}', {artiste: artisteNom}) : LIBELLE_STATUT[statut]();
+        const indiceClic = modeEdition ? ` · ${modeArtiste ? t('cliquer pour choisir un artiste') : t('cliquer pour basculer')}` : '';
         return h('td', {
           class: `dispos-cellule dispos-cellule--${classe}${limiteMacro ? ' dispos-cellule--limite-macro' : ''}`,
           title: `${b.Nom} · ${libelleHeure(q)} · ${detail}${indiceClic}`,
@@ -678,7 +774,7 @@ export function montrerDisponibilites(container, m) {
     container.append(
       nouveauDefilement,
       h('p', {class: 'view__intro', style: {marginTop: '10px', marginBottom: '0'}},
-        `${benevoles.length} bénévole${benevoles.length > 1 ? 's' : ''} affiché${benevoles.length > 1 ? 's' : ''}. Une case sans donnée vaut indisponible (§6.4 du cahier des charges) : seule une disponibilité déclarée ouvre la possibilité d'une affectation.`,
+        `${tn(benevoles.length, '{n} bénévole affiché.', '{n} bénévoles affichés.')} ${t("Une case sans donnée vaut indisponible (§6.4 du cahier des charges) : seule une disponibilité déclarée ouvre la possibilité d'une affectation.")}`,
       ),
     );
     // Ne s'applique qu'une fois le `<div>` attaché au document : posé sur un

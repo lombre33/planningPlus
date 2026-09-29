@@ -25,7 +25,7 @@ traductions({
   Lieu: 'Location',
   Indicatif: 'Call sign',
   Coéquipiers: 'Teammates',
-  'Rechercher un bénévole…': 'Search for a volunteer…',
+  'Rechercher un bénévole…': 'Search volunteers…',
   'Imprimer toutes les feuilles': 'Print all sheets',
   'Imprimer cette feuille': 'Print this sheet',
   'Aucun bénévole ne correspond à cette recherche.': 'No volunteer matches this search.',

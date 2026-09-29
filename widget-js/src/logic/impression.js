@@ -8,11 +8,16 @@
  * imprimables) : ce module n'appelle que ce qui y est déjà exporté.
  */
 
+import {t, traductions} from '../i18n.js';
 import {
   placesDuGroupe, positionsDuGroupe, quartsDuSousCreneau,
 } from './derive.js';
 import {peutVoirArtiste, quartsDIntervalle} from '../moteur/index.js';
 import {PAS_SECONDES} from '../temps.js';
+
+traductions({
+  'Bénévole introuvable': 'Volunteer not found',
+});
 
 /**
  * Pour chaque bénévole tenant une place, ce à quoi il est affecté à chaque
@@ -102,7 +107,7 @@ export function affectationsQuartParMission(
         // disparu) : montrer un repère plutôt que d'omettre silencieusement
         // l'occupation, ce qui ferait croire l'indicatif libre alors qu'il
         // est pourvu.
-        benevoleNoms.push(benevole ? (nomsComplets?.get(benevole.id) ?? benevole.Nom) : 'Bénévole introuvable');
+        benevoleNoms.push(benevole ? (nomsComplets?.get(benevole.id) ?? benevole.Nom) : t('Bénévole introuvable'));
       }
       entrees.push({groupeCode: groupe.Code, benevoleNoms});
     }

@@ -201,14 +201,19 @@ describe('dans le code', () => {
 // --- À l'écran ----------------------------------------------------------------
 
 /** Tout ce qu'une vue peut montrer sans le traduire : les données du
- *  document, les noms de jours et de mois (traduits par `Intl`), la marque. */
+ *  document (entières, ou en nom court « Anna T. » comme les puces
+ *  d'Indicatifs), les noms de jours et de mois (traduits par `Intl`), la
+ *  marque. */
 function motsPermis(m) {
   const valeurs = new Set(['Planning+', 'Grist Factory', 'grist-factory.fr', 'GNU GPL v3.0', 'Français', 'English']);
   for (const lignes of Object.values(m.data)) {
     for (const ligne of lignes) {
       for (const v of Object.values(ligne)) {
         for (const x of Array.isArray(v) ? v : [v]) {
-          if (typeof x === 'string' && x.trim().length > 1) { valeurs.add(x.trim()); }
+          if (typeof x !== 'string' || x.trim().length <= 1) { continue; }
+          valeurs.add(x.trim());
+          const [prenom, nom] = x.trim().split(' ');
+          if (nom) { valeurs.add(`${prenom} ${nom[0]}.`); }
         }
       }
     }
@@ -221,7 +226,10 @@ function motsPermis(m) {
     const date = new Date(Date.UTC(2026, mois, 15, 12));
     for (const month of ['long', 'short']) { valeurs.add(new Intl.DateTimeFormat('en-GB', {month}).format(date)); }
   }
-  return [...valeurs].sort((a, b) => b.length - a.length);
+  const liste = [...valeurs].sort((a, b) => b.length - a.length);
+  // Mots entiers seulement : « Mon » (lundi) ne s'ôte pas de « Montage ».
+  const echapper = (mot) => mot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return {liste, motif: new RegExp(`(?<!\\p{L})(?:${liste.map(echapper).join('|')})(?!\\p{L})`, 'gu')};
 }
 
 /** Ce qui reste d'un texte affiché une fois ôtés les passages traduits et
@@ -230,15 +238,22 @@ function resteNonTraduit(texte, permis) {
   let reste = texte;
   let avant;
   do { avant = reste; reste = reste.replace(/⟦[^⟦⟧]*⟧/g, ' '); } while (reste !== avant);
-  for (const mot of permis) { reste = reste.split(mot).join(' '); }
+  reste = reste.replace(permis.motif, ' ');
   return /\p{L}/u.test(reste) ? reste.replace(/\s+/g, ' ').trim() : null;
+}
+
+/** Une donnée coupée en « … » faute de place (`ajusterTexteBlocAvecTroncature`,
+ *  plannings imprimables) : le début d'une valeur permise. */
+function donneeTronquee(texte, permis) {
+  const debut = texte.trim().slice(0, -1);
+  return texte.trim().endsWith('…') && debut !== '' && permis.liste.some((mot) => mot.startsWith(debut));
 }
 
 function textesNonTraduits(racine, permis, contexte) {
   const trouves = [];
   const marcheur = document.createTreeWalker(racine, NodeFilter.SHOW_TEXT);
   for (let noeud = marcheur.nextNode(); noeud; noeud = marcheur.nextNode()) {
-    if (noeud.parentElement?.closest('script, style')) { continue; }
+    if (noeud.parentElement?.closest('script, style') || donneeTronquee(noeud.textContent, permis)) { continue; }
     const reste = resteNonTraduit(noeud.textContent, permis);
     if (reste) { trouves.push(`${contexte} : « ${reste} » dans « ${noeud.textContent.trim().slice(0, 80)} »`); }
   }
