@@ -48,13 +48,14 @@ traductions({
   'Macro-créneaux et sous-créneaux. Glissez pour déplacer, redimensionnez par les bords, ou ajoutez un macro-créneau.':
     'Time blocks and slots. Drag to move, resize from the edges, or add a time block.',
   Missions: 'Tasks',
-  'Missions × sous-créneaux': 'Tasks × slots',
+  'Missions du jour': 'Tasks for the day',
+  'Étape {n}': 'Step {n}',
   'Les missions et leurs créneaux du jour. Cliquez une case pour voir sa couverture ; les places se pourvoient à l’étape 5.':
     'The day’s tasks and their slots. Click a cell to see its coverage; spots are filled in step 5.',
   Indicatifs: 'Call signs',
   'Indicatifs et équipes': 'Call signs and teams',
-  'Un indicatif est positionné à l’avance sur plusieurs missions : c’est la mission qui tourne, pas le binôme (§6.3).':
-    'A call sign is placed in advance on several tasks: the task rotates, not the buddy pair (§6.3).',
+  'Un indicatif est positionné à l’avance sur plusieurs missions : c’est la mission qui tourne, pas le binôme.':
+    'A call sign is placed in advance on several tasks: the task rotates, not the buddy pair.',
   Bénévoles: 'Volunteers',
   Vue: 'View',
   Disponibilités: 'Availability',
@@ -119,7 +120,7 @@ const ENTREES = [
   {
     id: 'missions', libelle: () => t('Missions'), icone: ICONES.grille, section: 'parcours', etape: 2,
     vues: [{
-      titre: () => t('Missions × sous-créneaux'),
+      titre: () => t('Missions du jour'),
       sousTitre: () => t('Les missions et leurs créneaux du jour. Cliquez une case pour voir sa couverture ; les places se pourvoient à l’étape 5.'),
       montrer: montrerGrille,
       filtreJour: true,
@@ -129,7 +130,7 @@ const ENTREES = [
     id: 'indicatifs', libelle: () => t('Indicatifs'), icone: ICONES.equipes, section: 'parcours', etape: 3,
     vues: [{
       titre: () => t('Indicatifs et équipes'),
-      sousTitre: () => t('Un indicatif est positionné à l’avance sur plusieurs missions : c’est la mission qui tourne, pas le binôme (§6.3).'),
+      sousTitre: () => t('Un indicatif est positionné à l’avance sur plusieurs missions : c’est la mission qui tourne, pas le binôme.'),
       montrer: montrerIndicatifs,
       filtreJour: true,
     }],
@@ -268,7 +269,9 @@ export function demarrerApp(racine, magasin, sourceLibelle) {
   const sousVues = h('div', {class: 'app-sous-vues'});
   const bandeauJours = h('div', {class: 'app-bandeau-jours'});
   const vue = h('div', {class: 'view'});
-  const main = h('div', {class: 'main'}, topbar, sousVues, bandeauJours, vue);
+  // Étape suivante : en bas des étapes 1 à 4, un bouton mène à la suivante.
+  const suite = h('div', {class: 'app-suite'});
+  const main = h('div', {class: 'main'}, topbar, sousVues, bandeauJours, vue, suite);
   const shell = h('div', {class: 'app-shell'}, rail, main);
 
   const vueActive = () => {
@@ -335,6 +338,7 @@ export function demarrerApp(racine, magasin, sourceLibelle) {
     }
     vider(topbar);
     topbar.append(
+      h('span', {class: 'topbar__icone', 'aria-hidden': 'true'}, icone(entree.icone)),
       h('div', {class: 'topbar__title'},
         h('h1', null, def.titre()),
         h('p', {class: 'topbar__subtitle'}, def.sousTitre()),
@@ -348,6 +352,17 @@ export function demarrerApp(racine, magasin, sourceLibelle) {
     redessinerBandeauJours();
     vider(vue);
     detruireVue = def.montrer(vue, magasin) ?? (() => {});
+    vider(suite);
+    const suivante = entree.etape != null ? ENTREES.find((e) => e.etape === entree.etape + 1) : null;
+    if (suivante) {
+      const allerALaSuivante = () => {
+        activer(suivante.id);
+        // Le bouton est en bas de page : la vue suivante s'ouvre par son haut.
+        (document.scrollingElement ?? document.documentElement).scrollTop = 0;
+      };
+      suite.append(h('button', {class: 'btn app-suite__bouton', type: 'button', onclick: allerALaSuivante},
+        h('span', {class: 'app-suite__etape'}, t('Étape {n}', {n: suivante.etape})), ` ${suivante.libelle()} →`));
+    }
   }
 
   function activer(id) {

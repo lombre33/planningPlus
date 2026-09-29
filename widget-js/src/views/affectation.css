@@ -23,8 +23,8 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 10px;
+  margin-bottom: 12px;
 }
 
 .tj-outils__fin {
@@ -34,7 +34,51 @@
 .tj-compteurs {
   display: flex;
   flex-wrap: wrap;
+  gap: 18px;
+  align-items: center;
+}
+
+/* Chiffres clés : un point de couleur, le chiffre, puis ce qu'il compte. */
+.tj-stat {
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.tj-stat::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.tj-stat strong {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.tj-stat--ok::before {
+  background: var(--ok);
+}
+
+.tj-stat--warn::before {
+  background: var(--warn);
+}
+
+.tj-stat--danger::before {
+  background: var(--danger);
+}
+
+.tj-stat--art::before {
+  background: var(--accent-2);
+}
+
+.tj-stat--danger strong {
+  color: var(--danger);
 }
 
 .tj-pill--art {
@@ -45,10 +89,56 @@
 .tj-legende {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 14px;
-  font-size: 11.5px;
+  gap: 6px 16px;
+  font-size: 12px;
   color: var(--text-muted);
-  margin-bottom: 8px;
+  margin-bottom: 12px;
+}
+
+/* Légende repliée, ouverte au besoin par-dessus la table. */
+.tj-legende-repli {
+  position: relative;
+}
+
+.tj-legende-repli summary {
+  list-style: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+}
+
+.tj-legende-repli summary::-webkit-details-marker {
+  display: none;
+}
+
+.tj-legende-repli summary::after {
+  content: " ▾";
+}
+
+.tj-legende-repli summary:hover,
+.tj-legende-repli[open] summary {
+  background: var(--surface-muted);
+  color: var(--text);
+}
+
+.tj-legende-repli .tj-legende {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  width: 300px;
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-pop);
+  color: var(--text);
 }
 
 .tj-legende span {
@@ -67,7 +157,7 @@
 .tj-l-bloc { background: var(--brand-tint); }
 .tj-l-vide { background: var(--warn-tint); border: 1px dashed var(--warn); }
 .tj-l-absent { background: repeating-linear-gradient(45deg, var(--absence-tint) 0 4px, transparent 4px 8px); border: 1px dashed var(--absence); }
-.tj-l-indispo { background: repeating-linear-gradient(45deg, var(--tj-trame) 0 4px, transparent 4px 8px); border: 1px solid var(--border); }
+.tj-l-indispo { background: var(--tj-trame); border: 1px solid var(--border); }
 .tj-legende .tj-l-art { height: 4px; background: var(--accent-2); }
 .tj-legende .tj-l-rate { height: 4px; background: repeating-linear-gradient(90deg, var(--danger) 0 4px, transparent 4px 7px); }
 .tj-l-change { border: 2px solid var(--brand); }
@@ -118,6 +208,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   min-width: 0;
+  box-shadow: var(--ombre-carte);
 }
 
 .tj-table {
@@ -161,7 +252,7 @@
 }
 
 .tj-nom__txt strong {
-  font-size: 12.5px;
+  font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -172,7 +263,7 @@
 
 .tj-nom__txt small {
   color: var(--text-muted);
-  font-size: 10.5px;
+  font-size: 11px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -184,7 +275,7 @@
 
 .tj-code {
   font-family: var(--font-mono);
-  font-weight: 700;
+  font-weight: 650;
 }
 
 .tj-coeur {
@@ -231,18 +322,18 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  background: repeating-linear-gradient(45deg, var(--tj-trame) 0 5px, transparent 5px 10px);
+  background: var(--tj-trame);
 }
 
 .tj-bloc {
   position: absolute;
   top: 6px;
   bottom: 6px;
-  border-radius: 6px;
+  border-radius: 7px;
   background: var(--brand-tint);
   color: var(--brand-ink);
   border: 1px solid transparent;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   padding: 0 6px;
   display: flex;
@@ -341,11 +432,11 @@
 
 .tj-section .tj-nom {
   background: var(--surface-muted);
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--text-faint);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-muted);
   min-height: 26px;
   display: flex;
 }
@@ -429,6 +520,7 @@
   flex-direction: column;
   gap: 10px;
   min-width: 0;
+  box-shadow: var(--ombre-carte);
 }
 
 .tj-panneau__tete h2 {
@@ -445,9 +537,9 @@
 
 .tj-panneau h3 {
   margin: 4px 0 0;
-  font-size: 11.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: 0;
   color: var(--text-muted);
 }
 
@@ -676,6 +768,7 @@
   }
 }
 
+
 @media (max-width: 600px) {
   .tj-ligne {
     grid-template-columns: 160px minmax(0, 1fr);
@@ -687,6 +780,24 @@
 
   .tj-outils__fin {
     margin-left: 0;
+  }
+}
+
+@media (max-width: 860px) {
+  .tj-compteurs {
+    gap: 8px 16px;
+  }
+  .tj-outils .btn {
+    flex: 1 1 auto;
+  }
+  .tj-brouillon {
+    gap: 6px 8px;
+    padding: 8px 10px;
+  }
+  .tj-brouillon .btn {
+    min-height: 30px;
+    padding: 4px 10px;
+    font-size: 12px;
   }
 }
 
