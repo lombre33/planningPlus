@@ -1,8 +1,11 @@
 import {describe, expect, it} from 'vitest';
+import {normaliser} from '../donnees/normaliser.js';
+import {calculerAnomalies} from '../moteur/adaptateur-magasin.js';
 import {Magasin} from '../store.js';
-import {regrouperParJour} from './derive.js';
+import {indexer, regrouperParJour} from './derive.js';
 import {
-  appliquerMouvements, binomesDuBenevole, construireJournee, evaluerMouvements, jourAffiche, mesurer, souhaitsDuBenevole,
+  appliquerMouvements, binomesDuBenevole, construireJournee, evaluerMouvements, jourAffiche, mesurer, signalementsDuJour,
+  souhaitsDuBenevole,
 } from './journee.js';
 import {HUGO, jeuJournee, LEA, NINA, PAUL, REMI, TOM, ZOE} from './journee-fixtures.js';
 
@@ -23,6 +26,53 @@ describe('construireJournee', () => {
   it('ne compte pas un binôme dont un membre est absent à l’appel', () => {
     const j = journeeDe();
     expect(j.paires).toEqual([[LEA, HUGO], [TOM, PAUL]]);
+  });
+
+  it('tient un désisté pour absent tous les jours, sans appel : sa place est à couvrir', () => {
+    const jeu = jeuJournee({absents: []});
+    jeu.benevoles.find((b) => b.id === TOM).Statut = 'Absent';
+    const m = new Magasin(jeu);
+    const j = construireJournee(m, regrouperParJour(m.macroCreneaux)[0]);
+    expect([...j.desistes]).toEqual([TOM]);
+    expect([...j.absents]).toEqual([TOM]);
+    expect(mesurer(j).aCouvrir).toEqual([3, 4, 8]);
+  });
+});
+
+describe('signalementsDuJour (les signaux de l’ancien écran Anomalies, dans la table)', () => {
+  it('retrouve, jour par jour, les effectifs hors bornes, les refus et les doubles engagements du moteur', () => {
+    const m = new Magasin(normaliser());
+    const anomalies = calculerAnomalies(m, indexer(m));
+    const moteur = (type) => anomalies.filter((a) => a.type === type);
+    const table = {effectifs: [], refus: [], enMemeTemps: new Set()};
+    for (const jour of regrouperParJour(m.macroCreneaux)) {
+      const j = construireJournee(m, jour);
+      const s = signalementsDuJour(j, j.occupantParPlace, m.data);
+      table.effectifs.push(...s.effectifs.map((e) => e.besoin.id));
+      table.refus.push(...s.refus.keys());
+      for (const placeId of s.enMemeTemps.keys()) { table.enMemeTemps.add(j.occupantParPlace.get(placeId)); }
+    }
+    // Garde-fou : le jeu réaliste porte bien des signaux de ces trois sortes.
+    expect(moteur('sous-effectif').length).toBeGreaterThan(0);
+    expect(moteur('souhait-refuse').length).toBeGreaterThan(0);
+    expect(moteur('double-engagement').length).toBeGreaterThan(0);
+
+    const tri = (liste) => [...liste].sort((a, b) => a - b);
+    expect(tri(table.effectifs)).toEqual(tri([...moteur('sous-effectif'), ...moteur('sur-effectif')].map((a) => a.besoin.id)));
+    expect(tri(table.refus)).toEqual(tri(moteur('souhait-refuse').map((a) => a.place.id)));
+    expect(tri(table.enMemeTemps)).toEqual(tri(moteur('double-engagement').map((a) => a.benevoleId)));
+  });
+
+  it('ne compte pas dans l’effectif la place tenue par un absent', () => {
+    const effectifs = (absents) => {
+      const m = new Magasin(jeuJournee({absents}));
+      const j = construireJournee(m, regrouperParJour(m.macroCreneaux)[0]);
+      return signalementsDuJour(j, j.occupantParPlace, m.data).effectifs
+        .map((e) => [e.mission.Nom, e.sousCreneau.Libelle, e.pourvues, e.places]);
+    };
+    // B1 (Accueil, après-midi) : Rémi et Sofia ; Rémi absent à l'appel, l'effectif tombe à 1.
+    expect(effectifs([REMI])).toEqual([['Accueil', 'Après-midi', 1, 2], ['Bar', 'Soirée', 1, 2], ['Restauration', 'Soirée', 1, 2]]);
+    expect(effectifs([])).toEqual([['Bar', 'Soirée', 1, 2], ['Restauration', 'Soirée', 1, 2]]);
   });
 });
 

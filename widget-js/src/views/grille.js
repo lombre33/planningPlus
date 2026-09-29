@@ -1,16 +1,15 @@
 /**
  * Vue « missions × sous-créneaux » : qui est où pour un jour donné (§8.2 du
  * cahier des charges — la vue des cheffes d'équipe). Cliquer une case ouvre
- * le détail du besoin et, pour chaque place vide, un classement de
- * candidats à affecter.
+ * sa couverture : les indicatifs positionnés et qui tient chaque place.
+ * Elle ne pourvoit plus rien (ménage choisi par Antoine le 2026-09-29) :
+ * les places se pourvoient, s'échangent et se verrouillent dans la table
+ * du jour, à l'étape 5.
  */
 
-import {TYPE_PLACE_DRAG} from '../logic/dnd-types.js';
 import {
   couvertureBesoin, indexer, regrouperParJour, sousCreneauxApplicables,
 } from '../logic/derive.js';
-import {apercuEchange, verifierDepot} from '../logic/glisser-deposer.js';
-import {classerCandidats} from '../moteur/adaptateur-magasin.js';
 import {epochJourFestivalEtHeure, libelleHeure, libelleHeurePlage} from '../temps.js';
 import {fermerPanneau, h, icone, ICONES, ouvrirModal, ouvrirPanneau, vider} from '../ui/dom.js';
 import {construireFrise} from '../ui/frise.js';
@@ -483,12 +482,13 @@ export function montrerGrille(container, m) {
       ),
       c.groupesPositionnes.length === 0
         ? h('p', {class: 'empty'}, "Aucun indicatif n'est encore positionné sur ce besoin.")
-        : h('div', null, ...c.groupesPositionnes.map((g) => carteGroupe(besoinId, g.groupe))),
+        : h('div', null, ...c.groupesPositionnes.map((g) => carteGroupe(g.groupe))),
+      h('p', {class: 'view__intro', style: {margin: '0'}}, 'Pour pourvoir, échanger ou verrouiller une place : étape 5, Affectation.'),
     );
     ouvrirPanneau(panneau);
   }
 
-  function carteGroupe(besoinId, groupe) {
+  function carteGroupe(groupe) {
     const ix = indexer(m);
     const places = m.places.filter((p) => p.Groupe === groupe.id).sort((a, b) => a.Rang - b.Rang);
     // Même défaut que `rosterCard` dans `views/affectation.js`, corrigé
@@ -499,148 +499,21 @@ export function montrerGrille(container, m) {
         h('span', {class: 'mono', style: {fontWeight: '700'}}, groupe.Code),
         h('span', {class: 'pill pill--neutral'}, equipe?.Nom ?? '?'),
       ),
-      ...places.map((place) => ligneMembre(besoinId, place)),
+      ...places.map((place) => ligneMembre(ix, place)),
     );
   }
 
-  /** Échange (ou déplace, si l'une des deux places est vide) les occupants
-   *  de deux places — le même geste que la vue Affectation manuelle
-   *  (`views/affectation.js`), disponible ici aussi (§7.5 : le parcours
-   *  d'affectation vaut où qu'il s'affiche, y compris dans cette grille). */
-  async function deposerEchange(besoinId, placeSourceId, placeCibleId) {
-    const source = m.places.find((p) => p.id === placeSourceId);
-    const cible = m.places.find((p) => p.id === placeCibleId);
-    if (!source || !cible || source.Benevole == null) { return; }
-    if (source.Verrouillee || cible.Verrouillee) {
-      dernierMessage = {texte: 'Place verrouillée : déverrouillez-la avant de la modifier.', ton: 'danger'};
-      ouvrirDetailBesoin(besoinId);
-      return;
-    }
-    if (source.Benevole != null) {
-      const verdict = verifierDepot(m, source.Benevole, placeCibleId, [placeSourceId]);
-      if (!verdict.ok) { dernierMessage = {texte: verdict.motif, ton: 'danger'}; ouvrirDetailBesoin(besoinId); return; }
-    }
-    if (cible.Benevole != null) {
-      const verdict = verifierDepot(m, cible.Benevole, placeSourceId, [placeCibleId]);
-      if (!verdict.ok) { dernierMessage = {texte: verdict.motif, ton: 'danger'}; ouvrirDetailBesoin(besoinId); return; }
-    }
-
-    const diff = apercuEchange(m, placeSourceId, placeCibleId);
-    const benevoleSource = source.Benevole;
-    const benevoleCible = cible.Benevole;
-    const resultat1 = await m.assignerPlace(placeSourceId, benevoleCible, 'Manuel');
-    if (!resultat1.ok) { dernierMessage = {texte: resultat1.raison, ton: 'danger'}; ouvrirDetailBesoin(besoinId); return; }
-    const resultat2 = await m.assignerPlace(placeCibleId, benevoleSource, 'Manuel');
-    if (!resultat2.ok) { dernierMessage = {texte: resultat2.raison, ton: 'danger'}; ouvrirDetailBesoin(besoinId); return; }
-    const base = benevoleCible != null ? 'Échange effectué.' : 'Déplacé.';
-    dernierMessage = diff.creees.length > 0
-      ? {texte: `${base} ${diff.creees.length} anomalie${diff.creees.length > 1 ? 's' : ''} créée${diff.creees.length > 1 ? 's' : ''}.`, ton: 'danger'}
-      : {texte: base, ton: 'ok'};
-    ouvrirDetailBesoin(besoinId);
-  }
-
-  function ligneMembre(besoinId, place) {
-    const ix = indexer(m);
+  /** Une place, en lecture seule : qui la tient, et si elle est verrouillée. */
+  function ligneMembre(ix, place) {
     const benevole = place.Benevole != null ? ix.benevole.get(place.Benevole) : null;
-    const refuserVerrouillage = () => {
-      dernierMessage = {texte: 'Place verrouillée : déverrouillez-la avant de la modifier.', ton: 'danger'};
-      ouvrirDetailBesoin(besoinId);
-    };
-    const ligne = h('div', {
-      class: `membre${place.Verrouillee ? ' membre--verrouillee' : ''}`,
-      draggable: benevole && !place.Verrouillee ? 'true' : 'false',
-      ondragstart: benevole ? (e) => {
-        const dt = e.dataTransfer;
-        dt?.setData(TYPE_PLACE_DRAG, String(place.id));
-        if (dt) { dt.effectAllowed = 'move'; }
-      } : undefined,
-      ondragover: (e) => {
-        const de = e;
-        if (!(de.dataTransfer?.types ?? []).includes(TYPE_PLACE_DRAG)) { return; }
-        de.preventDefault();
-        ligne.style.background = 'var(--brand-tint)';
-      },
-      ondragleave: () => { ligne.style.background = ''; },
-      ondrop: (e) => {
-        const de = e;
-        de.preventDefault();
-        ligne.style.background = '';
-        const placeRaw = de.dataTransfer?.getData(TYPE_PLACE_DRAG);
-        if (placeRaw && Number(placeRaw) !== place.id) { deposerEchange(besoinId, Number(placeRaw), place.id); }
-      },
-    },
+    return h('div', {class: `membre${place.Verrouillee ? ' membre--verrouillee' : ''}`},
       h('span', {class: 'rang mono'}, `#${place.Rang}`),
       benevole
         ? h('span', {style: {flex: '1'}}, benevole.Nom)
-        : h('span', {style: {flex: '1', color: 'var(--text-faint)'}}, 'Place non pourvue — glissez un occupant ici, ou :'),
+        : h('span', {style: {flex: '1', color: 'var(--text-faint)'}}, 'Place à pourvoir'),
       place.Verrouillee
-        ? h('span', {class: 'pill pill--neutral'}, icone(ICONES.cadenas), 'Verrouillée')
+        ? h('span', {class: 'pill pill--neutral', title: 'Corrigée à la main : ni les scénarios ni l’algorithme n’y touchent.'}, icone(ICONES.cadenas, 'icone-texte'), ' Verrouillée')
         : null,
-      h('button', {
-        class: 'btn btn--ghost btn--sm', type: 'button',
-        title: place.Verrouillee ? 'Déverrouiller cette place' : 'Verrouiller cette place',
-        onclick: () => { void (async () => {
-          const resultat = await m.basculerVerrouillage(place.id);
-          if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; }
-          ouvrirDetailBesoin(besoinId);
-        })(); },
-      }, icone(ICONES.cadenas)),
-      benevole
-        ? h('button', {
-          class: 'btn btn--ghost btn--sm', type: 'button',
-          onclick: () => { void (async () => {
-            if (place.Verrouillee) { refuserVerrouillage(); return; }
-            const resultat = await m.assignerPlace(place.id, null);
-            if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; }
-            ouvrirDetailBesoin(besoinId);
-          })(); },
-        }, 'Vider')
-        : h('button', {
-          class: 'btn btn--sm', type: 'button',
-          onclick: () => {
-            if (place.Verrouillee) { refuserVerrouillage(); return; }
-            ouvrirChoixCandidat(besoinId, place);
-          },
-        }, 'Affecter…'),
-    );
-    return ligne;
-  }
-
-  function ouvrirChoixCandidat(besoinId, place) {
-    const ix = indexer(m);
-    const groupe = ix.groupe.get(place.Groupe);
-    const candidats = classerCandidats(m, ix, groupe.id);
-    const panneau = h('div', {style: {display: 'flex', flexDirection: 'column', gap: '12px'}},
-      h('div', {class: 'side-panel__head'},
-        h('div', null,
-          h('h3', null, `Place #${place.Rang} — ${groupe.Code}`),
-          h('p', {class: 'topbar__subtitle'}, 'Vaut pour tous les créneaux de cet indicatif.'),
-        ),
-        h('button', {class: 'btn btn--ghost btn--sm', type: 'button', onclick: () => ouvrirDetailBesoin(besoinId)}, '← Retour'),
-      ),
-      candidats.length === 0
-        ? h('p', {class: 'empty'}, 'Aucun candidat ne satisfait les contraintes dures pour cet indicatif.')
-        : h('div', {style: {display: 'flex', flexDirection: 'column', gap: '8px'}},
-          ...candidats.map((c) => carteCandidat(c, () => { void (async () => {
-            const resultat = await m.assignerPlace(place.id, c.benevoleId, 'Manuel');
-            if (!resultat.ok) { dernierMessage = {texte: resultat.raison, ton: 'danger'}; ouvrirDetailBesoin(besoinId); return; }
-            fermerPanneau();
-          })(); })),
-        ),
-    );
-    ouvrirPanneau(panneau);
-  }
-
-  function carteCandidat(c, retenir) {
-    return h('div', {class: 'candidat'},
-      h('div', {class: 'candidat__head'},
-        h('span', {class: 'candidat__nom'}, c.nom),
-        h('span', {class: 'candidat__score mono'}, c.score.toFixed(2)),
-      ),
-      h('div', {class: 'candidat__raisons'}, ...c.tags.map((t) => h(
-        'span', {class: `tag tag--${t.sens}`}, t.texte,
-      ))),
-      h('button', {class: 'btn btn--primary btn--sm', type: 'button', onclick: retenir}, 'Retenir'),
     );
   }
 

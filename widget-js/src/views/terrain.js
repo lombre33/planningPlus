@@ -3,14 +3,19 @@
  * effectifs attendus par mission (cahier des charges §8.9, proche de la vue
  * tension §8.3 pour la partie effectifs). Pensée pour un téléphone, pendant
  * le festival — lecture seule, un seul curseur de temps, rien à faire
- * défiler horizontalement.
+ * défiler horizontalement. Le jour est celui du bandeau commun.
+ *
+ * Un bénévole pointé absent à l'appel du jour, ou désisté pour tout le
+ * festival, n'est jamais « en poste » : l'appel ne libère aucune place
+ * (choix d'Antoine du 2026-09-24), mais sa place ne compte pas dans les
+ * effectifs, comme dans la table du jour où elle est « à couvrir ».
  */
 
-import {indexer} from '../logic/derive.js';
+import {indexer, regrouperParJour} from '../logic/derive.js';
 import {
-  affectationsAInstant, blocsDuJour, couvertureAInstant, indexerDisponibilitesDuQuart,
-  regrouperParJourCourt, statutBenevoleAInstant,
+  affectationsAInstant, blocsDuJour, couvertureAInstant, indexerDisponibilitesDuQuart, statutBenevoleAInstant,
 } from '../logic/dispos-terrain.js';
+import {jourAffiche} from '../logic/journee.js';
 import {libelleHeure} from '../temps.js';
 import {h, vider} from '../ui/dom.js';
 
@@ -18,25 +23,25 @@ const LIBELLE_ETAT_LIBRE = {
   disponible: 'Disponible, non affecté',
   'veut-voir-artiste': 'Veut voir un artiste',
   indisponible: 'Indisponible',
-  absent: 'Absent',
+  absent: 'Absent·e',
 };
 
-export function montrerTerrain(container, m) {
-  let jourCle = null;
-  let instant = null;
-
-  function quartsDuJour(cle) {
-    const jour = regrouperParJourCourt(m.macroCreneaux).find((j) => j.cle === cle);
-    return jour ? blocsDuJour(jour).flatMap((b) => b.quarts) : [];
+/** Absents du jour : pointés absents à l'appel de ce jour, ou désistés. */
+function absentsDuJour(m, jourCle) {
+  const absents = new Set(m.benevoles.filter((b) => b.Statut === 'Absent').map((b) => b.id));
+  for (const p of m.presences ?? []) {
+    if (p.Jour === jourCle && p.Present === false) { absents.add(p.Benevole); }
   }
+  return absents;
+}
+
+export function montrerTerrain(container, m) {
+  let instant = null;
 
   function rafraichir() {
     const ix = indexer(m);
-    const jours = regrouperParJourCourt(m.macroCreneaux);
-    if (jourCle == null || !jours.some((j) => j.cle === jourCle)) {
-      jourCle = jours[0]?.cle ?? null;
-    }
-    const quarts = jourCle ? quartsDuJour(jourCle) : [];
+    const jour = jourAffiche(regrouperParJour(m.macroCreneaux), m.macroCreneauSelectionne);
+    const quarts = jour ? blocsDuJour(jour).flatMap((b) => b.quarts) : [];
     if (instant == null || !quarts.includes(instant)) {
       instant = quarts[0] ?? null;
     }
@@ -44,13 +49,6 @@ export function montrerTerrain(container, m) {
 
     const indexInstant = instant != null ? Math.max(0, quarts.indexOf(instant)) : 0;
     container.append(h('div', {class: 'terrain-barre'},
-      h('div', {class: 'dispos-jours', role: 'tablist', 'aria-label': 'Jour'},
-        ...jours.map((j) => h('button', {
-          class: 'dispos-jour-tab', type: 'button', role: 'tab',
-          'aria-selected': String(j.cle === jourCle),
-          onclick: () => { jourCle = j.cle; instant = null; rafraichir(); },
-        }, j.libelle)),
-      ),
       quarts.length > 0 ? h('div', {class: 'terrain-curseur'},
         h('input', {
           class: 'terrain-curseur__range', type: 'range', min: '0', max: String(quarts.length - 1), step: '1',
@@ -69,7 +67,11 @@ export function montrerTerrain(container, m) {
       return;
     }
 
-    const affectations = affectationsAInstant(m, ix, instant);
+    // Le planning tel qu'il se vit ce jour-là : la place d'un absent reste
+    // à son nom dans le document, mais personne ne la tient sur le terrain.
+    const absents = absentsDuJour(m, jour.cle);
+    const planning = {...m.data, places: m.places.map((p) => (absents.has(p.Benevole) ? {...p, Benevole: null} : p))};
+    const affectations = affectationsAInstant(planning, ix, instant);
     const dispoDuQuart = indexerDisponibilitesDuQuart(m, instant);
 
     // --- Où est chaque bénévole --------------------------------------------
@@ -77,7 +79,7 @@ export function montrerTerrain(container, m) {
     const libres = new Map();
 
     for (const benevole of m.benevoles) {
-      const statut = statutBenevoleAInstant(ix, dispoDuQuart, affectations, benevole.id, benevole.Statut);
+      const statut = statutBenevoleAInstant(ix, dispoDuQuart, affectations, benevole.id, absents.has(benevole.id) ? 'Absent' : benevole.Statut);
       if (statut.etat === 'en-poste') {
         const {mission, lieu, groupeCode} = statut.affectation;
         const groupe = enPoste.get(mission.id) ?? {mission, lieu, benevoles: []};
@@ -123,7 +125,7 @@ export function montrerTerrain(container, m) {
     );
 
     // --- Effectifs attendus --------------------------------------------------
-    const couvertures = couvertureAInstant(m, ix, instant)
+    const couvertures = couvertureAInstant(planning, ix, instant)
       .sort((a, b) => a.mission.Nom.localeCompare(b.mission.Nom, 'fr'));
 
     const sectionEffectifs = h('section', {class: 'terrain-section'},

@@ -294,12 +294,6 @@ export function placesDuBenevole(m, ix, benevoleId) {
   return resultat;
 }
 
-// `EtapePermutation`/`proposerPermutation` ont déménagé dans
-// `moteur/adaptateur-magasin.js` le 2026-09-23 : la fonction s'appuyait sur
-// l'ancien `classerCandidats` de ce fichier (retiré ci-dessus), qui
-// ignorait l'affinité (priorité 3 d'Antoine). Voir `views/jourJ.js` pour
-// l'appelant.
-
 // --- Regroupement par jour de festival ---------------------------------
 
 /**

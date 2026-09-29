@@ -4,29 +4,99 @@ import {jeuMinimal} from './dev/jeu-minimal.js';
 import {normaliser} from './donnees/normaliser.js';
 import {Magasin} from './store.js';
 
-/** Test de fumée : monte chaque onglet de l'application sur un jeu de données
- *  (le plus pauvre, puis le plus riche) et vérifie qu'il se construit sans
+const texte = (el) => el?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+
+/** Test de fumée : monte chaque vue de l'application sur un jeu de données
+ *  (le plus pauvre, puis le plus riche) et vérifie qu'elle se construit sans
  *  exception et produit du contenu. Filet de sécurité pour les vues qui n'ont
- *  pas de test dédié (Jour J, Terrain, Anomalies, Bénévole). */
+ *  pas de test dédié (Terrain, Bénévole, Désistements). */
 describe.each([
   ['jeu minimal', () => new Magasin(jeuMinimal())],
   ['jeu réaliste', () => new Magasin(normaliser())],
 ])('démarrage de toutes les vues — %s', (_nom, creerMagasin) => {
   afterEach(() => { document.body.innerHTML = ''; });
 
-  it('chaque onglet se monte sans erreur et affiche un titre et du contenu', () => {
+  function verifierVue(racine, contexte) {
+    expect(racine.querySelector('h1')?.textContent, contexte).toBeTruthy();
+    expect(racine.querySelector('.view')?.children.length, contexte).toBeGreaterThan(0);
+    // Roue crantée des Réglages puis logo, en dernier dans le coin haut-droit.
+    const coin = [...racine.querySelector('.topbar__actions').children].slice(-2);
+    expect(coin.map((e) => e.getAttribute('aria-label') ?? e.getAttribute('alt')), contexte).toEqual(['Réglages', 'Grist Factory']);
+  }
+
+  it('le menu a sept entrées, rangées en parcours, jour J et diffusion', () => {
     document.body.innerHTML = '<div id="app"></div>';
     const racine = document.getElementById('app');
     demarrerApp(racine, creerMagasin(), 'test');
-    const boutons = Array.from(racine.querySelectorAll('.rail__item'));
-    expect(boutons.length).toBe(13);
-    for (const bouton of boutons) {
-      bouton.click();
-      expect(racine.querySelector('h1')?.textContent, bouton.textContent ?? '').toBeTruthy();
-      expect(racine.querySelector('.view')?.children.length, bouton.textContent ?? '').toBeGreaterThan(0);
-      // Roue crantée des Réglages puis logo, en dernier dans le coin haut-droit.
-      const coin = [...racine.querySelector('.topbar__actions').children].slice(-2);
-      expect(coin.map((e) => e.getAttribute('aria-label') ?? e.getAttribute('alt')), bouton.textContent ?? '').toEqual(['Réglages', 'Grist Factory']);
+    const rail = [...racine.querySelector('.rail').children].slice(1).map((el) => (
+      el.classList.contains('rail__section') ? `[${texte(el)}]` : texte(el)
+    ));
+    expect(rail).toEqual([
+      '[Parcours]', '1Agenda', '2Missions', '3Indicatifs', '4Bénévoles', '5Affectation',
+      '[Le jour J]', 'Terrain',
+      '[Diffuser]', 'Impressions',
+    ]);
+  });
+
+  it('chaque vue de chaque entrée se monte sans erreur et affiche un titre et du contenu', () => {
+    document.body.innerHTML = '<div id="app"></div>';
+    const racine = document.getElementById('app');
+    demarrerApp(racine, creerMagasin(), 'test');
+    const titres = new Set();
+    // Une entrée qui regroupe plusieurs vues : toutes les combinaisons de ses
+    // choix (Impressions : qui × durée). Les choix se redessinent à chaque
+    // clic, d'où la relecture du groupe avant chaque option.
+    const groupes = () => [...racine.querySelectorAll('.app-sous-vues .segmente')];
+    function parcourir(niveau, contexte) {
+      if (niveau >= groupes().length) {
+        verifierVue(racine, contexte);
+        titres.add(texte(racine.querySelector('h1')));
+        return;
+      }
+      for (const libelle of [...groupes()[niveau].querySelectorAll('.segmente__option')].map(texte)) {
+        [...groupes()[niveau].querySelectorAll('.segmente__option')].find((b) => texte(b) === libelle).click();
+        parcourir(niveau + 1, `${contexte} › ${libelle}`);
+      }
     }
+    for (const entree of [...racine.querySelectorAll('.rail__item')]) {
+      entree.click();
+      verifierVue(racine, texte(entree));
+      titres.add(texte(racine.querySelector('h1')));
+      parcourir(0, texte(entree));
+    }
+    // Toutes les vues gardées sont atteignables : cinq étapes, Terrain,
+    // Désistements en plus, et les quatre impressions.
+    expect([...titres].sort()).toEqual([
+      'Affectation · table du jour', 'Agenda du festival', 'Artistes', 'Disponibilités des bénévoles', 'Désistements',
+      'Feuille de route bénévole', 'Indicatifs et équipes', 'Missions × sous-créneaux', 'Planning d’équipe sur tout le festival',
+      'Plannings équipes imprimables', 'Roster bénévoles imprimable', 'Terrain',
+    ].sort());
+  });
+
+  it('Impressions : « par bénévole ou par équipe », « un jour ou tout le festival » ; le bandeau des jours seulement pour un jour', () => {
+    document.body.innerHTML = '<div id="app"></div>';
+    const racine = document.getElementById('app');
+    demarrerApp(racine, creerMagasin(), 'test');
+    [...racine.querySelectorAll('.rail__item')].find((b) => texte(b) === 'Impressions').click();
+    const choisir = (libelle) => [...racine.querySelectorAll('.segmente__option')].find((b) => texte(b) === libelle).click();
+    const titre = () => texte(racine.querySelector('h1'));
+    const bandeau = () => racine.querySelector('.app-bandeau-jours').children.length > 0;
+
+    expect(titre()).toBe('Roster bénévoles imprimable');
+    expect(bandeau()).toBe(true);
+    choisir('Tout le festival');
+    expect(titre()).toBe('Feuille de route bénévole');
+    expect(bandeau()).toBe(false);
+    choisir('Par équipe');
+    expect(titre()).toBe('Planning d’équipe sur tout le festival');
+    choisir('Un jour');
+    expect(titre()).toBe('Plannings équipes imprimables');
+    expect(bandeau()).toBe(true);
+    expect([...racine.querySelectorAll('.segmente__option[aria-pressed="true"]')].map(texte)).toEqual(['Par équipe', 'Un jour']);
+
+    // Le choix est gardé d'un passage à l'autre.
+    [...racine.querySelectorAll('.rail__item')].find((b) => texte(b) === 'Terrain').click();
+    [...racine.querySelectorAll('.rail__item')].find((b) => texte(b) === 'Impressions').click();
+    expect(titre()).toBe('Plannings équipes imprimables');
   });
 });

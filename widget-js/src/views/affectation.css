@@ -72,6 +72,23 @@
 .tj-legende .tj-l-rate { height: 4px; background: repeating-linear-gradient(90deg, var(--danger) 0 4px, transparent 4px 7px); }
 .tj-l-change { border: 2px solid var(--brand); }
 .tj-l-hors-dispo { background: repeating-linear-gradient(45deg, var(--danger-tint) 0 3px, var(--brand-tint) 3px 6px); border: 1px solid var(--danger); }
+.tj-l-sous { background: var(--danger-tint); border: 1px solid var(--danger); }
+
+/* Deux sous-créneaux qui se recouvrent : mention repliée, pour information. */
+.tj-chevauchements {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.tj-chevauchements summary {
+  cursor: pointer;
+}
+
+.tj-chevauchements ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
 
 .tj-message {
   margin-bottom: 8px;
@@ -174,6 +191,18 @@
   color: var(--danger);
 }
 
+/* ♡ : binôme souhaité, placé ailleurs ou sans indicatif. */
+.tj-coeur--vide {
+  color: var(--text-muted);
+}
+
+/* Ce qu'une ligne enfreint et qu'il faut corriger (hors disponibilité,
+   mission refusée, deux places en même temps) : du texte, en rouge. */
+.tj-alerte {
+  color: var(--danger);
+  font-weight: 600;
+}
+
 .tj-ligne--choisie .tj-nom,
 .tj-ligne--choisie .tj-piste {
   background-color: var(--brand-tint);
@@ -235,6 +264,24 @@
    bleu d'un changement reste visible par-dessus). */
 .tj-bloc--hors-dispo { background: repeating-linear-gradient(45deg, var(--danger-tint) 0 5px, var(--brand-tint) 5px 10px); color: var(--danger); }
 .tj-bloc--hors-dispo:not(.tj-bloc--change):not(.tj-bloc--apercu) { border-color: var(--danger); }
+
+/* Mission refusée, ou place tenue en même temps qu'une autre. */
+.tj-bloc--alerte { color: var(--danger); }
+.tj-bloc--alerte:not(.tj-bloc--change):not(.tj-bloc--apercu) { border-color: var(--danger); }
+
+/* Lignes « Effectifs hors bornes » : un bloc par créneau, sous le minimum
+   (rouge) ou au-dessus du maximum (orange), avec les chiffres en clair. */
+.tj-bloc--sous { background: var(--danger-tint); color: var(--danger); border-color: var(--danger); }
+.tj-bloc--sur { background: var(--warn-tint); color: var(--warn); border: 1px dashed var(--warn); }
+
+.tj-effectifs-liste {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12.5px;
+}
 
 .tj-art {
   position: absolute;
@@ -307,6 +354,19 @@
   min-height: 26px;
   background-image: none;
 }
+
+.tj-section__bascule {
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.tj-section__bascule:hover { color: var(--text); }
 
 .tj-vide {
   padding: 18px;

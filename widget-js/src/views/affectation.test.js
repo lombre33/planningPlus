@@ -6,7 +6,7 @@
  * places, Rémi absent à l'appel sur B1 #1, A2 #2 et R1 #2 vides).
  */
 import {afterEach, describe, expect, it, vi} from 'vitest';
-import {jeuJournee, PAUL, REMI, t, TOM} from '../logic/journee-fixtures.js';
+import {HUGO, jeuJournee, LEA, NINA, PAUL, REMI, SOFIA, t, TOM, ZOE} from '../logic/journee-fixtures.js';
 import {Magasin} from '../store.js';
 import {montrerAffectation} from './affectation.js';
 
@@ -34,8 +34,9 @@ function monter(options = {}, modifier = () => {}, m = null) {
 }
 
 const texte = (el) => el.textContent.replace(/\s+/g, ' ').trim();
+/** Une ligne par le début de son nom accessible (qui, où), suivi ou non de ses détails. */
 const ligne = (container, libelle) => [...container.querySelectorAll('.tj-nom[role="button"]')]
-  .find((el) => el.getAttribute('aria-label') === libelle);
+  .find((el) => el.getAttribute('aria-label') === libelle || el.getAttribute('aria-label').startsWith(`${libelle}, `));
 const bouton = (racine, libelle) => [...racine.querySelectorAll('button')].find((b) => texte(b) === libelle);
 const panneau = (container) => container.querySelector('.tj-panneau');
 const barre = (container) => container.querySelector('.tj-brouillon');
@@ -221,6 +222,69 @@ describe('appel', () => {
     await tick();
     expect(m.presences.find((p) => p.Benevole === REMI)).toMatchObject({Present: true});
     expect(ligne(container, 'Rémi Blanc, B1 #1')).toBeTruthy();
+  });
+});
+
+describe('signaux de l’ancien écran Anomalies, dans la table', () => {
+  const pastille = (container) => [...container.querySelectorAll('.tj-compteurs .pill')].find((p) => texte(p).endsWith('à vérifier'));
+  // Toutes les places tenues, chacun dans ses disponibilités : aucun signal.
+  const complet = {places: [LEA, HUGO, TOM, PAUL, REMI, SOFIA, NINA, ZOE], absents: []};
+
+  it('met en tête les effectifs hors bornes, repliés, une ligne par mission, et les compte à vérifier', () => {
+    const {container} = monter();
+    // Rémi absent : Accueil à 1 / 2 l'après-midi ; A2 #2 et R1 #2 vides : Bar et Restauration à 1 / 2 le soir.
+    // Repliés d'abord, pour que les places restent en haut de la table.
+    const bascule = bouton(container, '▸ Effectifs hors bornes (3)');
+    expect(bascule.getAttribute('aria-expanded')).toBe('false');
+    expect(container.querySelector('.tj-effectifs')).toBeNull();
+    bascule.click();
+    expect(bouton(container, '▾ Effectifs hors bornes (3)').getAttribute('aria-expanded')).toBe('true');
+    expect([...container.querySelectorAll('.tj-effectifs .tj-nom')].map((el) => el.getAttribute('aria-label'))).toEqual([
+      'Accueil : 1 créneau sous le minimum', 'Bar : 1 créneau sous le minimum', 'Restauration : 1 créneau sous le minimum',
+    ]);
+    expect(texte(pastille(container))).toBe('! 3 à vérifier');
+    expect(pastille(container).classList.contains('pill--danger')).toBe(true);
+
+    const vide = monter(complet).container;
+    expect(texte(vide)).not.toContain('Effectifs hors bornes');
+    expect(pastille(vide)).toBeUndefined();
+  });
+
+  it('marque en rouge une mission refusée et deux places en même temps, détail au panneau', () => {
+    const {container} = monter({places: [LEA, HUGO, TOM, PAUL, LEA, SOFIA, NINA, ZOE], absents: []}, (jeu) => {
+      jeu.souhaitsMissions.push({id: 2, Benevole: HUGO, Mission: 1, Preference: 'Refuse'});
+    });
+    const hugo = ligne(container, 'Hugo Petit, A1 #2');
+    expect(hugo.getAttribute('aria-label')).toBe('Hugo Petit, A1 #2, a refusé Bar, avec son binôme souhaité');
+    expect(texte(hugo.closest('.tj-ligne').querySelector('.tj-alerte'))).toBe('a refusé Bar');
+    expect(hugo.closest('.tj-ligne').querySelector('.tj-bloc--alerte')).toBeTruthy();
+    // Léa tient A1 #1 et B1 #1, tous deux l'après-midi.
+    expect(ligne(container, 'Léa Martin, A1 #1').getAttribute('aria-label')).toContain('en même temps sur B1 #1');
+    expect(ligne(container, 'Léa Martin, B1 #1').getAttribute('aria-label')).toContain('en même temps sur A1 #1');
+    expect(texte(pastille(container))).toBe('! 3 à vérifier');
+
+    hugo.click();
+    expect(texte(panneau(container))).toContain('A refusé la mission Bar.');
+  });
+
+  it('dit sans rouge qu’une personne n’a déclaré aucune disponibilité', () => {
+    const {container} = monter(complet, (jeu) => { jeu.disponibilites = jeu.disponibilites.filter((d) => d.Benevole !== HUGO); });
+    const hugo = ligne(container, 'Hugo Petit, A1 #2').closest('.tj-ligne');
+    expect(texte(hugo)).toContain('pas de disponibilité déclarée');
+    expect(hugo.querySelector('.tj-alerte, .tj-bloc--hors-dispo, .tj-bloc--alerte')).toBeNull();
+    expect(texte(pastille(container))).toBe('! 1 à vérifier');
+    expect(pastille(container).classList.contains('pill--neutral')).toBe(true);
+  });
+
+  it('montre un désisté « désisté·e » sur sa place verrouillée, sans boutons d’appel', () => {
+    const {container} = monter({absents: []}, (jeu) => {
+      jeu.benevoles.find((b) => b.id === TOM).Statut = 'Absent';
+      jeu.places[2].Verrouillee = true;
+    });
+    const tom = ligne(container, 'Tom Leroy, désisté·e, A2 #1').closest('.tj-ligne');
+    expect(texte(tom)).toContain('désisté·e');
+    expect(tom.querySelector('.tj-appel')).toBeNull();
+    expect(tom.querySelector('.tj-bloc--absent')).toBeTruthy();
   });
 });
 
