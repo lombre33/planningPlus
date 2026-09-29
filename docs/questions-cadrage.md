@@ -152,7 +152,7 @@ Les réponses seront reportées ici au fil de l'eau, sous chaque question.
 | 8.3 | Les bénévoles ont-ils un accès direct au document (pour voir leur planning) ? | Non en v1 : diffusion par export ou impression. |
 | 8.4 | Quelles données personnelles seront stockées (téléphone, e-mail, âge, régime alimentaire, santé) ? | Nom, contact, équipe, compétences. Pas de donnée sensible. |
 | 8.5 | Y a-t-il un cadre RGPD à respecter (mention d'information, durée de conservation, suppression après l'événement) ? | À documenter dans le cahier des charges ; suppression ou anonymisation après l'édition. |
-| 8.6 | Le dépôt sera-t-il public, et le code publié en logiciel libre ? | Oui, dépôt public avec une licence à choisir (MIT ou EUPL). |
+| 8.6 | Le dépôt sera-t-il public, et le code publié en logiciel libre ? | Oui, dépôt public avec une licence à choisir (MIT ou EUPL). — **Choix d'Antoine le 2026-09-29 : une licence GNU, sans urgence ; GPL-3.0-or-later retenue par défaut (`LICENSE`), à changer sur simple demande (AGPL, LGPL).** |
 
 **Réponse d'Antoine (2026-09-21, via carte de décision) :**
 
@@ -192,7 +192,7 @@ Les réponses seront reportées ici au fil de l'eau, sous chaque question.
 
 | # | Question | Défaut proposé |
 | --- | --- | --- |
-| 12.1 | Avez-vous une préférence de technologie (JavaScript sans cadriciel, TypeScript, React, Svelte) ? | TypeScript, sans cadriciel d'interface lourd, compilé en fichiers statiques. Choix favorable à l'audit. — **Confirmé par Antoine le 2026-09-21 (carte de décision).** |
+| 12.1 | Avez-vous une préférence de technologie (JavaScript sans cadriciel, TypeScript, React, Svelte) ? | TypeScript, sans cadriciel d'interface lourd, compilé en fichiers statiques. Choix favorable à l'audit. — **Confirmé par Antoine le 2026-09-21 (carte de décision), puis renversé par lui le 2026-09-29 : « une infra simple sans framework, sans compilation ». JavaScript natif, code dans un nouveau dossier du dépôt (`widget-js/`), servi sur GitHub Pages comme avant ; bascule quand il a essayé la version publiée sous `/js/`.** |
 | 12.2 | Où le widget sera-t-il hébergé (GitHub Pages, serveur DINUM, fichier déposé dans Grist) ? | GitHub Pages pour les essais, hébergement DINUM pour la production. |
 | 12.3 | Le widget doit-il n'émettre aucune requête réseau en dehors de l'API Grist (pas de CDN, pas de police distante) ? | Oui, aucune requête sortante. Toutes les ressources sont embarquées. |
 | 12.4 | Navigateurs à couvrir ? | Versions récentes de Firefox et Chromium sur ordinateur, Safari et Chrome sur mobile. |

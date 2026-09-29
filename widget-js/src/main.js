@@ -1,0 +1,465 @@
+/**
+ * Point d'entrée du widget — ne vise que l'intérieur d'un document Grist
+ * (décision d'Antoine du 2026-09-23 : plus de mode démonstration, plus de
+ * jeu de données figé, et aucun écran dédié hors d'un hôte Grist — un tel
+ * usage n'a pas lieu d'être, autant ne pas alourdir ce fichier pour lui).
+ *
+ * Deux issues, une fois connecté :
+ *
+ * - toutes les tables attendues (`TABLES_REQUISES`) existent dans le
+ *   document, vides ou non : lit le document via `lireDocument` (`./grist`)
+ *   et monte la maquette sur le `Modele` qui en sort. Un document flambant
+ *   neuf, sans aucune ligne, est le premier jour d'un vrai utilisateur, pas
+ *   une panne — chaque vue sait déjà se montrer vide et inviter à l'étape 1
+ *   (§1.1) ;
+ * - il manque au moins une des tables attendues, ou une erreur survient
+ *   (création de tables, pose de l'affichage, lecture) : un message nomme
+ *   ce qui manque ou ce qui a échoué plutôt que de le masquer.
+ */
+
+import {demarrerApp} from './app.js';
+import {
+  actionsActualiserBenevolesSource,
+  actionsAjouterColonneManquante,
+  actionsCreerAffinites,
+  actionsCreerArtiste, actionsCreerBenevolesSource, actionsCreerBesoin, actionsCreerEquipe, actionsCreerGroupe,
+  actionsCreerMacroCreneau,
+  actionsCreerMission, actionsCreerSousCreneaux, actionsCreerTablesManquantes, actionsDefinirAbsence,
+  actionsDefinirParametre, actionsDefinirPlaces, actionsDefinirPresence, actionsDeplacerMacroCreneau, actionsDeplacerPositionGroupe,
+  actionsEcrireDisponibilites, actionsModifierArtiste, actionsModifierPlaces, actionsModifierSousCreneaux,
+  actionsPositionnerGroupe, actionsReglerAffichage, actionsRenommerMacroCreneau, actionsRepointerBesoins,
+  actionsRetirerPositionGroupe, actionsRetirerPositionsGroupe, actionsSupprimerBesoins, actionsSupprimerDisponibilites,
+  actionsSupprimerMacroCreneau, actionsSupprimerSousCreneaux,
+  appliquerActions,
+  benevoleDepuisLigne,
+  colonnesDeTable,
+  decoderNombre, decoderRef, decoderTexte,
+  LIBELLE_PAR_TABLE, lireDocument, tablesDuDocument, zipperTable,
+} from './grist/index.js';
+import {Magasin, SuppressionApresCreationEchouee} from './store.js';
+
+/** Les 14 tables que lit `construireModele` (`./grist/modele.js`), plus
+ *  `Parametres` : elle ne nourrit pas `Modele` (voir `demarrer`, qui la lit
+ *  à part), mais plusieurs écritures en dépendent désormais (mappage de
+ *  colonnes, libellés d'import — §6.4) et échouent sans bruit sur un
+ *  document où elle n'existe pas encore (constaté par Connexion Grist le
+ *  2026-09-23 sur un document neuf). `Versions` et `Journal` restent hors
+ *  de cette liste : `LIBELLE_PAR_TABLE` les connaît, mais rien ne lit ni
+ *  n'écrit encore dedans, inutile de bloquer le widget dessus. */
+const TABLES_REQUISES = [
+  'Equipes', 'Lieux', 'Benevoles', 'Missions', 'Artistes', 'Macro_creneaux',
+  'Sous_creneaux', 'Besoins', 'Groupes', 'Positions_groupe', 'Places',
+  'Disponibilites', 'Souhaits_missions', 'Affinites', 'Presences', 'Parametres',
+];
+
+/**
+ * Le pont Grist réel (voir `EcritureGrist` dans `./store`), branché
+ * uniquement en mode connecté — jamais en démo, qui n'appelle jamais ce
+ * pont et garde son id local, comportement inchangé. `resolution` (rendu
+ * par `lireDocument`) traduit les noms canoniques de table en identifiants
+ * réels du document (`grist/tables.js`) ; `appliquerActions` s'en sert pour
+ * chaque action envoyée.
+ *
+ * `docApi` porte ici aussi `fetchTable` (au-delà du strict `DocApiEcriture`,
+ * même élargissement que `reglerAffichageTablesCreees`) : `valeursColonneBrute`
+ * lit une colonne brute directement, sans passer par une action.
+ *
+ * `parametresInitiales` (les lignes de `Parametres` telles que lues par
+ * `lireDocument` au démarrage) est recopié dans une variable locale mutable :
+ * `definirParametre` doit savoir, à chaque appel, si une clé a déjà une
+ * ligne (`UpdateRecord`) ou non (`AddRecord`, dont l'id créé est alors
+ * retenu ici pour le prochain appel sur la même clé) — voir `upsertParametres`
+ * (`grist/ecriture.js`).
+ */
+function construireEcritureGrist(
+  docApi,
+  resolution,
+  parametresInitiales,
+) {
+  const lignesParametres = [...parametresInitiales];
+  return {
+    async creerEquipe(equipe) {
+      const [id] = await appliquerActions(docApi, actionsCreerEquipe({
+        nom: equipe.Nom, couleur: equipe.Couleur, notes: equipe.Notes,
+      }), resolution);
+      return id;
+    },
+    async creerMission(mission) {
+      const [id] = await appliquerActions(docApi, actionsCreerMission({
+        nom: mission.Nom,
+        description: mission.Description,
+        lieuId: mission.Lieu || null,
+        equipeId: mission.Equipe || null,
+        priorite: mission.Priorite,
+        competencesRequises: mission.Competences_requises,
+      }), resolution);
+      return id;
+    },
+    async creerMacroCreneau(macro) {
+      const [id] = await appliquerActions(docApi, actionsCreerMacroCreneau(macro), resolution);
+      return id;
+    },
+    async modifierMacroCreneau(id, macro) {
+      // Nom et horaires n'ont pas besoin d'être dans le même `UserAction`,
+      // mais un seul aller-retour suffit puisque aucun id n'est à recoller
+      // entre les deux (contrairement à `remplacerSousCreneaux`).
+      await appliquerActions(
+        docApi,
+        [...actionsRenommerMacroCreneau(id, macro.nom), ...actionsDeplacerMacroCreneau(id, macro.debut, macro.fin)],
+        resolution,
+      );
+    },
+    async supprimerMacroCreneau(macroCreneauId, sousCreneauIds, besoinIds, positionIds) {
+      // Un seul aller-retour : contrairement à `remplacerSousCreneaux`, rien
+      // ici ne crée d'id qu'une autre action du même appel devrait
+      // référencer — les quatre suppressions (positions, besoins,
+      // sous-créneaux, macro) sont indépendantes entre elles.
+      await appliquerActions(
+        docApi,
+        [
+          ...actionsRetirerPositionsGroupe(positionIds),
+          ...actionsSupprimerBesoins(besoinIds),
+          ...actionsSupprimerMacroCreneau(macroCreneauId),
+          ...actionsSupprimerSousCreneaux(sousCreneauIds),
+        ],
+        resolution,
+      );
+    },
+    async creerArtiste(artiste) {
+      const [id] = await appliquerActions(docApi, actionsCreerArtiste(artiste), resolution);
+      return id;
+    },
+    async modifierArtiste(id, artiste) {
+      await appliquerActions(docApi, actionsModifierArtiste(id, artiste), resolution);
+    },
+    async remplacerSousCreneaux(idsASupprimer, nouveaux) {
+      // Deux allers-retours liés : un id créé par `actionsCreerSousCreneaux`
+      // ne peut pas être référencé dans le même `applyUserActions` que celui
+      // qui le crée, donc création et suppression ne peuvent pas être
+      // batchées (vérifié en vrai, voir `Magasin.redecouperSousCreneaux`).
+      // Création d'abord, suppression ensuite : si le second aller-retour
+      // échoue, le document garde les deux jeux (doublon visible et
+      // récupérable) plutôt que de se retrouver vidé sans que rien ne
+      // le signale — voir `SuppressionApresCreationEchouee`.
+      const [ids] = await appliquerActions(docApi, actionsCreerSousCreneaux(nouveaux), resolution);
+      const idsReels = (ids ?? []);
+      try {
+        await appliquerActions(docApi, actionsSupprimerSousCreneaux(idsASupprimer), resolution);
+      } catch {
+        throw new SuppressionApresCreationEchouee(idsReels);
+      }
+      return idsReels;
+    },
+    async modifierSousCreneaux(patches) {
+      await appliquerActions(docApi, actionsModifierSousCreneaux(patches), resolution);
+    },
+    async repointerBesoins(patches) {
+      await appliquerActions(docApi, actionsRepointerBesoins(patches), resolution);
+    },
+    async creerBesoin(besoin) {
+      const [id] = await appliquerActions(docApi, actionsCreerBesoin(besoin), resolution);
+      return id;
+    },
+    async creerGroupe(groupe) {
+      const [id] = await appliquerActions(
+        docApi, actionsCreerGroupe({...groupe, equipeId: groupe.equipeId || null}), resolution,
+      );
+      return id;
+    },
+    async positionnerGroupe(groupeId, besoinId) {
+      await appliquerActions(docApi, actionsPositionnerGroupe(groupeId, [besoinId]), resolution);
+    },
+    async definirPlaces(groupeId, taille) {
+      const places = Array.from({length: taille}, (_, i) => ({
+        rang: i + 1, benevoleId: null, origine: 'Manuel', verrouillee: false, score: null,
+      }));
+      await appliquerActions(docApi, actionsDefinirPlaces(groupeId, places), resolution);
+    },
+    async deplacerPosition(positionId, nouveauBesoinId) {
+      await appliquerActions(docApi, actionsDeplacerPositionGroupe(positionId, nouveauBesoinId), resolution);
+    },
+    async ajouterPosition(groupeId, besoinId) {
+      // `actionsPositionnerGroupe` est un `BulkAddRecord` : son retValue est
+      // le tableau des ids créés, à déplier (voir `appliquerActions`, et le
+      // constat vérifié en vrai par le fil Environnement Grist de test).
+      const [ids] = await appliquerActions(docApi, actionsPositionnerGroupe(groupeId, [besoinId]), resolution);
+      return ids[0];
+    },
+    async modifierPlaces(patches) {
+      await appliquerActions(docApi, actionsModifierPlaces(patches), resolution);
+    },
+    async supprimerPosition(positionId) {
+      await appliquerActions(docApi, actionsRetirerPositionGroupe(positionId), resolution);
+    },
+    async definirAbsence(benevoleId, absent, placeIdsLiberees) {
+      await appliquerActions(docApi, actionsDefinirAbsence(benevoleId, absent, placeIdsLiberees), resolution);
+    },
+    async valeursColonneBrute(tableId, colId) {
+      // Lecture directe (pas d'`appliquerActions` : rien à écrire), et pas de
+      // résolution canonique — `tableId`/`colId` sont déjà les identifiants
+      // réels du document (voir l'en-tête d'`EcritureGrist.valeursColonneBrute`,
+      // `store.js`) : ce ne sont jamais nos propres tables.
+      const table = await docApi.fetchTable(tableId);
+      const ids = table.id ?? [];
+      const colonne = table[colId] ?? [];
+      return new Map(ids.map((id, i) => [id, colonne[i]]));
+    },
+    async colonnesTable(tableId) {
+      // Lecture directe des tables système (mêmes deux tables et même id
+      // réel que `reglerAffichageTablesCreees` juste au-dessus, pour un
+      // usage différent) : pas de résolution canonique ici non plus,
+      // `tableId` est déjà l'identifiant réel du document.
+      const [lignesTables, lignesColonnes] = await Promise.all([
+        docApi.fetchTable('_grist_Tables').then(zipperTable),
+        docApi.fetchTable('_grist_Tables_column').then(zipperTable),
+      ]);
+      return colonnesDeTable(lignesTables, lignesColonnes, tableId);
+    },
+    async tablesDocument() {
+      // Même source que `colonnesTable` juste au-dessus (`_grist_Tables`
+      // seule ici, pas besoin des colonnes) — sert à laisser Antoine
+      // désigner lui-même la table où sont ses bénévoles plutôt que d'en
+      // deviner une (2026-09-23, `TABLE_BENEVOLES` en dur jamais vérifié).
+      const lignesTables = await docApi.fetchTable('_grist_Tables').then(zipperTable);
+      return tablesDuDocument(lignesTables);
+    },
+    async definirParametre(cle, valeur) {
+      const [retVal] = await appliquerActions(docApi, actionsDefinirParametre(cle, valeur, lignesParametres), resolution);
+      const existante = lignesParametres.find((l) => l.cle === cle);
+      if (existante) {
+        existante.valeur = valeur;
+      } else {
+        lignesParametres.push({id: retVal, cle, valeur});
+      }
+    },
+    async remplacerDisponibilites(benevoleId, debut, fin, nouvelles) {
+      // Un seul aller-retour (contrairement à `remplacerSousCreneaux`) :
+      // aucune table ne référence une ligne de `Disponibilites` par son
+      // identifiant, rien à repointer après coup — vérifié avant d'écrire
+      // cette méthode (voir `Magasin.remplacerDisponibilites`, `store.js`).
+      const table = await docApi.fetchTable(resolution.Disponibilites ?? 'Disponibilites');
+      const idsARetirer = zipperTable(table)
+        .filter((l) => decoderNombre(l.Benevole) === benevoleId)
+        .filter((l) => { const q = decoderNombre(l.Quart_heure); return q >= debut && q < fin; })
+        .map((l) => l.id);
+      const nouvellesGrist = nouvelles.map((d) => ({
+        benevoleId: d.Benevole, quartHeure: d.Quart_heure, statut: d.Statut, artisteId: d.Artiste,
+      }));
+      await appliquerActions(
+        docApi,
+        [...actionsSupprimerDisponibilites(idsARetirer), ...actionsEcrireDisponibilites(nouvellesGrist)],
+        resolution,
+      );
+    },
+    async peuplerBenevoles(tableSourceId, colNomId, colContactId, equipeParDefautId) {
+      const idBenevoles = resolution.Benevoles ?? 'Benevoles';
+
+      const [lignesTables, lignesColonnes] = await Promise.all([
+        docApi.fetchTable('_grist_Tables').then(zipperTable),
+        docApi.fetchTable('_grist_Tables_column').then(zipperTable),
+      ]);
+
+      // Garde-fou avant toute écriture (signalé par le coordinateur le
+      // 2026-09-23) : `resolution.Benevoles` vient d'une résolution par
+      // libellé normalisé (`resoudreIdsTables`, `grist/tables.js`), qui ne
+      // départagerait pas deux tables titrées « Bénévoles » dont une serait
+      // la sienne. Sans toucher ce mécanisme (hors de portée de ce fichier),
+      // on vérifie ici, juste avant la plus grosse écriture du chantier, que
+      // la table visée porte bien tout notre schéma Bénévoles — aucune table
+      // à Antoine n'a de raison de porter ces colonnes précises sous ces noms
+      // précis. Un document tout juste amorcé par `demarrer()` les a
+      // toujours (`TABLES_REQUISES` garantit la table avant tout appel ici) ;
+      // seule une mauvaise résolution ferait échouer ce test.
+      const colonnesCible = new Set(colonnesDeTable(lignesTables, lignesColonnes, idBenevoles).map((c) => c.colId));
+      const colonnesSchemaAttendues = ['Quota_heures_min', 'Quota_heures_max', 'Statut', 'Competences'];
+      if (!colonnesSchemaAttendues.every((c) => colonnesCible.has(c))) {
+        throw new Error(
+          `La table "${idBenevoles}" ne porte pas notre schéma Bénévoles — peuplement refusé pour ne pas risquer d'écrire dans une table qui n'est pas la nôtre.`,
+        );
+      }
+
+      // 1. La colonne Id_source peut manquer sur une table Bénévoles créée
+      // avant ce mécanisme (2026-09-23) — jamais recréée si déjà là, et
+      // jamais posée sur une autre table que la nôtre (voir le doc-comment
+      // d'`actionsAjouterColonneManquante`).
+      const actionsColonne = actionsAjouterColonneManquante('Benevoles', 'Id_source', lignesTables, lignesColonnes, idBenevoles);
+      if (actionsColonne.length > 0) { await docApi.applyUserActions(actionsColonne); }
+
+      // 2. Notre table Bénévoles telle qu'elle est maintenant, pour
+      // reconnaître par Id_source les bénévoles déjà peuplés lors d'un
+      // appel précédent (jamais recréés, jamais leur équipe/quota/statut
+      // retouchés).
+      const lignesBenevolesActuelles = zipperTable(await docApi.fetchTable(idBenevoles));
+      const idNotreParIdSource = new Map();
+      for (const l of lignesBenevolesActuelles) {
+        const idSource = decoderRef(l.Id_source);
+        if (idSource != null) { idNotreParIdSource.set(idSource, l.id); }
+      }
+
+      // 3. La table source, jamais modifiée (lecture seule, comme
+      // `valeursColonneBrute`) : une ligne sans nom ne crée rien, on ne
+      // devine pas de nom vide.
+      const lignesSource = zipperTable(await docApi.fetchTable(tableSourceId));
+      const aCreer = [];
+      const aActualiser = [];
+      for (const l of lignesSource) {
+        const nom = decoderTexte(l[colNomId]).trim();
+        if (!nom) { continue; }
+        const contact = colContactId ? decoderTexte(l[colContactId]) : '';
+        const idSource = l.id;
+        const idExistant = idNotreParIdSource.get(idSource);
+        if (idExistant != null) {
+          aActualiser.push({id: idExistant, nom, contact});
+        } else {
+          aCreer.push({idSource, nom, contact});
+        }
+      }
+
+      if (aCreer.length > 0) {
+        await appliquerActions(docApi, actionsCreerBenevolesSource(aCreer, equipeParDefautId), resolution);
+      }
+      if (aActualiser.length > 0) {
+        await appliquerActions(docApi, actionsActualiserBenevolesSource(aActualiser), resolution);
+      }
+
+      // 4. L'état complet et à jour, pour que le Magasin remplace son cache
+      // local plutôt que de le reconstruire lui-même (voir
+      // `Magasin.peuplerBenevoles`).
+      const lignesRelues = zipperTable(await docApi.fetchTable(idBenevoles));
+      const benevoles = lignesRelues.map(benevoleDepuisLigne);
+      return {benevoles, crees: aCreer.length, actualises: aActualiser.length};
+    },
+    async creerAffinites(paires) {
+      // `actionsCreerAffinites` est un `BulkAddRecord` : son retValue est le
+      // tableau des ids créés, dans le même ordre que `paires` (même
+      // discipline qu'`ajouterPosition` ci-dessus).
+      const [ids] = await appliquerActions(docApi, actionsCreerAffinites(paires), resolution);
+      return paires.map((p, i) => ({
+        id: ids[i], Benevole_A: p.benevoleAId, Benevole_B: p.benevoleBId, Type: 'Ensemble',
+      }));
+    },
+    async definirPresence(benevoleId, jour, present, presenceIdExistante) {
+      // Upsert par (Benevole, Jour) : sur une mise à jour, le seul id qui
+      // compte est celui déjà connu du `Magasin` (`presenceIdExistante`),
+      // jamais le retour de `UpdateRecord` (Grist n'y rend rien d'utile) —
+      // même discipline que `definirParametre` juste au-dessus.
+      const [retVal] = await appliquerActions(
+        docApi, actionsDefinirPresence(benevoleId, jour, present, presenceIdExistante), resolution,
+      );
+      return presenceIdExistante ?? retVal;
+    },
+  };
+}
+
+/** Un document connecté dont la création automatique des tables manquantes
+ *  a échoué (droits insuffisants, écriture refusée) — jamais des vues
+ *  silencieusement vides. */
+function afficherDocumentNonReconnu(racine, tablesManquantes) {
+  racine.textContent = '';
+
+  const titre = document.createElement('h1');
+  titre.textContent = 'Document Grist non reconnu';
+  racine.append(titre);
+
+  const libelles = tablesManquantes.map((id) => LIBELLE_PAR_TABLE[id] ?? id);
+  const message = document.createElement('p');
+  message.textContent = tablesManquantes.length === 1
+    ? `La table « ${libelles[0]} », attendue par PlanningPlus, n'a pas pu être créée automatiquement.`
+    : `Les tables suivantes, attendues par PlanningPlus, n'ont pas pu être créées automatiquement : ${libelles.join(', ')}.`;
+  racine.append(message);
+
+  const note = document.createElement('p');
+  note.textContent = "Vérifiez que ce widget dispose de l'accès complet au document, puis rechargez la page.";
+  racine.append(note);
+}
+
+/** Une erreur survenue après la confirmation qu'un document Grist réel
+ *  répond (création de tables, pose de l'affichage, lecture) : jamais la
+ *  démo à ce stade, qui ferait passer une panne pour un premier jour normal
+ *  — voir le doc-comment en tête de fichier. Le message ne prétend jamais
+ *  plus que ce qui s'est passé (même règle que `remplacerSousCreneaux`) :
+ *  le texte de l'erreur elle-même, pas une explication devinée. */
+function afficherErreurConnexion(racine, erreur) {
+  racine.textContent = '';
+
+  const titre = document.createElement('h1');
+  titre.textContent = 'Échec de connexion au document Grist';
+  racine.append(titre);
+
+  const message = document.createElement('p');
+  message.textContent = erreur instanceof Error ? erreur.message : String(erreur);
+  racine.append(message);
+
+  const note = document.createElement('p');
+  note.textContent = "Vérifiez que ce widget dispose de l'accès complet au document, puis rechargez la page.";
+  racine.append(note);
+}
+
+/**
+ * Crée dans le document les tables PlanningPlus absentes (`tablesManquantes`,
+ * identifiants canoniques), à partir de `./grist/schema` — décision
+ * d'Antoine du 2026-09-22 (voir `dev/README.md`, « Document modèle »).
+ * Deux allers-retours distincts (`actionsCreerTablesManquantes` : `tables`
+ * puis `referencesDifferees`), jamais un seul batché, pour la même raison
+ * que partout ailleurs dans ce fichier — voir le commentaire de
+ * `actionsCreerTablesManquantes`.
+ */
+async function creerTablesManquantes(docApi, tablesManquantes) {
+  const {tables, referencesDifferees} = actionsCreerTablesManquantes(tablesManquantes);
+  if (tables.length > 0) { await docApi.applyUserActions(tables); }
+  if (referencesDifferees.length > 0) { await docApi.applyUserActions(referencesDifferees); }
+}
+
+/**
+ * Pose, sur les tables tout juste créées (`tablesTraitees`), le titre et les
+ * colonnes de référence lisibles que porte déjà `dev/seed/seed.mjs` — pour
+ * qu'un document créé par le widget se lise comme un document importé
+ * (demandé par le coordinateur le 2026-09-22). Lit les deux tables de
+ * métadonnées dont `actionsReglerAffichage` a besoin (`./grist/creation`),
+ * puis envoie ses actions en un seul aller-retour : aucune ne référence une
+ * ligne créée par une autre dans ce même lot.
+ */
+async function reglerAffichageTablesCreees(
+  docApi,
+  tablesTraitees,
+  resolution,
+) {
+  const [lignesTables, lignesColonnes] = await Promise.all([
+    docApi.fetchTable('_grist_Tables').then(zipperTable),
+    docApi.fetchTable('_grist_Tables_column').then(zipperTable),
+  ]);
+  const actions = actionsReglerAffichage(tablesTraitees, resolution, lignesTables, lignesColonnes);
+  if (actions.length > 0) { await docApi.applyUserActions(actions); }
+}
+
+async function demarrer() {
+  const racine = document.getElementById('app');
+  if (!racine) { return; }
+
+  window.grist.ready({requiredAccess: 'full'});
+
+  try {
+    let resultatFinal = await lireDocument(window.grist.docApi);
+    const tablesManquantes = TABLES_REQUISES.filter((t) => !(t in resultatFinal.resolution));
+    if (tablesManquantes.length > 0) {
+      await creerTablesManquantes(window.grist.docApi, tablesManquantes);
+      const relu = await lireDocument(window.grist.docApi);
+      const encoreManquantes = TABLES_REQUISES.filter((t) => !(t in relu.resolution));
+      if (encoreManquantes.length > 0) {
+        afficherDocumentNonReconnu(racine, encoreManquantes);
+        return;
+      }
+      await reglerAffichageTablesCreees(window.grist.docApi, tablesManquantes, relu.resolution);
+      resultatFinal = relu;
+    }
+    const magasin = new Magasin(resultatFinal.modele, resultatFinal.parametres);
+    magasin.brancherEcriture(
+      construireEcritureGrist(window.grist.docApi, resultatFinal.resolution, resultatFinal.parametres),
+    );
+    demarrerApp(racine, magasin, 'Document Grist connecté');
+  } catch (erreur) {
+    afficherErreurConnexion(racine, erreur);
+  }
+}
+
+void demarrer();

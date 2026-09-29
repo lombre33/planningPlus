@@ -1,14 +1,12 @@
 # PlanningPlus — Cahier des charges
 
-**Version :** v1.17 (§7.2 : nouvel ordre de priorité — binôme souhaité en
-tête, artiste souhaité (seuil 30 min, déjà câblé) juste derrière, missions
-souhaitées sorti du classement sauf exception « restauration » non encore
-définie — décision Antoine, 2026-09-25 11h47 ; historique des versions
-précédentes dans `git log` sur ce fichier)
+**Version :** v1.18 (§5.2 : code en JavaScript natif, sans cadriciel ni
+compilation, sous licence GNU — décisions Antoine, 2026-09-29 ; historique des
+versions précédentes dans `git log` sur ce fichier)
 **Statut :** structure et règles validées (§6.3, §7.5) ; développement agile
 par incréments courts depuis le 2026-09-22 (§11.1) ; document tenu à jour au
 fil du code plutôt qu'en fin de sprint, sur consigne du coordinateur
-**Dernière mise à jour :** 2026-09-23
+**Dernière mise à jour :** 2026-09-29
 
 > Les décisions issues du cadrage sont annotées *(Décision Antoine,
 > 2026-09-21)* dans le texte. Voir le détail question par question dans
@@ -136,6 +134,14 @@ typées et des références explicites. Conséquences :
 
 - Code lisible, structuré en modules à responsabilité unique, commenté là où
   l'intention n'est pas évidente.
+- Code en JavaScript natif, sans cadriciel et sans étape de compilation : le
+  navigateur charge les fichiers du dépôt tels qu'ils sont écrits, et il n'y a
+  rien entre ce que lit l'auditeur et ce qui s'exécute. Les seuls outils
+  (tests) restent hors de ce qui est servi. *(Décision Antoine, 2026-09-29,
+  renversant le choix de TypeScript compilé du 2026-09-21.)*
+- Code publié sous licence GNU (GPL-3.0-or-later, fichier `LICENSE`), sauf
+  `grist-plugin-api.js`, qui garde sa licence Apache-2.0 d'origine.
+  *(Décision Antoine, 2026-09-29.)*
 - Aucun appel réseau sortant depuis le widget en dehors de l'API Grist :
   toutes les ressources (polices, scripts) sont embarquées, aucun CDN. Cohérent
   avec l'hébergement sur GitHub Pages, qui ne sert que des fichiers statiques.

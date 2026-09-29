@@ -1,0 +1,21 @@
+{
+  "name": "planningplus-widget",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Custom widget Grist de PlanningPlus, en JavaScript natif : aucun framework, aucune compilation.",
+  "license": "GPL-3.0-or-later",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "node outils/servir.mjs",
+    "dev:bench": "node outils/servir.mjs --page /dev-bench.html",
+    "test": "vitest run",
+    "site": "node outils/assembler-site.mjs _site"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.1",
+    "vitest": "^5.0.2"
+  }
+}

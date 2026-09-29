@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'widget/**'
+      - 'widget-js/**'
       - '.github/workflows/deploy-widget.yml'
   workflow_dispatch:
 
@@ -22,26 +23,55 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: widget
     steps:
       - uses: actions/checkout@v4
 
+      # Node 22 : le JavaScript natif (widget-js) s'appuie sur vitest 5, qui
+      # demande 22.12 ou plus.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
-          cache-dependency-path: widget/package-lock.json
+          cache-dependency-path: |
+            widget/package-lock.json
+            widget-js/package-lock.json
 
+      # --- Widget en production : TypeScript, paquet Vite, publié à la racine.
       - run: npm ci
+        working-directory: widget
 
       - run: npm test
+        working-directory: widget
 
       # tsc --noEmit puis vite build (voir widget/package.json) : une
       # erreur de typage bloque la publication au même titre qu'un test
       # cassé, plutôt que de la découvrir après coup sur Pages.
       - run: npm run build
+        working-directory: widget
+
+      # --- Widget en JavaScript natif (essai) : aucun paquet à construire, les
+      # fichiers sont publiés tels quels sous /js/. Voir widget-js/README.md.
+      - run: npm ci
+        working-directory: widget-js
+
+      - run: npm test
+        working-directory: widget-js
+
+      # Information seulement : tant que les deux dossiers coexistent, widget-js/
+      # est produit à partir de widget/ (migration/README.md). Un retard n'arrête
+      # pas la publication de widget/, il apparaît en avertissement.
+      - name: Contrôler que widget-js reflète widget
+        run: |
+          node migration/convertir.mjs --verifier || echo "::warning::widget-js est en retard sur widget, relancer node migration/convertir.mjs puis committer widget-js/"
+
+      # Le site publié : le paquet TypeScript à la racine, les seuls fichiers
+      # dont le JavaScript natif a besoin sous js/ (l'assemblage échoue si un
+      # import ne mène à rien).
+      - name: Assembler le site
+        run: |
+          mkdir _site
+          cp -r widget/dist/. _site/
+          node widget-js/outils/assembler-site.mjs _site/js
 
       # enablement par défaut à false (vérifié sur les logs d'exécution,
       # 2026-09-23) : configure-pages ne bascule alors jamais Settings →
@@ -57,7 +87,7 @@ jobs:
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: widget/dist
+          path: _site
 
   deploy:
     needs: build

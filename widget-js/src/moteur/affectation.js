@@ -1,0 +1,542 @@
+/**
+ * Le solveur (§7.5) et les opérations de correction manuelle qui partagent
+ * son contexte.
+ *
+ * Idée clé pour la résolution partielle et les permutations (§7.3, §7.5.5) :
+ * `calculerAffectation` commence par LIBÉRER toutes les places non
+ * verrouillées du périmètre demandé, qu'elles soient vides ou déjà pourvues,
+ * puis les repourvoit toutes ensemble. Un bénévole déjà affecté dans le
+ * périmètre redevient ainsi un candidat ordinaire pour n'importe quelle
+ * place du même périmètre : les permutations ne sont pas un mécanisme à
+ * part, elles émergent du même remplissage glouton. Le périmètre est la
+ * seule frontière : rien en dehors n'est jamais touché ou libéré.
+ *
+ * Le résultat n'est qu'un aperçu (`Proposition[]`) : rien n'est écrit tant
+ * que l'appelant n'a pas appliqué le résultat via `appliquerPropositions`,
+ * ce qui laisse la porte ouverte à la validation humaine demandée au §7.3.
+ *
+ * Stratégie de remplissage : un ordonnancement glouton à la
+ * « variable la plus contrainte d'abord » (MRV, standard en satisfaction de
+ * contraintes) — à chaque étape, le groupe le moins pourvu en candidats est
+ * traité en premier, ce qui règle les cas difficiles avant qu'ils ne
+ * deviennent impossibles. Ce n'est pas un solveur optimal (le problème est
+ * un appariement pondéré multi-contraintes, pas trivialement soluble de
+ * façon exacte à cette échelle et dans le temps imparti par NF2), mais un
+ * choix délibéré : déterministe, explicable et auditable (§5.2), plutôt
+ * qu'un solveur boîte noire.
+ */
+
+import {construireContexte} from './contexte.js';
+import {
+  calculerScore,
+  construireEtatOccupation,
+  evaluerEligibilite,
+  liberer,
+  occuper,
+  } from './eligibilite.js';
+import {detecterAnomalies} from './anomalies.js';
+import {PARAMETRES_PAR_DEFAUT} from './types.js';
+
+/** Résout un périmètre en un ensemble de places non verrouillées concrètes. */
+function resoudrePerimetre(ctx, perimetre) {
+  const rienDeSpecifie = !perimetre
+    || (!perimetre.placeIds?.length && !perimetre.groupeIds?.length && !perimetre.besoinIds?.length
+      && !perimetre.missionIds?.length && !perimetre.macroCreneauIds?.length);
+  if (rienDeSpecifie) {
+    return new Set(ctx.donnees.places.filter((p) => !p.verrouillee).map((p) => p.id));
+  }
+
+  const groupeIdsCibles = new Set(perimetre.groupeIds ?? []);
+
+  if (perimetre.besoinIds?.length) {
+    const besoinIdsCibles = new Set(perimetre.besoinIds);
+    for (const position of ctx.donnees.positionsGroupe) {
+      if (besoinIdsCibles.has(position.besoinId)) { groupeIdsCibles.add(position.groupeId); }
+    }
+  }
+  if (perimetre.missionIds?.length) {
+    const missionIdsCibles = new Set(perimetre.missionIds);
+    for (const position of ctx.donnees.positionsGroupe) {
+      const besoin = ctx.besoinParId.get(position.besoinId);
+      if (besoin && missionIdsCibles.has(besoin.missionId)) { groupeIdsCibles.add(position.groupeId); }
+    }
+  }
+  if (perimetre.macroCreneauIds?.length) {
+    const macroIdsCibles = new Set(perimetre.macroCreneauIds);
+    for (const position of ctx.donnees.positionsGroupe) {
+      const besoin = ctx.besoinParId.get(position.besoinId);
+      const sousCreneau = besoin ? ctx.sousCreneauParId.get(besoin.sousCreneauId) : undefined;
+      if (sousCreneau && macroIdsCibles.has(sousCreneau.macroCreneauId)) { groupeIdsCibles.add(position.groupeId); }
+    }
+  }
+
+  const placeIds = new Set();
+  for (const groupeId of groupeIdsCibles) {
+    for (const place of ctx.placesParGroupe.get(groupeId) ?? []) {
+      if (!place.verrouillee) { placeIds.add(place.id); }
+    }
+  }
+  for (const placeId of perimetre.placeIds ?? []) {
+    const place = ctx.placeParId.get(placeId);
+    if (place && !place.verrouillee) { placeIds.add(placeId); }
+  }
+  return placeIds;
+}
+
+/** Bénévoles éligibles à un groupe, hors scoring (rapide — sert au choix du prochain groupe à traiter). */
+function compterEligibles(ctx, etat, groupeId) {
+  const propre = [];
+  const secours = [];
+  for (const benevole of ctx.donnees.benevoles) {
+    const statut = evaluerEligibilite(ctx, etat, groupeId, benevole.id);
+    if (!statut.eligible) { continue; }
+    (statut.conflitArtiste ? secours : propre).push(benevole.id);
+  }
+  return {propre, secours};
+}
+
+/** Couverture actuelle d'un besoin (nombre de places pourvues parmi tous les groupes qui y sont positionnés). */
+function couvertureBesoin(ctx, besoinId, decisionsParPlace) {
+  let total = 0;
+  for (const position of ctx.donnees.positionsGroupe) {
+    if (position.besoinId !== besoinId) { continue; }
+    for (const place of ctx.placesParGroupe.get(position.groupeId) ?? []) {
+      const benevoleId = decisionsParPlace.has(place.id) ? decisionsParPlace.get(place.id) ?? null : place.benevoleId;
+      if (benevoleId != null) { total++; }
+    }
+  }
+  return total;
+}
+
+/**
+ * Un candidat en conflit artiste n'est utile que s'il manque effectivement
+ * pour atteindre l'effectif minimum d'au moins un des besoins servis par ce
+ * groupe (§7.2 : violable seulement si nécessaire pour couvrir un besoin).
+ */
+function estNecessairePourMinimum(ctx, groupeId, decisionsParPlace) {
+  for (const position of ctx.positionsParGroupe.get(groupeId) ?? []) {
+    const besoin = ctx.besoinParId.get(position.besoinId);
+    if (besoin && couvertureBesoin(ctx, besoin.id, decisionsParPlace) < besoin.effectifMin) {
+      return true;
+    }
+  }
+  return false;
+}
+
+const RANG_PRIORITE = {Critique: 0, Normale: 1, Confort: 2};
+
+function prioriteGroupe(ctx, groupeId) {
+  const missions = ctx.missionsParGroupe.get(groupeId) ?? [];
+  return missions.length ? Math.min(...missions.map((m) => RANG_PRIORITE[m.priorite])) : RANG_PRIORITE.Normale;
+}
+
+/**
+ * Remplit toutes les places vides du périmètre, une place à la fois — le
+ * « groupe le plus contraint » (MRV, voir le commentaire d'en-tête) est
+ * réévalué après CHAQUE choix, pas seulement une fois par groupe.
+ *
+ * Bug corrigé le 2026-09-24 (signalé par Antoine : des indicatifs Critique
+ * commençant sur un créneau plus tardif restaient non pourvus) : remplir
+ * un groupe choisi JUSQU'AU BOUT avant de reconsidérer pouvait vider son
+ * bassin de candidats partagés au profit d'un groupe qui avait par ailleurs
+ * ses propres candidats exclusifs, alors qu'un AUTRE groupe de même
+ * priorité, plus tard dans la soirée, n'avait QUE ce bassin partagé et se
+ * retrouvait sous-staffé — alors qu'une répartition complète existait
+ * (reproduit dans `affectation.test.js`, « deux groupes Critique de même
+ * priorité, chacun avec un candidat exclusif »). Réévaluer après chaque
+ * place laisse le groupe redevenu le plus contraint reprendre la main
+ * avant que ses seuls candidats ne soient épuisés ailleurs.
+ */
+function remplir(
+  ctx,
+  etat,
+  parametres,
+  perimetrePlaceIds,
+  decisionsParPlace,
+  scoreParPlace,
+  causeNonPourvueParPlace,
+  avecSecours,
+) {
+  for (;;) {
+    const groupesAVides = new Set();
+    for (const placeId of perimetrePlaceIds) {
+      if (decisionsParPlace.get(placeId) == null) {
+        const place = ctx.placeParId.get(placeId);
+        if (place) { groupesAVides.add(place.groupeId); }
+      }
+    }
+    if (groupesAVides.size === 0) { return; }
+
+    let meilleurGroupeId = null;
+    let meilleurPool = null;
+    let meilleureTaille = Infinity;
+    let meilleurePriorite = Infinity;
+
+    for (const groupeId of groupesAVides) {
+      const {propre, secours} = compterEligibles(ctx, etat, groupeId);
+      let taille = propre.length;
+      let pool = 'propre';
+      if (taille === 0) {
+        if (avecSecours && secours.length > 0 && estNecessairePourMinimum(ctx, groupeId, decisionsParPlace)) {
+          taille = secours.length;
+          pool = 'secours';
+        } else {
+          continue; // ce groupe ne peut rien donner à ce passage
+        }
+      }
+      // La priorité de mission (§7.2 objectif 1, demande explicite d'Antoine
+      // le 2026-09-23 : « on remplit les missions prio d'abord, puis les
+      // autres ») domine : un groupe Critique passe toujours avant un groupe
+      // Normale ou Confort, même si ce dernier a moins de candidats. La
+      // taille du bassin de candidats (MRV) ne départage qu'à l'intérieur
+      // d'un même rang de priorité — c'est là qu'elle sert son objectif
+      // d'origine (traiter d'abord les cas les plus difficiles à couvrir).
+      const priorite = prioriteGroupe(ctx, groupeId);
+      const meilleure = meilleurGroupeId != null
+        && (priorite > meilleurePriorite
+          || (priorite === meilleurePriorite && taille > meilleureTaille));
+      if (!meilleure) {
+        meilleurGroupeId = groupeId;
+        meilleurPool = pool;
+        meilleureTaille = taille;
+        meilleurePriorite = priorite;
+      }
+    }
+
+    if (meilleurGroupeId == null) {
+      // aucun groupe restant n'est faisable à ce passage : note la cause pour chacune de ses places vides
+      for (const placeId of perimetrePlaceIds) {
+        if (decisionsParPlace.get(placeId) != null || causeNonPourvueParPlace.has(placeId)) { continue; }
+        const place = ctx.placeParId.get(placeId);
+        if (!place || !groupesAVides.has(place.groupeId)) { continue; }
+        const {secours} = compterEligibles(ctx, etat, place.groupeId);
+        causeNonPourvueParPlace.set(placeId, secours.length > 0 ? 'conflit_artiste_non_necessaire' : 'aucun_candidat');
+      }
+      return;
+    }
+
+    // Une seule place de ce groupe (la plus petite rang encore vide) : le
+    // reste attendra le prochain tour de boucle, qui réévalue le groupe le
+    // plus contraint à ce moment-là plutôt que de vider celui-ci d'un coup.
+    const place = (ctx.placesParGroupe.get(meilleurGroupeId) ?? [])
+      .filter((p) => perimetrePlaceIds.has(p.id) && decisionsParPlace.get(p.id) == null)
+      .sort((a, b) => a.rang - b.rang)[0];
+    if (!place) { continue; } // ne devrait pas arriver (groupesAVides l'a garanti vide) — filet, pas une boucle infinie
+
+    // Un candidat en conflit artiste n'entre dans la compétition pour CETTE
+    // place que si le besoin en a encore effectivement besoin à cet
+    // instant précis (§7.2 objectif 7, inchangé : « violable seulement si
+    // nécessaire pour couvrir un besoin ») — recalculé place par place,
+    // pas une fois pour tout le groupe, pour qu'un groupe qui a plus de
+    // places que son minimum n'ouvre le conflit artiste qu'aux places qui
+    // en ont réellement besoin.
+    const secoursPermis = meilleurPool === 'secours'
+      || estNecessairePourMinimum(ctx, meilleurGroupeId, decisionsParPlace);
+    const candidats = [];
+    for (const benevole of ctx.donnees.benevoles) {
+      const statut = evaluerEligibilite(ctx, etat, meilleurGroupeId, benevole.id);
+      if (!statut.eligible) { continue; }
+      if (statut.conflitArtiste && !secoursPermis) { continue; }
+      candidats.push(calculerScore(
+        ctx, etat, parametres, meilleurGroupeId, benevole.id, statut.conflitArtiste, decisionsParPlace, place.id,
+      ));
+    }
+    // Classement à trois niveaux, pas un simple tri par score. Ordre en
+    // vigueur depuis le 2026-09-25 (demande directe d'Antoine, suite aux
+    // binômes non respectés remontés par la checklist de la vue Anomalies) :
+    // 1) affinité (binôme souhaité/à éviter) — priorité MAXIMALE, dominante
+    //    sur tout le reste ; 2) souhait de mission (restauration seulement
+    //    désormais, voir `estMissionRestauration` dans `eligibilite.js`) /
+    //    équipe / équité, ex æquo ; 3) artiste souhaité, en tout dernier,
+    //    ne départage qu'à stricte égalité sur tout ce qui précède (repositionné,
+    //    mécanisme inchangé depuis le 2026-09-23 : « par défaut on va
+    //    valider le binôme souhaité »). Avec les poids par défaut
+    //    (`affiniteEnsemble: 0.1` face à `equite: 0.15` ou
+    //    `conflitArtiste: -0.4`), un simple tri par score global ne
+    //    suffirait à faire dominer ni l'affinité ni le binôme sur l'artiste
+    //    (voir la note du cahier des charges §7.2) : `scoreAffiniteSeule`
+    //    classe donc en premier sur l'affinité seule, puis
+    //    `scoreSansConflitArtiste` (qui exclut maintenant l'affinité, déjà
+    //    tranchée) départage sur les objectifs restants, et seul un ex
+    //    æquo strict sur ces deux plans se départage par la préférence
+    //    artiste (propre bat conflit), puis par le score complet, comme
+    //    avant.
+    // Départage ultime, à stricte égalité sur tout ce qui précède (affinité,
+    // score, artiste) : privilégier le candidat qui a LE MOINS d'autres
+    // groupes vides où il serait aussi éligible à cet instant — un
+    // candidat qui ne peut aller nulle part ailleurs a davantage besoin de
+    // CETTE place qu'un généraliste qui pourra encore servir un autre
+    // groupe de même priorité au tour suivant. Corrige le bug du
+    // 2026-09-24 documenté sur `remplir` ci-dessus (un groupe généraliste
+    // vidait le bassin partagé avant qu'un groupe plus tardif, qui n'avait
+    // QUE ce bassin, ne soit reconsidéré) sans jamais l'emporter sur une
+    // vraie préférence d'Antoine : ce n'est qu'un dernier recours, à
+    // égalité stricte sur tout le reste.
+    const alternativesParBenevole = new Map();
+    for (const candidat of candidats) {
+      let alternatives = 0;
+      for (const autreGroupeId of groupesAVides) {
+        if (autreGroupeId === meilleurGroupeId) { continue; }
+        if (evaluerEligibilite(ctx, etat, autreGroupeId, candidat.benevoleId).eligible) { alternatives++; }
+      }
+      alternativesParBenevole.set(candidat.benevoleId, alternatives);
+    }
+    const gagnant = [...candidats].sort((a, b) => (
+      b.scoreAffiniteSeule - a.scoreAffiniteSeule
+      || b.scoreSansConflitArtiste - a.scoreSansConflitArtiste
+      || Number(a.explication.conflitArtiste) - Number(b.explication.conflitArtiste)
+      || b.score - a.score
+      || (alternativesParBenevole.get(a.benevoleId) ?? 0) - (alternativesParBenevole.get(b.benevoleId) ?? 0)
+      || a.benevoleId - b.benevoleId
+    ))[0];
+    if (!gagnant) {
+      causeNonPourvueParPlace.set(place.id, 'aucun_candidat');
+      continue;
+    }
+    decisionsParPlace.set(place.id, gagnant.benevoleId);
+    scoreParPlace.set(place.id, gagnant.score);
+    causeNonPourvueParPlace.delete(place.id);
+    occuper(etat, ctx, meilleurGroupeId, gagnant.benevoleId);
+  }
+}
+
+function construirePropositions(
+  ctx,
+  perimetrePlaceIds,
+  decisionsParPlace,
+  scoreParPlace,
+  causeNonPourvueParPlace,
+) {
+  const propositions = [];
+  for (const placeId of perimetrePlaceIds) {
+    const place = ctx.placeParId.get(placeId);
+    if (!place) { continue; }
+    const benevoleIdApres = decisionsParPlace.get(placeId) ?? null;
+    const rienNeChange = benevoleIdApres === place.benevoleId
+      && place.origine === 'Algorithme'
+      && place.verrouillee === false;
+    if (rienNeChange) { continue; }
+
+    const proposition = {
+      placeId,
+      groupeId: place.groupeId,
+      rang: place.rang,
+      benevoleIdAvant: place.benevoleId,
+      benevoleIdApres,
+      origineApres: 'Algorithme',
+      verrouilleeApres: false,
+      score: benevoleIdApres != null ? scoreParPlace.get(placeId) ?? null : null,
+    };
+    const cause = causeNonPourvueParPlace.get(placeId);
+    if (benevoleIdApres == null && cause) { proposition.causeNonPourvue = cause; }
+    propositions.push(proposition);
+  }
+  return propositions;
+}
+
+/**
+ * Lance l'algorithme (§7.5.1). Sans `options.perimetre`, résout tout le
+ * planning ; avec, se restreint au périmètre donné — c'est le même
+ * mécanisme qui sert un simple ajustement à chaud (§5.3, §7.5.5). Ne crée et
+ * ne modifie jamais `Groupe` ni `Positions_groupe`.
+ */
+export function calculerAffectation(
+  donnees,
+  options,
+) {
+  const parametres = options?.parametres ?? PARAMETRES_PAR_DEFAUT;
+  const ctx = construireContexte(donnees, parametres);
+  const perimetrePlaceIds = resoudrePerimetre(ctx, options?.perimetre);
+
+  const etat = construireEtatOccupation(ctx);
+  const decisionsParPlace = new Map();
+  const scoreParPlace = new Map();
+  const causeNonPourvueParPlace = new Map();
+
+  for (const placeId of perimetrePlaceIds) {
+    const place = ctx.placeParId.get(placeId);
+    if (place?.benevoleId != null) {
+      liberer(etat, ctx, place.groupeId, place.benevoleId);
+    }
+    decisionsParPlace.set(placeId, null);
+  }
+
+  remplir(ctx, etat, parametres, perimetrePlaceIds, decisionsParPlace, scoreParPlace, causeNonPourvueParPlace, false);
+  remplir(ctx, etat, parametres, perimetrePlaceIds, decisionsParPlace, scoreParPlace, causeNonPourvueParPlace, true);
+
+  const propositions = construirePropositions(ctx, perimetrePlaceIds, decisionsParPlace, scoreParPlace, causeNonPourvueParPlace);
+  const donneesApres = appliquerPropositions(donnees, propositions);
+  const anomalies = detecterAnomalies(donneesApres, parametres);
+
+  return {propositions, anomalies, parametres};
+}
+
+/** Applique un résultat validé ; ne mute pas `donnees`, retourne une copie. */
+export function appliquerPropositions(donnees, propositions) {
+  if (propositions.length === 0) { return donnees; }
+  const propositionParPlaceId = new Map(propositions.map((p) => [p.placeId, p]));
+  const places = donnees.places.map((place) => {
+    const proposition = propositionParPlaceId.get(place.id);
+    if (!proposition) { return place; }
+    return {
+      ...place,
+      benevoleId: proposition.benevoleIdApres,
+      origine: proposition.origineApres,
+      verrouillee: proposition.verrouilleeApres,
+      score: proposition.score,
+    };
+  });
+  return {...donnees, places};
+}
+
+/**
+ * Tous les bénévoles classés pour une place, éligibles ou non (§7.5.3),
+ * avec la même explication que l'algorithme pour les éligibles et la raison
+ * du blocage pour les autres — Antoine veut voir les deux pour pouvoir
+ * forcer un cas impossible en connaissance de cause (`corrigerPlace` ne
+ * vérifie d'ailleurs aucune contrainte, exactement pour permettre ça).
+ * `placeIdCible`, si fournie et déjà pourvue, libère son occupant actuel le
+ * temps du calcul, pour qu'il apparaisse comme un candidat ordinaire plutôt
+ * que d'être exclu par sa propre place. Les éligibles arrivent en tête,
+ * triés par score décroissant ; les inéligibles suivent, triés par
+ * identifiant pour rester déterministes.
+ */
+export function classerCandidats(
+  donnees,
+  groupeId,
+  placeIdCible,
+  parametres = PARAMETRES_PAR_DEFAUT,
+) {
+  const ctx = construireContexte(donnees, parametres);
+  const etat = construireEtatOccupation(ctx);
+  if (placeIdCible != null) {
+    const place = ctx.placeParId.get(placeIdCible);
+    if (place?.benevoleId != null) { liberer(etat, ctx, place.groupeId, place.benevoleId); }
+  }
+  const decisionsVides = new Map();
+  const resultats = [];
+  for (const benevole of donnees.benevoles) {
+    const statut = evaluerEligibilite(ctx, etat, groupeId, benevole.id);
+    if (statut.eligible) {
+      const candidat = calculerScore(
+        ctx, etat, parametres, groupeId, benevole.id, statut.conflitArtiste, decisionsVides, placeIdCible ?? null,
+      );
+      resultats.push({
+        benevoleId: benevole.id, eligible: true, score: candidat.score, explication: candidat.explication, raison: null,
+      });
+    } else {
+      resultats.push({benevoleId: benevole.id, eligible: false, score: null, explication: null, raison: statut.raison});
+    }
+  }
+  return resultats.sort((a, b) => {
+    if (a.eligible !== b.eligible) { return a.eligible ? -1 : 1; }
+    if (a.eligible) { return (b.score ?? 0) - (a.score ?? 0) || a.benevoleId - b.benevoleId; }
+    return a.benevoleId - b.benevoleId;
+  });
+}
+
+/**
+ * Correction manuelle directe d'une place (§7.5.3) : `benevoleId` l'affecte,
+ * `null` la libère. Toujours `Origine = Manuel` et `Verrouillee = vrai`,
+ * même en libérant — un recalcul ne la retouche plus tant qu'elle n'est pas
+ * déverrouillée explicitement, ce qui protège une correction volontairement
+ * laissée vide autant qu'une affectation choisie.
+ */
+export function corrigerPlace(donnees, placeId, benevoleId) {
+  const places = donnees.places.map((place) => (place.id === placeId
+    ? {...place, benevoleId, origine: 'Manuel', verrouillee: true, score: null}
+    : place));
+  return {...donnees, places};
+}
+
+/** Déverrouille une place : un recalcul ultérieur peut à nouveau la reconsidérer. */
+export function deverrouillerPlace(donnees, placeId) {
+  const places = donnees.places.map((place) => (place.id === placeId ? {...place, verrouillee: false} : place));
+  return {...donnees, places};
+}
+
+/**
+ * Repositionne un indicatif d'un besoin à un autre (§7.5.4, §6.3) : une
+ * seule ligne de `Positions_groupe` change, les `Places` du groupe restent
+ * intactes — ce sont les missions qui tournent, pas les personnes.
+ */
+export function repositionnerGroupe(donnees, positionGroupeId, nouveauBesoinId) {
+  const positionsGroupe = donnees.positionsGroupe.map((position) => (position.id === positionGroupeId
+    ? {...position, besoinId: nouveauBesoinId}
+    : position));
+  return {...donnees, positionsGroupe};
+}
+
+/**
+ * Périmètre naturel pour recalculer après une absence déclarée (§7.5.5) :
+ * toutes les places non verrouillées actuellement tenues par ce bénévole.
+ * L'appelant doit avoir marqué le bénévole `Absent` (ou vidé ses
+ * disponibilités) dans les données passées à `calculerAffectation` — sinon
+ * l'algorithme pourrait le réaffecter à lui-même.
+ */
+export function perimetreAbsence(donnees, benevoleId) {
+  const placeIds = donnees.places
+    .filter((place) => place.benevoleId === benevoleId && !place.verrouillee)
+    .map((place) => place.id);
+  return {placeIds};
+}
+
+/** Clé stable d'une anomalie, pour comparer deux listes (mêmes champs ⇒ même clé). */
+function cleAnomalie(a) {
+  return JSON.stringify(a);
+}
+
+/**
+ * Aperçu, sans mutation, d'un glisser-déposer entre deux places (§7.3, §7.5).
+ * Si `placeCibleId` est déjà pourvue, échange les deux occupants ; sinon
+ * déplace simplement celui de `placeSourceId`. Refuse (`possible: false`) si
+ * l'une des deux places est verrouillée ou introuvable — un verrouillage
+ * protège contre tout mouvement, y compris manuel (§7.1). N'écrit rien :
+ * pour appliquer réellement, l'appelant doit committer chaque place avec
+ * `corrigerPlace` une fois l'aperçu validé.
+ */
+export function previsualiserDeplacement(
+  donnees,
+  placeSourceId,
+  placeCibleId,
+  parametres = PARAMETRES_PAR_DEFAUT,
+) {
+  const anomaliesAvant = detecterAnomalies(donnees, parametres);
+  const source = donnees.places.find((p) => p.id === placeSourceId);
+  const cible = donnees.places.find((p) => p.id === placeCibleId);
+
+  if (!source || !cible) {
+    return {
+      possible: false, raisonImpossible: 'place_introuvable', donneesApres: donnees,
+      anomaliesAvant, anomaliesApres: anomaliesAvant, anomaliesCreees: [], anomaliesResolues: [],
+    };
+  }
+  if (source.verrouillee || cible.verrouillee) {
+    return {
+      possible: false, raisonImpossible: 'place_verrouillee', donneesApres: donnees,
+      anomaliesAvant, anomaliesApres: anomaliesAvant, anomaliesCreees: [], anomaliesResolues: [],
+    };
+  }
+
+  const benevoleSource = source.benevoleId;
+  const benevoleCible = cible.benevoleId;
+  const places = donnees.places.map((place) => {
+    if (place.id === placeSourceId) { return {...place, benevoleId: benevoleCible}; }
+    if (place.id === placeCibleId) { return {...place, benevoleId: benevoleSource}; }
+    return place;
+  });
+  const donneesApres = {...donnees, places};
+  const anomaliesApres = detecterAnomalies(donneesApres, parametres);
+
+  const clesAvant = new Set(anomaliesAvant.map(cleAnomalie));
+  const clesApres = new Set(anomaliesApres.map(cleAnomalie));
+
+  return {
+    possible: true,
+    donneesApres,
+    anomaliesAvant,
+    anomaliesApres,
+    anomaliesCreees: anomaliesApres.filter((a) => !clesAvant.has(cleAnomalie(a))),
+    anomaliesResolues: anomaliesAvant.filter((a) => !clesApres.has(cleAnomalie(a))),
+  };
+}
