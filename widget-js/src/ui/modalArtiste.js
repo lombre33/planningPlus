@@ -7,9 +7,29 @@
  * l'agenda ; rien n'est réinventé ici.
  */
 
+import {t, traductions} from '../i18n.js';
 import {epochDepuisDateEtHeure, libelleHeurePlage} from '../temps.js';
 import {h, ouvrirModal} from './dom.js';
 import {creerErreur} from './modalCreneau.js';
+
+traductions({
+  'Nom de l’artiste': 'Artist name',
+  '— aucun —': '— none —',
+  Nom: 'Name',
+  Lieu: 'Location',
+  Début: 'Start',
+  Fin: 'End',
+  Annuler: 'Cancel',
+  'Merci de renseigner un nom.': 'Please enter a name.',
+  'Merci de renseigner un début et une fin.': 'Please enter a start and an end.',
+  'La fin doit être après le début.': 'The end must be after the start.',
+  "Échec de l'écriture dans le document Grist connecté. Réessayez.": 'Could not write to the connected Grist document. Try again.',
+  'Nouvel artiste': 'New artist',
+  Créer: 'Create',
+  'Nouveau passage — {nom}': 'New set — {nom}',
+  'Modifier « {nom} » ({horaire})': 'Edit “{nom}” ({horaire})',
+  Enregistrer: 'Save',
+});
 
 /** Découpe la valeur d'un `<input type="datetime-local">` ("AAAA-MM-JJTHH:MM")
  *  dans le format attendu par `epochDepuisDateEtHeure`. */
@@ -34,7 +54,7 @@ function formulaire(
   onValider,
 ) {
   const champNom = h('input', {
-    class: 'input', type: 'text', placeholder: 'Nom de l’artiste',
+    class: 'input', type: 'text', placeholder: t('Nom de l’artiste'),
     value: artisteExistant?.Nom ?? valeursInitiales?.nom ?? '',
     disabled: valeursInitiales?.nomVerrouille ?? false,
   });
@@ -48,7 +68,7 @@ function formulaire(
   // ne bloque ni la création ni l'affichage.
   const lieuInitial = artisteExistant?.Lieu ?? valeursInitiales?.lieu;
   const champLieu = h('select', {class: 'select'},
-    h('option', {value: ''}, '— aucun —'),
+    h('option', {value: ''}, t('— aucun —')),
     ...m.lieux.map((l) => h('option', {value: String(l.id), selected: l.id === lieuInitial}, l.Nom)),
   );
 
@@ -66,31 +86,31 @@ function formulaire(
   const erreur = creerErreur();
 
   ouvrirModal(titre, (fermer) => h('div', {style: {display: 'flex', flexDirection: 'column', gap: '14px'}},
-    h('div', {class: 'field'}, h('label', null, 'Nom'), champNom),
-    h('div', {class: 'field'}, h('label', null, 'Lieu'), champLieu),
+    h('div', {class: 'field'}, h('label', null, t('Nom')), champNom),
+    h('div', {class: 'field'}, h('label', null, t('Lieu')), champLieu),
     h('div', {class: 'modal__row'},
-      h('div', {class: 'field'}, h('label', null, 'Début'), champDebut),
-      h('div', {class: 'field'}, h('label', null, 'Fin'), champFin),
+      h('div', {class: 'field'}, h('label', null, t('Début')), champDebut),
+      h('div', {class: 'field'}, h('label', null, t('Fin')), champFin),
     ),
     erreur.noeud,
     h('div', {class: 'modal__actions'},
-      h('button', {class: 'btn btn--ghost', type: 'button', onclick: fermer}, 'Annuler'),
+      h('button', {class: 'btn btn--ghost', type: 'button', onclick: fermer}, t('Annuler')),
       h('button', {
         class: 'btn btn--primary', type: 'button',
         onclick: async () => {
           const nom = champNom.value.trim();
           const debut = epochDepuisDatetimeLocal(champDebut.value);
           const fin = epochDepuisDatetimeLocal(champFin.value);
-          if (!nom) { erreur.afficher('Merci de renseigner un nom.'); return; }
-          if (debut == null || fin == null) { erreur.afficher('Merci de renseigner un début et une fin.'); return; }
-          if (fin <= debut) { erreur.afficher('La fin doit être après le début.'); return; }
+          if (!nom) { erreur.afficher(t('Merci de renseigner un nom.')); return; }
+          if (debut == null || fin == null) { erreur.afficher(t('Merci de renseigner un début et une fin.')); return; }
+          if (fin <= debut) { erreur.afficher(t('La fin doit être après le début.')); return; }
           erreur.effacer();
           const patch = {Nom: nom, Lieu: champLieu.value ? Number(champLieu.value) : 0, Debut: debut, Fin: fin};
           try {
             await onValider(artisteExistant ? {...patch, id: artisteExistant.id} : patch);
             fermer();
           } catch {
-            erreur.afficher("Échec de l'écriture dans le document Grist connecté. Réessayez.");
+            erreur.afficher(t("Échec de l'écriture dans le document Grist connecté. Réessayez."));
           }
         },
       }, texteBouton),
@@ -112,24 +132,24 @@ function formulaire(
  *  `ouvrirModalCreationPassagePourArtiste` remplace en place au premier
  *  horaire donné plutôt que d'ajouter une seconde ligne. */
 export function ouvrirModalCreationArtiste(m) {
-  const champNom = h('input', {class: 'input', type: 'text', placeholder: 'Nom de l’artiste'});
+  const champNom = h('input', {class: 'input', type: 'text', placeholder: t('Nom de l’artiste')});
   const champLieu = h('select', {class: 'select'},
-    h('option', {value: ''}, '— aucun —'),
+    h('option', {value: ''}, t('— aucun —')),
     ...m.lieux.map((l) => h('option', {value: String(l.id)}, l.Nom)),
   );
   const erreur = creerErreur();
 
-  ouvrirModal('Nouvel artiste', (fermer) => h('div', {style: {display: 'flex', flexDirection: 'column', gap: '14px'}},
-    h('div', {class: 'field'}, h('label', null, 'Nom'), champNom),
-    h('div', {class: 'field'}, h('label', null, 'Lieu'), champLieu),
+  ouvrirModal(t('Nouvel artiste'), (fermer) => h('div', {style: {display: 'flex', flexDirection: 'column', gap: '14px'}},
+    h('div', {class: 'field'}, h('label', null, t('Nom')), champNom),
+    h('div', {class: 'field'}, h('label', null, t('Lieu')), champLieu),
     erreur.noeud,
     h('div', {class: 'modal__actions'},
-      h('button', {class: 'btn btn--ghost', type: 'button', onclick: fermer}, 'Annuler'),
+      h('button', {class: 'btn btn--ghost', type: 'button', onclick: fermer}, t('Annuler')),
       h('button', {
         class: 'btn btn--primary', type: 'button',
         onclick: async () => {
           const nom = champNom.value.trim();
-          if (!nom) { erreur.afficher('Merci de renseigner un nom.'); return; }
+          if (!nom) { erreur.afficher(t('Merci de renseigner un nom.')); return; }
           erreur.effacer();
           try {
             await m.enregistrerArtiste({
@@ -137,10 +157,10 @@ export function ouvrirModalCreationArtiste(m) {
             });
             fermer();
           } catch {
-            erreur.afficher("Échec de l'écriture dans le document Grist connecté. Réessayez.");
+            erreur.afficher(t("Échec de l'écriture dans le document Grist connecté. Réessayez."));
           }
         },
-      }, 'Créer'),
+      }, t('Créer')),
     ),
   ));
 }
@@ -157,14 +177,14 @@ export function ouvrirModalCreationPassagePourArtiste(
   idPlaceholder,
 ) {
   formulaire(
-    m, `Nouveau passage — ${nom}`, 'Créer', null, {...valeursInitiales, nom, nomVerrouille: true},
+    m, t('Nouveau passage — {nom}', {nom}), t('Créer'), null, {...valeursInitiales, nom, nomVerrouille: true},
     (patch) => m.enregistrerArtiste(idPlaceholder != null ? {...patch, id: idPlaceholder} : patch),
   );
 }
 
 export function ouvrirModalEditionArtiste(m, artiste) {
   formulaire(
-    m, `Modifier « ${artiste.Nom} » (${libelleHeurePlage(artiste.Debut, artiste.Fin)})`, 'Enregistrer', artiste,
-    null, (patch) => m.enregistrerArtiste(patch),
+    m, t('Modifier « {nom} » ({horaire})', {nom: artiste.Nom, horaire: libelleHeurePlage(artiste.Debut, artiste.Fin)}),
+    t('Enregistrer'), artiste, null, (patch) => m.enregistrerArtiste(patch),
   );
 }

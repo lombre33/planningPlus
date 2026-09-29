@@ -7,6 +7,7 @@
  * du jour, à l'étape 5.
  */
 
+import {t, tn, traductions} from '../i18n.js';
 import {
   couvertureBesoin, indexer, regrouperParJour, sousCreneauxApplicables,
 } from '../logic/derive.js';
@@ -14,6 +15,73 @@ import {epochJourFestivalEtHeure, libelleHeure, libelleHeurePlage} from '../temp
 import {fermerPanneau, h, icone, ICONES, ouvrirModal, ouvrirPanneau, vider} from '../ui/dom.js';
 import {construireFrise} from '../ui/frise.js';
 import {creerErreur} from '../ui/modalCreneau.js';
+
+traductions({
+  '+ Nouvelle mission': '+ New task',
+  "Copier les créneaux d'un autre jour…": 'Copy slots from another day…',
+  'Le référentiel des missions — pas encore où ni quand : ça se joue case par case, ci-dessous.':
+    'The task catalog — not yet where or when: that is decided cell by cell, below.',
+  'Toutes les équipes': 'All teams',
+  'Aucun sous-créneau ce jour.': 'No slots on this day.',
+  'Donner à cette mission un créneau à elle, décalé ou en pause par rapport à la trame commune':
+    'Give this task a slot of its own, shifted or paused relative to the shared grid',
+  '+ créneau': '+ slot',
+  'Cliquer pour donner à cette mission un créneau à elle, décalé ou en pause par rapport à la trame commune':
+    'Click to give this task a slot of its own, shifted or paused relative to the shared grid',
+  'Créer un besoin ici — facultatif, laissez vide pour une zone volontairement non couverte':
+    'Create a need here — optional, leave it empty for an area deliberately left uncovered',
+  'Contrôle des bracelets': 'Wristband check',
+  Bars: 'Bars',
+  '— aucun —': '— none —',
+  Normale: 'Normal',
+  Critique: 'Critical',
+  Confort: 'Nice to have',
+  'Nouvelle mission': 'New task',
+  'Merci de renseigner un nom.': 'Please enter a name.',
+  "Ce document n'a encore aucune équipe : merci de la nommer.": 'This document has no team yet: please name one.',
+  "Échec de l'écriture dans le document Grist connecté. Réessayez.": 'Could not write to the connected Grist document. Try again.',
+  Créer: 'Create',
+  Nom: 'Name',
+  Équipe: 'Team',
+  Lieu: 'Location',
+  "Ce document n'a encore aucune équipe : elle sera créée avec cette mission.":
+    'This document has no team yet: it will be created along with this task.',
+  Priorité: 'Priority',
+  Annuler: 'Cancel',
+  'Taille du binôme': 'Buddy pair size',
+  'Effectif minimum': 'Minimum headcount',
+  "Aucun indicatif n'est positionné automatiquement : vous les créerez depuis la vue Indicatifs.":
+    'No call sign is placed automatically: you will create them from the Call signs view.',
+  'Merci de renseigner des effectifs valides (au moins 1).': 'Please enter valid headcounts (at least 1).',
+  '{mission} — créneau propre': '{mission} — own slot',
+  Début: 'Start',
+  Fin: 'End',
+  'Se termine après minuit': 'Ends after midnight',
+  'Merci de renseigner des horaires valides.': 'Please enter valid times.',
+  "L'heure de fin doit être après l'heure de début.": 'The end time must be after the start time.',
+  "Copier les créneaux d'un autre jour": 'Copy slots from another day',
+  'Merci de choisir un jour.': 'Please choose a day.',
+  'Rien à copier depuis {source} : tout y était déjà présent sur {cible}.':
+    'Nothing to copy from {source}: everything there was already on {cible}.',
+  '{n} besoin copié depuis {jour}': '{n} need copied from {jour}',
+  '{n} besoins copiés depuis {jour}': '{n} needs copied from {jour}',
+  '{n} créneau créé': '{n} slot created',
+  '{n} créneaux créés': '{n} slots created',
+  '{n} indicatif repositionné': '{n} call sign placed again',
+  '{n} indicatifs repositionnés': '{n} call signs placed again',
+  Copier: 'Copy',
+  "Reproduit sur {jour} les besoins déjà construits sur le jour choisi ci-dessous, avec leurs indicatifs déjà positionnés le cas échéant. N'écrase jamais ce qui existe déjà sur {jour}.":
+    'Recreates on {jour} the needs already built on the day chosen below, along with their call signs already placed, if any. Never overwrites what already exists on {jour}.',
+  'Copier depuis': 'Copy from',
+  Fermer: 'Close',
+  '{n} affecté sur un minimum de {min}': '{n} assigned out of a minimum of {min}',
+  '{n} affectés sur un minimum de {min}': '{n} assigned out of a minimum of {min}',
+  "Aucun indicatif n'est encore positionné sur ce besoin.": 'No call sign is placed on this need yet.',
+  'Pour pourvoir, échanger ou verrouiller une place : étape 5, Affectation.': 'To fill, swap or lock a spot: step 5, Assignment.',
+  'Place à pourvoir': 'Open spot',
+  'Corrigée à la main : ni les scénarios ni l’algorithme n’y touchent.': 'Set by hand: neither the scenarios nor the algorithm touch it.',
+  Verrouillée: 'Locked',
+});
 
 /** Couleur posée sur une équipe créée depuis cet écran minimal (pas de
  *  sélecteur de couleur ici — demande d'Antoine du 2026-09-22 : juste de
