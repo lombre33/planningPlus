@@ -78,6 +78,18 @@ export function evaluerEligibilite(ctx, etat, groupeId, benevoleId) {
     return {eligible: false, raison: 'statut_absent'};
   }
 
+  // Pointé absent à l'appel un jour où ce groupe a une position (Presences,
+  // audit UX du 2026-09-29) : exclu comme un statut Absent, mais pour ces
+  // macro-créneaux-là seulement.
+  const absencesAppel = ctx.absencesAppelParBenevole.get(benevoleId);
+  if (absencesAppel) {
+    for (const macroCreneauId of ctx.macroCreneauxParGroupe.get(groupeId) ?? []) {
+      if (absencesAppel.has(macroCreneauId)) {
+        return {eligible: false, raison: 'absent_appel'};
+      }
+    }
+  }
+
   const competencesRequises = ctx.competencesRequisesParGroupe.get(groupeId) ?? new Set();
   for (const competence of competencesRequises) {
     if (!benevole.competences.includes(competence)) {

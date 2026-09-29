@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {indexer} from '../logic/derive.js';
+import {indexer, regrouperParJour} from '../logic/derive.js';
 import {Magasin} from '../store.js';
 import {calculerAnomalies, classerCandidats, proposerPermutation, raisonsPlaceVide, versDonneesPlanning} from './adaptateur-magasin.js';
 
@@ -66,6 +66,25 @@ describe('versDonneesPlanning', () => {
     expect(donnees.positionsGroupe).toEqual([{id: 1, groupeId: 1, besoinId: 1}]);
     // Priorité 3 d'Antoine (2026-09-23) : les affinités sont désormais réellement câblées.
     expect(donnees.affinites).toEqual([{benevoleAId: 1, benevoleBId: 2, type: 'Ensemble'}]);
+  });
+
+  it("traduit une absence à l'appel en macro-créneaux du jour, sans rien pour un présent", () => {
+    const modele = construireModele();
+    const cle = regrouperParJour(modele.macroCreneaux)[0].cle;
+    modele.presences = [
+      {id: 1, Benevole: 1, Jour: cle, Present: false},
+      {id: 2, Benevole: 2, Jour: cle, Present: true},
+    ];
+    expect(versDonneesPlanning(new Magasin(modele)).absencesAppel).toEqual([{benevoleId: 1, macroCreneauId: 1}]);
+  });
+});
+
+describe("classerCandidats (adaptateur) — absent à l'appel", () => {
+  it("n'est plus proposé, ni expliqué comme éligible, le jour où il est pointé absent", () => {
+    const modele = construireModele();
+    modele.presences = [{id: 1, Benevole: 1, Jour: regrouperParJour(modele.macroCreneaux)[0].cle, Present: false}];
+    const m = new Magasin(modele);
+    expect(classerCandidats(m, indexer(m), 1).map((c) => c.benevoleId)).toEqual([2]);
   });
 });
 

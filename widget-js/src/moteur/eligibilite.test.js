@@ -72,6 +72,28 @@ describe('evaluerEligibilite', () => {
     expect(evaluerEligibilite(ctx, etat, s.groupe.id, benevole.id)).toEqual({eligible: false, raison: 'statut_absent'});
   });
 
+  it("exclut un bénévole absent à l'appel sur le macro-créneau du groupe, pas sur un autre", () => {
+    const s = scenarioSimple();
+    const benevole = creerBenevole();
+    const base = {
+      benevoles: [benevole], missions: [s.mission], sousCreneaux: [s.sousCreneau], besoins: [s.besoin],
+      groupes: [s.groupe], positionsGroupe: [s.position], places: [s.place],
+      disponibilites: disponibilitesIntervalle(benevole.id, s.sousCreneau.debut, s.sousCreneau.fin),
+    };
+    const absentCeJour = construireContexte(
+      donnees({...base, absencesAppel: [{benevoleId: benevole.id, macroCreneauId: s.sousCreneau.macroCreneauId}]}),
+      PARAMETRES_PAR_DEFAUT,
+    );
+    expect(evaluerEligibilite(absentCeJour, construireEtatOccupation(absentCeJour), s.groupe.id, benevole.id))
+      .toEqual({eligible: false, raison: 'absent_appel'});
+    const absentUnAutreJour = construireContexte(
+      donnees({...base, absencesAppel: [{benevoleId: benevole.id, macroCreneauId: 999}]}),
+      PARAMETRES_PAR_DEFAUT,
+    );
+    expect(evaluerEligibilite(absentUnAutreJour, construireEtatOccupation(absentUnAutreJour), s.groupe.id, benevole.id))
+      .toEqual({eligible: true, conflitArtiste: false});
+  });
+
   it("exclut un bénévole sans une compétence requise par la mission, l'accepte s'il l'a", () => {
     const s = scenarioSimple({competencesRequises: ['SST']});
     const sansCompetence = creerBenevole({competences: []});

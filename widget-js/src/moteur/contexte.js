@@ -70,6 +70,18 @@ export function construireContexte(
     affiniteParPaire.set(clePaireBenevoles(affinite.benevoleAId, affinite.benevoleBId), affinite.type);
   }
 
+  // Absences pointées à l'appel, par macro-créneau (`absencesAppel`, voir
+  // `adaptateur-magasin.js`) : facultatif, un jeu de test peut l'omettre.
+  const absencesAppelParBenevole = new Map();
+  for (const absence of donnees.absencesAppel ?? []) {
+    let macroCreneaux = absencesAppelParBenevole.get(absence.benevoleId);
+    if (!macroCreneaux) {
+      macroCreneaux = new Set();
+      absencesAppelParBenevole.set(absence.benevoleId, macroCreneaux);
+    }
+    macroCreneaux.add(absence.macroCreneauId);
+  }
+
   const sousCreneauxParGroupe = new Map();
   const missionsParGroupe = new Map();
   const quartsParGroupe = new Map();
@@ -130,6 +142,7 @@ export function construireContexte(
     disponibiliteParBenevoleEtQuart,
     souhaitParBenevoleEtMission,
     affiniteParPaire,
+    absencesAppelParBenevole,
     sousCreneauxParGroupe,
     missionsParGroupe,
     quartsParGroupe,
