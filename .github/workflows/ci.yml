@@ -1,0 +1,69 @@
+name: Vérifier
+
+# Ce que le déploiement exécute déjà après la fusion, exécuté avant elle : une
+# pull request qui casse un test, un type ou le site assemblé le dit tout de
+# suite plutôt qu'après coup sur main. Ne publie rien.
+
+on:
+  pull_request:
+    paths:
+      - 'widget/**'
+      - 'widget-js/**'
+      - 'migration/**'
+      - 'dev/seed/**'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/deploy-widget.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typescript:
+    name: Widget TypeScript
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: widget
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: widget/package-lock.json
+      - run: npm ci
+      - run: npm test
+      # tsc --noEmit puis vite build, comme au déploiement.
+      - run: npm run build
+
+  javascript:
+    name: Widget JavaScript natif
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            widget/package-lock.json
+            widget-js/package-lock.json
+      - run: npm ci
+        working-directory: widget-js
+      - run: npm test
+        working-directory: widget-js
+      # Le site tel qu'il sera publié : échoue si un import ne mène à rien.
+      - run: npm run site
+        working-directory: widget-js
+
+      # Information seulement (voir migration/README.md) : TypeScript, qui ne
+      # sert qu'à cette conversion, vient de widget/.
+      - run: npm ci
+        working-directory: widget
+      - name: Contrôler que la V2 n'a pas manqué un changement de la V1
+        run: |
+          node migration/convertir.mjs --verifier || echo "::warning::widget/ a changé depuis la conversion de widget-js/ : voir migration/README.md (le sceau dit s'il suffit de relancer la conversion ou s'il faut reporter le changement à la main)"

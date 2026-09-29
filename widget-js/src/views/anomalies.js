@@ -1,0 +1,204 @@
+/**
+ * Vue anomalies (objectif O3 : « toute place non pourvue est listée avec sa
+ * cause »). Rien n'est masqué : sous-effectifs, souhaits contrariés,
+ * indisponibilités non respectées, quotas dépassés.
+ */
+
+import {indexer, regrouperParJour} from '../logic/derive.js';
+import {
+  calculerChecklistBenevoles, } from '../logic/checklist-benevoles.js';
+import {nomsCompletsDepuisSource} from '../logic/noms-complets.js';
+import {calculerAnomalies} from '../moteur/adaptateur-magasin.js';
+import {formatHeures, h, vider} from '../ui/dom.js';
+
+function titreAnomalie(a) {
+  switch (a.type) {
+    case 'sous-effectif': return `${a.missionNom} — ${a.sousCreneauLibelle}`;
+    case 'sur-effectif': return `${a.missionNom} — ${a.sousCreneauLibelle}`;
+    case 'souhait-refuse': return `${a.benevoleNom} sur ${a.missionNom}`;
+    case 'indisponibilite': return `${a.benevoleNom} — ${a.sousCreneauLibelle}`;
+    case 'conflit-artiste': return `${a.benevoleNom} veut voir ${a.artisteNom}`;
+    case 'hors-quota': return a.benevoleNom;
+    case 'chevauchement-creneaux': return a.sousCreneau.Libelle;
+    case 'double-engagement': return a.benevoleNom;
+  }
+}
+
+function detailAnomalie(a) {
+  switch (a.type) {
+    case 'sous-effectif':
+      return `Il manque ${a.manque} bénévole${a.manque > 1 ? 's' : ''} pour atteindre le minimum. On ne force personne contre son souhait pour boucler l'effectif (§7.2).`;
+    case 'sur-effectif':
+      return `${a.surplus} bénévole${a.surplus > 1 ? 's' : ''} de plus que l'effectif maximum sur ce besoin.`;
+    case 'souhait-refuse':
+      return `${a.benevoleNom} a explicitement refusé cette mission mais occupe une place de l'indicatif ${a.groupeCode} qui la couvre.`;
+    case 'indisponibilite':
+      return `${a.benevoleNom} a déclaré ne pas être disponible sur ce créneau mais occupe une place de l'indicatif ${a.groupeCode}.`;
+    case 'conflit-artiste':
+      return `Préférence forte non respectée : ${a.benevoleNom} sera sur l'indicatif ${a.groupeCode} pendant le passage de ${a.artisteNom}.`;
+    case 'hors-quota':
+      return `${formatHeures(a.heures)} affectées pour un quota maximum de ${formatHeures(a.quotaMax)}.`;
+    case 'chevauchement-creneaux':
+      return "Ce sous-créneau chevauche un autre sous-créneau du même macro-créneau dans le temps. Peut être volontaire (deux missions à des rythmes différents) : signalé pour information, pas à corriger d'office.";
+    case 'double-engagement':
+      return `${a.benevoleNom} occupe deux places dont les créneaux se recouvrent dans le temps — contrainte dure violée (§7.1). L'interface de glisser-déposer refuse ce cas à la saisie ; il ne peut venir que d'une édition directe des tables.`;
+  }
+}
+
+const LIBELLE_TYPE = {
+  'sous-effectif': 'Sous-effectif',
+  'sur-effectif': 'Sur-effectif',
+  'souhait-refuse': 'Souhait refusé',
+  'indisponibilite': 'Indisponibilité',
+  'conflit-artiste': 'Conflit artiste',
+  'hors-quota': 'Quota dépassé',
+  'chevauchement-creneaux': 'Chevauchement de créneaux',
+  'double-engagement': 'Double engagement',
+};
+
+const PILL_PAR_ETAT = {
+  respecte: 'pill--ok',
+  viole: 'pill--danger',
+  'sans-objet': 'pill--neutral',
+  'sans-donnee': 'pill--neutral',
+  'partenaire-absent': 'pill--neutral',
+};
+
+const LIBELLE_PAR_ETAT = {
+  respecte: 'Respecté',
+  viole: 'Non respecté',
+  'sans-objet': 'Sans objet',
+  'sans-donnee': 'Pas de donnée',
+  'partenaire-absent': 'Partenaire absent',
+};
+
+function celluleVerdict(v) {
+  return h('td', null,
+    h('span', {class: `pill ${PILL_PAR_ETAT[v.etat]}`}, LIBELLE_PAR_ETAT[v.etat]),
+    h('div', {class: 'anomalie__detail', style: {marginTop: '3px'}}, v.detail),
+  );
+}
+
+function ligneChecklist(ligne) {
+  return h('tr', null,
+    h('th', {scope: 'row'}, ligne.nom),
+    celluleVerdict(ligne.disponibilite),
+    celluleVerdict(ligne.binome),
+    celluleVerdict(ligne.artiste),
+  );
+}
+
+/**
+ * Complément demandé par Antoine le 2026-09-25 : une ligne par bénévole
+ * affecté le jour affiché (filtre global, `Magasin.macroCreneauSelectionne`,
+ * posé par `app.js`), trois colonnes — une par question posée — plutôt
+ * qu'un score (§ précision du coordinateur : ce qui est sacrifié et
+ * pourquoi, jamais un chiffre). Section ajoutée sous la liste existante,
+ * qui reste inchangée et porte toujours sur tout le festival.
+ */
+function sectionChecklist(jour, resultat) {
+  if (!jour) {
+    return h('p', {class: 'empty'}, 'Aucun jour de festival : rien à vérifier bénévole par bénévole.');
+  }
+  if (!resultat || resultat.lignes.length === 0) {
+    return h('p', {class: 'empty'}, `Aucun bénévole affecté ${jour.libelle.toLowerCase()}.`);
+  }
+  return h('div', {style: {overflow: 'auto', maxWidth: '100%'}},
+    h('table', {class: 'tableau-simple'},
+      h('thead', null, h('tr', null,
+        h('th', {scope: 'col'}, 'Bénévole'),
+        h('th', {scope: 'col'}, 'Disponibilité'),
+        h('th', {scope: 'col'}, 'Binôme souhaité'),
+        h('th', {scope: 'col'}, 'Artiste(s) à voir (30 min)'),
+      )),
+      h('tbody', null, ...resultat.lignes.map(ligneChecklist)),
+    ),
+  );
+}
+
+export function montrerAnomalies(container, m) {
+  // Noms complets lus depuis la table externe d'Antoine (même mécanisme que
+  // le roster imprimable) : jamais bloquant, la checklist garde `Benevole.Nom`
+  // en attendant, se rafraîchit seule si des noms complets sont trouvés.
+  let nomsComplets = new Map();
+  let vueActive = true;
+  nomsCompletsDepuisSource(m).then((trouves) => {
+    if (!vueActive || trouves.size === 0) { return; }
+    nomsComplets = trouves;
+    rafraichir();
+  }).catch(() => { /* jamais bloquant : la vue garde Benevole.Nom */ });
+
+  function rafraichir() {
+    const ix = indexer(m);
+    const anomalies = calculerAnomalies(m, ix);
+    const jours = regrouperParJour(m.macroCreneaux);
+    const jour = jours.find((j) => j.macros.some((ma) => ma.id === m.macroCreneauSelectionne)) ?? jours[0];
+    vider(container);
+
+    if (anomalies.length === 0) {
+      container.append(h('p', {class: 'empty'}, 'Aucune anomalie détectée sur ce jeu de données.'));
+    } else {
+      const parGravite = {
+        danger: anomalies.filter((a) => a.gravite === 'danger'),
+        warn: anomalies.filter((a) => a.gravite === 'warn'),
+      };
+
+      container.append(
+        h('div', {style: {display: 'flex', gap: '10px', marginBottom: '16px'}},
+          h('span', {class: 'pill pill--danger'}, `${parGravite.danger.length} à corriger`),
+          h('span', {class: 'pill pill--warn'}, `${parGravite.warn.length} à surveiller`),
+        ),
+        h('div', {class: 'anomalies-cols'},
+          colonne('À corriger', parGravite.danger),
+          colonne('À surveiller', parGravite.warn),
+        ),
+      );
+    }
+
+    const resultatChecklist = jour ? calculerChecklistBenevoles(m, ix, jour, nomsComplets) : null;
+    const paires = resultatChecklist?.pairesBinomeCassees ?? 0;
+
+    container.append(
+      h('div', {class: 'section-title', style: {marginTop: '24px'}},
+        h('h2', null, 'Respect des souhaits, bénévole par bénévole'),
+        jour ? h('span', {class: 'count mono'}, jour.libelle) : null,
+        resultatChecklist
+          ? h('span', {
+            class: `pill ${paires > 0 ? 'pill--danger' : 'pill--ok'}`,
+            title: 'Chaque paire cassée compte double en nombre de bénévoles (une ligne par côté de la paire).',
+          }, `${paires} paire${paires > 1 ? 's' : ''} de binôme non respectée${paires > 1 ? 's' : ''}`)
+          : null,
+      ),
+      sectionChecklist(jour, resultatChecklist),
+    );
+  }
+
+  function colonne(titre, liste) {
+    return h('div', null,
+      h('div', {class: 'section-title'}, h('h2', null, titre), h('span', {class: 'count mono'}, String(liste.length))),
+      liste.length === 0
+        ? h('p', {class: 'empty'}, 'Rien ici.')
+        : h('div', null, ...liste.map((a) => carteAnomalie(a))),
+    );
+  }
+
+  function carteAnomalie(a) {
+    const carte = h('div', {class: `anomalie${a.gravite === 'warn' ? ' anomalie--warn' : ''}`},
+      h('span', {class: 'anomalie__titre'}, `${LIBELLE_TYPE[a.type]} — ${titreAnomalie(a)}`),
+      h('span', {class: 'anomalie__detail'}, detailAnomalie(a)),
+    );
+    if (a.type === 'souhait-refuse' || a.type === 'indisponibilite') {
+      carte.append(h('div', {class: 'anomalie__actions'},
+        h('button', {
+          class: 'btn btn--sm', type: 'button',
+          onclick: () => m.assignerPlace(a.place.id, null),
+        }, 'Vider cette place'),
+      ));
+    }
+    return carte;
+  }
+
+  const desabonner = m.subscribe(rafraichir);
+  rafraichir();
+  return () => { vueActive = false; desabonner(); };
+}

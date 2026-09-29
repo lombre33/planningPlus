@@ -1,0 +1,146 @@
+/**
+ * Conversions et libellés de temps.
+ *
+ * Toutes les colonnes de date/heure du document sont en secondes Unix,
+ * comme dans Grist (cf. `dev/seed/temps.mjs`, dont ce module reprend les
+ * fonctions). L'unité de granularité du planning est le quart d'heure
+ * (cahier des charges §3, glossaire).
+ */
+
+export const TIMEZONE = 'Europe/Paris';
+export const PAS_MINUTES = 15;
+export const PAS_SECONDES = PAS_MINUTES * 60;
+
+function decalageMinutes(instantMs, fuseau) {
+  const format = new Intl.DateTimeFormat('en-US', {
+    timeZone: fuseau,
+    hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+  const parties = Object.fromEntries(
+    format.formatToParts(new Date(instantMs)).map((p) => [p.type, p.value]),
+  );
+  const commeUtc = Date.UTC(
+    Number(parties.year), Number(parties.month) - 1, Number(parties.day),
+    Number(parties.hour) % 24, Number(parties.minute), Number(parties.second),
+  );
+  return (commeUtc - instantMs) / 60000;
+}
+
+export function epochDepuisHeureLocale(
+  {annee, mois, jour, heures = 0, minutes = 0},
+  fuseau = TIMEZONE,
+) {
+  const naif = Date.UTC(annee, mois - 1, jour, heures, minutes, 0);
+  const premierEssai = naif - decalageMinutes(naif, fuseau) * 60000;
+  const corrige = naif - decalageMinutes(premierEssai, fuseau) * 60000;
+  return Math.round(corrige / 1000);
+}
+
+export function libelleJourCourt(epochSecondes, fuseau = TIMEZONE) {
+  return new Intl.DateTimeFormat('fr-FR', {
+    timeZone: fuseau, weekday: 'short', day: '2-digit', month: 'short',
+  }).format(new Date(epochSecondes * 1000));
+}
+
+export function libelleJourLong(epochSecondes, fuseau = TIMEZONE) {
+  const s = new Intl.DateTimeFormat('fr-FR', {
+    timeZone: fuseau, weekday: 'long', day: '2-digit', month: 'long',
+  }).format(new Date(epochSecondes * 1000));
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+export function libelleHeure(epochSecondes, fuseau = TIMEZONE) {
+  return new Intl.DateTimeFormat('fr-FR', {
+    timeZone: fuseau, hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(new Date(epochSecondes * 1000));
+}
+
+export function libelleHeurePlage(debut, fin, fuseau = TIMEZONE) {
+  return `${libelleHeure(debut, fuseau)}–${libelleHeure(fin, fuseau)}`;
+}
+
+/** Clé de jour civil (YYYY-MM-DD en heure locale), pour grouper par jour. */
+export function cleJour(epochSecondes, fuseau = TIMEZONE) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: fuseau, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date(epochSecondes * 1000));
+}
+
+/** Minuit local du jour civil d'un horodatage. */
+export function epochMinuitLocal(epochSecondes, fuseau = TIMEZONE) {
+  const cle = cleJour(epochSecondes, fuseau);
+  const [annee, mois, jour] = cle.split('-').map(Number);
+  return epochDepuisHeureLocale({annee, mois, jour}, fuseau);
+}
+
+/** Heure de coupure par défaut du « jour de festival » (cahier des charges
+ *  §6.2) : un jour d'affichage bascule à cette heure plutôt qu'à minuit
+ *  civil, pour ne jamais couper une soirée en deux. Concept purement visuel,
+ *  jamais stocké — distinct du jour civil utilisé par cleJour/epochMinuitLocal. */
+export const HEURE_COUPURE_JOUR_FESTIVAL = 6;
+
+/** Clé du jour de festival d'un horodatage : comme cleJour, mais la journée
+ *  bascule à heureCoupure plutôt qu'à minuit civil. */
+export function cleJourFestival(
+  epochSecondes, heureCoupure = HEURE_COUPURE_JOUR_FESTIVAL, fuseau = TIMEZONE,
+) {
+  return cleJour(epochSecondes - heureCoupure * 3600, fuseau);
+}
+
+/** Horodatage du début du jour de festival contenant epochSecondes
+ *  (heure de coupure locale du jour civil correspondant). */
+export function epochDebutJourFestival(
+  epochSecondes, heureCoupure = HEURE_COUPURE_JOUR_FESTIVAL, fuseau = TIMEZONE,
+) {
+  return epochMinuitLocal(epochSecondes - heureCoupure * 3600, fuseau) + heureCoupure * 3600;
+}
+
+/** Horodatage d'une date (YYYY-MM-DD) et d'une heure « HH:MM », l'heure
+ *  pouvant dépasser 23:59 pour désigner un instant après minuit (une
+ *  soirée qui franchit minuit, cahier des charges §2.1). */
+export function epochDepuisDateEtHeure(dateISO, heureTexte, fuseau = TIMEZONE) {
+  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateISO);
+  const heureMatch = /^(\d{1,2}):(\d{2})$/.exec(heureTexte.trim());
+  if (!dateMatch || !heureMatch) { return null; }
+  const [annee, mois, jour] = [dateMatch[1], dateMatch[2], dateMatch[3]].map(Number);
+  const [heures, minutes] = [heureMatch[1], heureMatch[2]].map(Number);
+  return epochDepuisHeureLocale({annee: annee, mois: mois, jour: jour, heures: heures, minutes: minutes}, fuseau);
+}
+
+/** Décale une date ISO (YYYY-MM-DD) de `deltaJours` jours calendaires,
+ *  changements de mois et d'année compris. Pure arithmétique de calendrier
+ *  (aucun instant réel en jeu) : `Date.UTC` suffit, pas de fuseau à passer. */
+function decalerDateISO(dateISO, deltaJours) {
+  const [annee, mois, jour] = dateISO.split('-').map(Number);
+  return new Date(Date.UTC(annee, mois - 1, jour + deltaJours)).toISOString().slice(0, 10);
+}
+
+/**
+ * Horodatage d'un jour de festival et d'une heure « HH:MM » (cahier des
+ * charges §6.2) : applique la règle « heure brute avant l'heure de coupure,
+ * donc jour suivant » au début comme à la fin d'un macro-créneau — jamais
+ * seulement à la fin, comme le faisait la case « après minuit » à elle
+ * seule. Sans cette règle appliquée au début aussi, un début saisi
+ * « jeudi 00h30 » se calculait littéralement jeudi 00h30, un instant qui
+ * tombe (heure de coupure oblige) dans le jour de festival mercredi —
+ * bug diagnostiqué par le fil Agenda le 2026-09-22 : le jour affiché
+ * (`cleJourFestival`) ne correspondait plus au jour saisi.
+ *
+ * `apresMinuitForce` reste nécessaire au-delà de l'heure de coupure : une
+ * nuit blanche qui finit à 10h (donc après la coupure par défaut) doit
+ * pouvoir être forcée sur le jour suivant, ce que l'heure brute seule ne
+ * permet pas de déduire (10h est une heure de matinée tout à fait normale
+ * pour un macro-créneau qui, lui, commence bien ce jour-là).
+ */
+export function epochJourFestivalEtHeure(
+  jourISO, heureTexte, apresMinuitForce = false,
+  heureCoupure = HEURE_COUPURE_JOUR_FESTIVAL, fuseau = TIMEZONE,
+) {
+  const heureMatch = /^(\d{1,2}):(\d{2})$/.exec(heureTexte.trim());
+  if (!heureMatch) { return null; }
+  const heures = Number(heureMatch[1]);
+  const jourSuivant = apresMinuitForce || heures < heureCoupure;
+  return epochDepuisDateEtHeure(jourSuivant ? decalerDateISO(jourISO, 1) : jourISO, heureTexte, fuseau);
+}

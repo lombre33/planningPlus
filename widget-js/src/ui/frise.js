@@ -1,0 +1,162 @@
+/**
+ * Frise commune au quart d'heure, réutilisable par toute vue qui pose des
+ * blocs (créneaux de mission, passages d'artiste…) sur des lignes empilées
+ * (extraite de la vue Missions le 2026-09-22, à la demande du coordinateur,
+ * pour que la vue Artistes s'en serve aussi sans dupliquer le geste). Un axe
+ * du temps en en-tête, une piste cliquable par ligne, des blocs positionnés
+ * par CSS Grid plutôt qu'en table — qui répétait sa frise en boucle au
+ * défilement, le défaut d'origine signalé par Antoine.
+ *
+ * Ce module ne connaît ni mission, ni artiste, ni besoin : juste des blocs
+ * {id, début, fin, déplaçable} posés sur des lignes {id, libellé, blocs}. Le
+ * rendu d'un bloc, son style de statut, et ce qui se passe à l'écriture
+ * (déplacer, redimensionner, créer) restent entièrement à l'appelant —
+ * chaque vue pose son propre adaptateur.
+ */
+import {libelleHeure, PAS_SECONDES} from '../temps.js';
+import {h} from './dom.js';
+
+/** Largeur d'un quart d'heure dans la frise (px) — sert à la fois à poser
+ *  les colonnes CSS Grid et à convertir un déplacement en pixels (glisser)
+ *  en un nombre de quarts d'heure. */
+export const LARGEUR_QUART_PX = 22;
+
+/** Un clic natif suit toujours un mousedown/mouseup sur le même élément,
+ *  quel que soit le mouvement entre les deux : ce drapeau, posé avant
+ *  l'écriture pour arriver avant l'événement (synchrone, avant le premier
+ *  `await`), empêche ce clic de rouvrir le bloc qu'on vient de glisser.
+ *  Local à chaque appel de `construireFrise` : la frise se redessine
+ *  entièrement à chaque changement du magasin, donc chaque rendu a ses
+ *  propres boutons et n'a pas besoin de survivre au suivant. */
+export function construireFrise(
+  lignes, options,
+) {
+  const nbColonnes = Math.max(1, Math.round((options.axeFin - options.axeDebut) / PAS_SECONDES));
+  let blocVientDeGlisser = false;
+
+  /** Glisser un bloc déplaçable : la souris saisie sur le corps du bloc le
+   *  déplace par pas de 15 minutes (l'appelant décide ce qu'il entraîne
+   *  avec lui, la frise ne regroupe rien elle-même) ; saisie sur une
+   *  poignée d'un bord (`elementBloc`, retour d'Antoine du 2026-09-23 :
+   *  « je n'ai pas de poignée pour ajuster le début ou la fin ») redimensionne
+   *  depuis ce bord — remplace l'ancien geste ALT+position (invisible,
+   *  imprécis) par une cible explicite. Un retour visuel suit la souris
+   *  pendant le glisser (même raison : « le drag ne change pas l'affichage »)
+   *  via `transform`/`width` en ligne, effacés au relâchement — le rendu
+   *  définitif vient toujours du redessin déclenché par `notifier()` côté
+   *  Magasin. Un relâchement sans déplacement (delta nul) est un simple
+   *  clic, laissé au onclick du bouton. */
+  function demarrerGlisser(e, bouton, bloc) {
+    if (e.button !== 0) { return; }
+    e.preventDefault();
+    const xDepart = e.clientX;
+    const poignee = e.target instanceof HTMLElement ? e.target.closest('[data-poignee]') : null;
+    const modeRedimensionner = poignee !== null;
+    const depuisDebut = poignee?.dataset['poignee'] === 'debut';
+    let deltaQuarts = 0;
+
+    function onMove(ev) {
+      deltaQuarts = Math.round((ev.clientX - xDepart) / LARGEUR_QUART_PX);
+      const deltaPx = deltaQuarts * LARGEUR_QUART_PX;
+      if (!modeRedimensionner) {
+        bouton.style.transform = `translateX(${deltaPx}px)`;
+      } else if (depuisDebut) {
+        bouton.style.marginLeft = `${deltaPx}px`;
+        bouton.style.width = `calc(100% - ${deltaPx}px)`;
+      } else {
+        bouton.style.width = `calc(100% + ${deltaPx}px)`;
+      }
+    }
+    async function onUp() {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      bouton.style.transform = '';
+      bouton.style.width = '';
+      bouton.style.marginLeft = '';
+      if (deltaQuarts === 0) { return; }
+      blocVientDeGlisser = true;
+      const deltaSecondes = deltaQuarts * PAS_SECONDES;
+      const resultat = modeRedimensionner
+        ? await options.onRedimensionner(bloc, depuisDebut, deltaSecondes)
+        : await options.onDeplacer(bloc, deltaSecondes);
+      if (!resultat.ok) { options.surErreur(resultat.raison); }
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }
+
+  /** Poignée de bord (retour d'Antoine du 2026-09-23) : une cible visible et
+   *  dédiée pour redimensionner depuis ce bord précis, plutôt que deviner
+   *  quelle moitié du bloc la souris a saisie. `demarrerGlisser` reconnaît
+   *  la saisie via `closest('[data-poignee]')` sur `e.target`. */
+  function elementPoignee(bord) {
+    return h('span', {
+      class: `timeline__bloc__poignee timeline__bloc__poignee--${bord}`,
+      'data-poignee': bord,
+      'aria-hidden': 'true',
+    });
+  }
+
+  function elementBloc(bloc, rangee) {
+    const colStart = Math.round((bloc.debut - options.axeDebut) / PAS_SECONDES) + 2;
+    const colEnd = Math.round((bloc.fin - options.axeDebut) / PAS_SECONDES) + 2;
+    const classesSupplementaires = options.classesBloc?.(bloc) ?? '';
+    const bouton = h('button', {
+      type: 'button',
+      class: `timeline__bloc${bloc.deplacable ? ' timeline__bloc--propre' : ''}${classesSupplementaires ? ` ${classesSupplementaires}` : ''}`,
+      style: {gridRow: String(rangee), gridColumn: `${colStart} / ${colEnd}`},
+      'data-bloc-id': String(bloc.id),
+      title: options.titreBloc?.(bloc),
+      onclick: () => {
+        if (blocVientDeGlisser) { blocVientDeGlisser = false; return; }
+        options.onClicBloc(bloc);
+      },
+    },
+      bloc.deplacable ? elementPoignee('debut') : null,
+      options.rendreBloc(bloc),
+      bloc.deplacable ? elementPoignee('fin') : null,
+    );
+    if (bloc.deplacable) { bouton.addEventListener('mousedown', (ev) => demarrerGlisser(ev, bouton, bloc)); }
+    return bouton;
+  }
+
+  const items = [
+    h('div', {class: 'timeline__coin', style: {gridRow: '1', gridColumn: '1'}}),
+  ];
+  for (let i = 0; i < nbColonnes; i++) {
+    const texte = libelleHeure(options.axeDebut + i * PAS_SECONDES);
+    const surLHeure = texte.endsWith(':00');
+    items.push(h('div', {
+      class: `axe-quart${surLHeure ? ' axe-quart--heure' : ''}`,
+      style: {gridRow: '1', gridColumn: `${i + 2} / ${i + 3}`},
+    }, surLHeure ? texte : ''));
+  }
+
+  lignes.forEach((ligne, indexLigne) => {
+    const rangee = indexLigne + 2;
+    items.push(h('div', {class: 'timeline__label', style: {gridRow: String(rangee), gridColumn: '1'}}, ligne.libelle));
+
+    const piste = h('div', {
+      class: 'timeline__piste',
+      style: {gridRow: String(rangee), gridColumn: `2 / ${nbColonnes + 2}`},
+      title: options.titrePiste,
+      onclick: (e) => {
+        const rect = piste.getBoundingClientRect();
+        const quart = Math.max(0, Math.floor((e.clientX - rect.left) / LARGEUR_QUART_PX));
+        options.onClicPiste(ligne, options.axeDebut + quart * PAS_SECONDES);
+      },
+    });
+    items.push(piste);
+
+    for (const bloc of ligne.blocs) { items.push(elementBloc(bloc, rangee)); }
+  });
+
+  const timeline = h('div', {
+    class: 'timeline',
+    style: {
+      gridTemplateColumns: `190px repeat(${nbColonnes}, ${LARGEUR_QUART_PX}px)`,
+      gridTemplateRows: `repeat(${lignes.length + 1}, auto)`,
+    },
+  }, ...items);
+  return h('div', {class: 'timeline-wrap'}, timeline);
+}

@@ -1,0 +1,2258 @@
+/* PlanningPlus — jetons de design et styles partagés, communs à toutes les
+   vues (chaque fil de vue les importe, aucun n'en invente sa propre
+   variante). Palette sobre et claire (esprit agenda grand public : fond
+   presque blanc, un seul accent bleu, densité et hiérarchie portées par la
+   typographie et l'espacement plutôt que par la couleur), séparée des
+   couleurs d'équipe (issues des données, utilisées en puces). Polices
+   système uniquement (contrainte B : aucune requête réseau hors API Grist,
+   donc pas de police distante ni de CDN). */
+
+:root {
+  color-scheme: light;
+
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-muted: #f1f3f6;
+  --border: #e3e5e9;
+  --border-strong: #c8cbd1;
+  --text: #202124;
+  --text-muted: #5f6368;
+  --text-faint: #8a8f98;
+
+  --brand: #3b5fe0;
+  --brand-ink: #2743ad;
+  --brand-tint: #eaefff;
+  --brand-contrast: #ffffff;
+
+  --night: #3c4149;
+  --night-tint: #eef0f2;
+
+  --ok: #1e8e5a;
+  --ok-tint: #e6f4ec;
+  --warn: #b06000;
+  --warn-tint: #fdf3e3;
+  --danger: #c5221f;
+  --danger-tint: #fce8e6;
+  --accent-2: #7c3aed;
+  --accent-2-tint: #f1eafd;
+  /* Jaune, dédié au binôme dont un membre est pointé absent (appel, §8,
+     `views/indicatifs.js`, `puceGroupe`) — voisin de `--warn` (teinte plus
+     franchement jaune, moins orangée) car le violet (`--accent-2`) est déjà
+     pris (« veut voir un artiste », `.dispos-cellule--artiste`). */
+  --absence: #8a6a00;
+  --absence-tint: #fbf3cf;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+
+  --shadow-pop: 0 8px 24px -8px rgba(32, 33, 36, 0.18);
+
+  --font-display: ui-sans-serif, "Segoe UI Semibold", "Helvetica Neue", Arial, sans-serif;
+  --font-body: ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Consolas, monospace;
+
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #14171c;
+    --surface: #1b1f26;
+    --surface-raised: #20242c;
+    --surface-muted: #191d24;
+    --border: #2c313a;
+    --border-strong: #3d434e;
+    --text: #e8eaed;
+    --text-muted: #9aa0a6;
+    --text-faint: #6c7278;
+
+    --brand: #8ba1f7;
+    --brand-ink: #c3d0fb;
+    --brand-tint: #1d2540;
+    --brand-contrast: #10131c;
+
+    --night: #c7cbd1;
+    --night-tint: #262b33;
+
+    --ok: #6fcf97;
+    --ok-tint: #16261d;
+    --warn: #f0b429;
+    --warn-tint: #2e2410;
+    --danger: #f28b82;
+    --danger-tint: #3a1f1c;
+    --accent-2: #c4a6f7;
+    --accent-2-tint: #2c2140;
+    --absence: #f5df4d;
+    --absence-tint: #3a3410;
+
+    --shadow-pop: 0 12px 28px -10px rgba(0, 0, 0, 0.55);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #14171c;
+  --surface: #1b1f26;
+  --surface-raised: #20242c;
+  --surface-muted: #191d24;
+  --border: #2c313a;
+  --border-strong: #3d434e;
+  --text: #e8eaed;
+  --text-muted: #9aa0a6;
+  --text-faint: #6c7278;
+
+  --brand: #8ba1f7;
+  --brand-ink: #c3d0fb;
+  --brand-tint: #1d2540;
+  --brand-contrast: #10131c;
+
+  --night: #c7cbd1;
+  --night-tint: #262b33;
+
+  --ok: #6fcf97;
+  --ok-tint: #16261d;
+  --warn: #f0b429;
+  --warn-tint: #2e2410;
+  --danger: #f28b82;
+  --danger-tint: #3a1f1c;
+  --accent-2: #c4a6f7;
+  --accent-2-tint: #2c2140;
+  --absence: #f5df4d;
+  --absence-tint: #3a3410;
+
+  --shadow-pop: 0 12px 28px -10px rgba(0, 0, 0, 0.55);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  text-wrap: balance;
+  margin: 0;
+}
+
+button {
+  font-family: var(--font-body);
+}
+
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+#app {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- Coquille de l'application ---------- */
+
+.app-shell {
+  display: flex;
+  min-height: 100dvh;
+}
+
+.rail {
+  flex: 0 0 auto;
+  width: 84px;
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-block: 16px;
+  gap: 4px;
+  /* Fixe plutôt que sticky : avec `position: sticky`, tant que la page
+     (au-delà de `.rail`) est plus haute que l'écran, le rail ne se
+     détache de son ancrage qu'au tout dernier moment du défilement de la
+     page, révélant alors seulement ses entrées en trop-plein — donc
+     inatteignable avant le bas de page sur une vue longue (signalé par
+     Antoine, 2026-09-24). `position: fixed` le sort du flux : toujours à
+     la même place à l'écran, avec son propre défilement (overflow-y),
+     quel que soit le défilement de la page. `.main` compense la largeur
+     qu'il ne réserve plus dans le flux. */
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  z-index: 20;
+}
+
+.rail__brand {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--brand);
+  text-align: center;
+  padding-bottom: 14px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+  width: 100%;
+}
+
+.rail__item {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: calc(100% - 12px);
+  padding: 8px 4px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.rail__item:hover {
+  background: var(--border);
+  color: var(--text);
+}
+
+.rail__item[aria-current="true"] {
+  background: var(--brand-tint);
+  color: var(--brand-ink);
+}
+
+.rail__item svg {
+  width: 20px;
+  height: 20px;
+}
+
+.rail__section {
+  width: calc(100% - 12px);
+  padding: 10px 6px 2px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.rail__section:first-of-type {
+  padding-top: 0;
+}
+
+/* Pastille de rang dans le parcours (§1.1), posée sur l'icône plutôt qu'à
+   côté : la numérotation reste lisible sans élargir la colonne. */
+.rail__icone {
+  position: relative;
+  display: inline-flex;
+}
+
+.rail__etape {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 2px;
+  border-radius: 999px;
+  background: var(--brand);
+  color: var(--brand-contrast);
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  line-height: 13px;
+  text-align: center;
+}
+
+.main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  /* .rail est en position fixed (sorti du flux) : la largeur qu'il ne
+     réserve plus doit être compensée ici pour ne pas passer dessous. */
+  margin-left: 84px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-wrap: wrap;
+}
+
+.topbar__title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.topbar__title h1 {
+  font-size: 22px;
+}
+
+.topbar__subtitle {
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.view {
+  padding: 20px 24px 48px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.view__intro {
+  color: var(--text-muted);
+  font-size: 13px;
+  max-width: 72ch;
+  margin-bottom: 18px;
+}
+
+/* ---------- Composants ---------- */
+
+.btn {
+  appearance: none;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 7px 13px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.btn svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.btn:hover {
+  border-color: var(--text-faint);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+}
+
+.btn--primary {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--brand-contrast);
+}
+
+.btn--primary:hover {
+  filter: brightness(1.05);
+}
+
+.btn--ghost {
+  border-color: transparent;
+  background: transparent;
+}
+
+.btn--sm {
+  padding: 4px 9px;
+  font-size: 11.5px;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.select, .input {
+  appearance: none;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 7px 10px;
+  font-size: 12.5px;
+  font-family: var(--font-body);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+
+.pill svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
+.pill--ok { background: var(--ok-tint); color: var(--ok); }
+.pill--warn { background: var(--warn-tint); color: var(--warn); }
+.pill--danger { background: var(--danger-tint); color: var(--danger); }
+.pill--neutral { background: var(--night-tint); color: var(--night); }
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  display: inline-block;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+}
+
+.section-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.section-title h2 {
+  font-size: 16px;
+}
+
+.section-title .count {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.empty {
+  color: var(--text-faint);
+  font-size: 12.5px;
+  padding: 18px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+}
+
+/* ---------- Fenêtre modale ---------- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 9, 20, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 40;
+}
+
+.modal {
+  background: var(--surface-raised);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-pop);
+  width: min(420px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modal h3 {
+  font-size: 17px;
+}
+
+.modal__row {
+  display: flex;
+  gap: 10px;
+}
+
+.modal__row > .field {
+  flex: 1;
+}
+
+.modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.horaire-apres-minuit {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.field-erreur {
+  margin: -4px 0 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--danger-tint);
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.modal__section {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modal__section-titre {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+
+.modal__section-compteur {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.modal__section .modal__row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.modal__section .select,
+.modal__section .modal__row > .btn {
+  width: 100%;
+}
+
+/* ---------- Panneau latéral (candidats) ---------- */
+
+.side-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100dvh;
+  width: min(360px, 100%);
+  background: var(--surface-raised);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-pop);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 18px;
+  padding-top: calc(16px + env(safe-area-inset-top, 0px));
+  gap: 12px;
+  overflow-y: auto;
+}
+
+.side-panel__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.candidat {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.candidat__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.candidat__nom {
+  font-weight: 600;
+}
+
+.candidat__score {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.candidat__raisons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.tag {
+  font-size: 10.5px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.tag--plus { border-color: var(--ok); color: var(--ok); }
+.tag--moins { border-color: var(--danger); color: var(--danger); }
+
+/* ---------- Agenda ---------- */
+
+.agenda {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.agenda__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Disposition horizontale (choisie par Antoine après comparaison avec une
+   disposition verticale, fil dédié) : jours en lignes, temps de gauche à
+   droite. .agenda__grid est un simple conteneur défilant, chaque ligne
+   (.agenda__row) porte une étiquette de jour à largeur fixe (sticky à
+   gauche) suivie d'une piste (.agenda__track) à largeur calculée
+   (longueurAxePx). La première ligne joue le rôle d'axe du temps. */
+
+.agenda__grid {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: auto;
+  background: var(--surface);
+}
+
+.agenda__row {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+
+.agenda__row:last-child {
+  border-bottom: none;
+}
+
+.agenda__row--axe {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--surface);
+}
+
+.agenda__corner,
+.agenda__day-head {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  flex: none;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+}
+
+.agenda__day-head .jour {
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.agenda__day-head .date {
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.agenda__axis {
+  position: relative;
+  flex: none;
+  height: 32px;
+}
+
+.agenda__axis-tick {
+  position: absolute;
+  top: 8px;
+  padding-left: 4px;
+  border-left: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+.agenda__track {
+  position: relative;
+  flex: none;
+  background-image: repeating-linear-gradient(
+    to right,
+    var(--border) 0,
+    var(--border) 1px,
+    transparent 1px,
+    transparent 52px
+  );
+}
+
+.agenda__minuit {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 1px dashed var(--border-strong);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.agenda__minuit span {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  writing-mode: vertical-rl;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-faint);
+  background: var(--surface);
+  padding: 0 3px;
+  border-radius: 3px;
+}
+
+.macro-bloc {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  border-radius: var(--radius-sm);
+  background: var(--night-tint);
+  border: 1px solid var(--night);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.macro-bloc__resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  cursor: ew-resize;
+  z-index: 2;
+}
+
+.macro-bloc__resize--gauche { left: 0; }
+.macro-bloc__resize--droite { right: 0; }
+
+.macro-bloc__resize:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.macro-bloc__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 7px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--night);
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.macro-bloc__sous {
+  flex: 1;
+  position: relative;
+  margin: 4px 6px 6px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 3px;
+}
+
+/* Puce compacte plutôt qu'un pavé pleine largeur (retour d'Antoine,
+   2026-09-21) : une journée de festival a souvent plus de cinq
+   sous-créneaux dans le même macro-créneau (quart d'heure à l'heure et
+   demie), donc chaque puce ne prend que la largeur de son libellé et les
+   puces s'enchaînent en ligne plutôt que de s'étirer en tableau. */
+.sous-bloc {
+  flex: 0 0 auto;
+  background: var(--surface);
+  border: 1px solid rgba(44, 40, 84, 0.18);
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 9px;
+  line-height: 15px;
+  color: var(--text-muted);
+  max-width: 100%;
+}
+
+.sous-bloc .lib {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text);
+  display: inline-block;
+  max-width: 84px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+/* ---------- Grille mission x sous-créneau ---------- */
+
+.grille-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+table.grille {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 720px;
+}
+
+table.grille th, table.grille td {
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  padding: 0;
+}
+
+table.grille th:last-child, table.grille td:last-child { border-right: none; }
+
+table.grille thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
+  padding: 8px 10px;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+table.grille .mission-cell {
+  position: sticky;
+  left: 0;
+  background: var(--surface);
+  z-index: 1;
+  padding: 8px 10px;
+  min-width: 190px;
+  max-width: 220px;
+}
+
+table.grille .mission-cell .nom {
+  font-weight: 600;
+  display: block;
+}
+
+table.grille .mission-cell .lieu {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* ---------- Frise Missions et Indicatifs (CSS Grid) ----------
+   Remplace l'ancien tableau à colonnes répétées par sous-créneau (demande
+   d'Antoine du 2026-09-22 pour Missions, puis du 2026-09-23 pour Indicatifs
+   : un tableau à colonnes communes explose dès que plusieurs missions
+   divergent sur des créneaux propres à des bornes différentes). Les deux
+   vues partagent maintenant cette frise (`ui/frise.js`) — `table.grille`/
+   `.grille-wrap`/`.mission-cell` ci-dessus n'ont plus d'appelant, gardées
+   ici en l'état plutôt que retirées à la volée dans ce correctif. */
+
+.timeline-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.timeline {
+  display: grid;
+  min-width: 720px;
+}
+
+.timeline__coin {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Graduation au quart d'heure : marquée à l'heure, discrète entre deux,
+   plutôt qu'une colonne par sous-créneau — sans quoi une soirée de
+   dix-huit heures à deux heures ferait trente-deux colonnes identiques. */
+.axe-quart {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  border-left: 1px dotted var(--border);
+  padding: 8px 2px;
+  text-align: center;
+  font-size: 9px;
+  color: var(--text-faint);
+  font-weight: 400;
+}
+
+/* « 16:00 » ne tient pas dans les 22px d'un quart d'heure (LARGEUR_QUART_PX,
+   ui/frise.js) : centré, le texte débordait des deux côtés, mais le quart
+   suivant (une div vide, plus tard dans le DOM, même z-index) peignait son
+   propre fond par-dessus la moitié droite — ne laissant visible que
+   « 16: » (repéré par Antoine le 2026-09-23, capture à l'appui : « 16:( »
+   au lieu de « 16:00 »). Aligné à gauche contre la bordure de l'heure et
+   posé au-dessus (z-index de `.timeline__coin`), il ne déborde plus que
+   vers les quarts suivants — vides, jamais un autre horaire — qu'il peut
+   maintenant recouvrir sans rien perdre. */
+.axe-quart--heure {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  border-left: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+  z-index: 3;
+}
+
+.timeline__label {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 10px;
+  min-width: 190px;
+  max-width: 220px;
+}
+
+.timeline__label .nom { font-weight: 600; display: block; }
+.timeline__label .lieu { color: var(--text-muted); font-size: 11px; }
+
+.timeline__label__bouton-propre {
+  display: block;
+  margin-top: 4px;
+  padding: 1px 6px;
+  font-size: 10.5px;
+}
+
+/* Le fond de chaque ligne de mission : hachuré et cliquable sur toute la
+   plage (crée un créneau propre à l'horaire cliqué). Ce qui en reste
+   visible une fois les blocs posés par-dessus EST la zone hors cadre —
+   aucune case dédiée à calculer, à la différence de l'ancien tableau. */
+/* Repères au quart d'heure sur la piste elle-même (retour d'Antoine du
+   2026-09-23 : « si la timeline pouvait inclure un découpage au quart
+   d'heure avec des pointillés »), en plus de la graduation déjà posée
+   dans l'en-tête (`.axe-quart`) — traits fins alignés sur les mêmes 22px
+   (LARGEUR_QUART_PX, `ui/frise.js`), plus marqués toutes les 4 colonnes
+   (l'heure). La piste commence toujours à la colonne 2 (juste après
+   l'étiquette), donc sa position 0 0 coïncide avec `axeDebut` : ces deux
+   dégradés restent en phase avec l'heure quel que soit le macro-créneau. */
+.timeline__piste {
+  grid-row: span 1;
+  border-bottom: 1px solid var(--border);
+  min-height: 40px;
+  cursor: pointer;
+  background-image:
+    linear-gradient(to right, var(--text-faint) 1px, transparent 1px),
+    linear-gradient(to right, var(--border) 1px, transparent 1px),
+    repeating-linear-gradient(135deg, transparent, transparent 5px, var(--surface-muted) 5px, var(--surface-muted) 6px);
+  background-size: 88px 100%, 22px 100%, auto;
+  opacity: .5;
+  transition: opacity .1s;
+}
+
+.timeline__piste:hover { opacity: .8; }
+
+.timeline__bloc {
+  all: unset;
+  /* Sans position, un bloc statique perd la main sur la piste qui occupe la
+     même cellule de grille dès qu'aucun des deux n'a de contexte
+     d'empilement propre : seul `.besoin-cell--vide` (position: relative,
+     posée pour la vue Indicatifs) gagnait par accident, donc tout bloc
+     coloré (besoin--ok/--partiel/--sous, sans position) restait
+     inatteignable au clic comme au glisser — bug repéré par le fil
+     Connexion Grist le 2026-09-22 sur document réel. */
+  position: relative;
+  box-sizing: border-box;
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+  min-height: 30px;
+  border-bottom: 1px solid var(--border);
+  padding: 4px 6px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px 6px;
+  color: var(--text-muted);
+  overflow: hidden;
+}
+
+.timeline__bloc:hover { filter: brightness(0.97); }
+.timeline__bloc:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+
+/* Glissable — curseur en grappin, comme n'importe quel objet qu'on déplace
+   à la souris (posée par `deplacable`, voir `ui/frise.js`). Sur la grille
+   Missions, un sous-créneau encore commun la porte aussi depuis le
+   2026-09-23 : le glisser le rend propre à la mission au passage
+   (`Magasin.deplacerCreneauxMission`), sans jamais toucher les autres
+   missions qui le partagent encore. */
+.timeline__bloc--propre { cursor: grab; }
+.timeline__bloc--propre:active { cursor: grabbing; }
+
+/* Poignées de bord (retour d'Antoine du 2026-09-23 : « je n'ai pas de
+   poignée pour ajuster plus efficacement le début ou la fin ») — une
+   bande étroite à chaque bout du bloc, curseur de redimensionnement,
+   posée par `ui/frise.js` uniquement sur un bloc `deplacable`. En dehors
+   du flux flex du bloc (`position: absolute`) pour ne rien déplacer de
+   son contenu. */
+.timeline__bloc__poignee {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  cursor: ew-resize;
+}
+.timeline__bloc__poignee--debut { left: 0; }
+.timeline__bloc__poignee--fin { right: 0; }
+.timeline__bloc__poignee::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: 16px;
+  transform: translate(-50%, -50%);
+  border-radius: 2px;
+  background: var(--text-faint);
+  opacity: 0;
+  transition: opacity .1s;
+}
+.timeline__bloc:hover .timeline__bloc__poignee::after,
+.timeline__bloc__poignee:hover::after {
+  opacity: .6;
+}
+/* Survoler la poignée survole toujours aussi son bloc parent : la règle
+   ci-dessus (3 classes) s'applique alors en même temps que celle-ci, qui
+   n'en comptait que 2 malgré sa position plus tardive dans le fichier —
+   elle perdait sur `opacity`, l'accent plein n'arrivait jamais (repéré à
+   l'écran par le coordinateur sur document réel, 2026-09-23). La classe
+   répétée ci-dessous monte la spécificité à 3 pour de bon, plutôt que de
+   compter sur l'ordre des règles. */
+.timeline__bloc__poignee.timeline__bloc__poignee:hover::after { background: var(--brand); opacity: 1; }
+
+/* Case vide de la frise Missions (jamais celle du tableau Indicatifs, qui
+   garde sa propre hachure sur `.besoin-cell--vide`) : fond plat plutôt que
+   la hachure en diagonale héritée, qui se répétait en dizaines de petites
+   cases visibles dès qu'un créneau dépassait le découpage par défaut
+   (retour d'Antoine du 2026-09-23 : « le hover fait changer la couleur de
+   plein de petits créneaux inexistants »). Repères au quart d'heure comme
+   la piste, en phase quel que soit l'horaire de début du bloc (22px
+   divise 22px quel que soit le décalage). */
+.timeline__bloc.besoin-cell--vide {
+  background-color: var(--bg);
+  background-image: linear-gradient(to right, var(--border) 1px, transparent 1px);
+  background-size: 22px 100%;
+}
+
+.besoin-cell__ajouter-icone {
+  color: var(--text-faint);
+  font-size: 15px;
+  line-height: 1;
+  opacity: 0.6;
+}
+
+.timeline__bloc:hover .besoin-cell__ajouter-icone,
+.timeline__bloc:focus-visible .besoin-cell__ajouter-icone {
+  opacity: 1;
+}
+
+.besoin-cell {
+  min-width: 108px;
+  vertical-align: top;
+  padding: 6px !important;
+}
+
+.besoin-cell__libelle {
+  display: block;
+  font-size: 9px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  margin-bottom: 2px;
+  white-space: nowrap;
+}
+
+.besoin-cell--vide {
+  position: relative;
+  background: repeating-linear-gradient(
+    45deg, transparent, transparent 6px, var(--bg) 6px, var(--bg) 7px
+  );
+}
+
+.besoin {
+  all: unset;
+  cursor: pointer;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 30px;        /* cible de clic confortable même sur une ligne */
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  padding: 4px 6px;        /* était 5px 6px : on ne rogne que le vertical */
+  display: flex;           /* était flex-direction: column (empilé) */
+  align-items: center;
+  flex-wrap: wrap;         /* ne s'enroule que si le contenu déborde */
+  gap: 3px 6px;             /* row-gap 3px, column-gap 6px */
+  color: var(--text-muted); /* discret par défaut : rien à signaler */
+}
+
+.besoin:hover { border-color: var(--text-faint); }
+.besoin:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+
+/* "ok" : minimum atteint et tout pourvu → cellule neutre, comme le fond de
+   la grille. C'est le cas majoritaire un jour normal ; la garder neutre est
+   ce qui permet aux deux états suivants de sauter aux yeux sur ~9 colonnes
+   au lieu de noyer la grille dans une mer de vert. */
+.besoin--ok {
+  background: var(--surface-muted);
+  border-color: var(--border);
+}
+
+/* "partiel" : minimum atteint MAIS un indicatif déjà positionné a encore
+   une place vide (ex. binôme à 1/2) — statut déjà calculé par
+   couvertureBesoin, jusqu'ici écrasé par le binaire ok/sous. Ambre, même
+   recette que .pill--warn ailleurs dans l'appli : aucun nouveau contraste
+   à valider. */
+.besoin--partiel {
+  background: var(--warn-tint);
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+/* "sous" : seul état qui appelle une vraie action → bordure gauche épaissie
+   (même grammaire que .anomalie, donc cohérente avec le reste de l'appli)
+   et chiffre renforcé (couleur + taille) pour gagner le balayage visuel. */
+.besoin--sous {
+  background: var(--danger-tint);
+  border-color: var(--danger);
+  border-width: 1px 1px 1px 3px;
+  color: var(--danger);
+}
+
+.besoin__effectif {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 12.5px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  /* pas de couleur propre : hérite de .besoin--ok/--partiel/--sous, donc le
+     chiffre "2/3" se colore tout seul selon l'état. */
+}
+
+.besoin--sous .besoin__effectif {
+  font-size: 14px; /* seul état où le chiffre grossit en plus de changer de couleur */
+}
+
+.besoin__groupes {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px;
+  flex: 1 1 auto;
+  min-width: 0; /* laisse les puces se comprimer/wrapper plutôt que forcer
+                    la cellule à s'élargir */
+}
+
+.chip-groupe {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: #fff;
+  white-space: nowrap;
+}
+
+/* Cet indicatif précis a encore une place vide (donnée déjà calculée par
+   couvertureBesoin via g.places, jusqu'ici invisible) : liseré pointillé
+   --warn en overlay, qui ne touche pas au fond couleur d'équipe (l'identité
+   du badge reste une donnée, pas un statut). Un outline (et non un border)
+   pour ne jamais entrer en conflit avec le style inline qui pose la
+   couleur d'équipe. */
+.chip-groupe--incomplet {
+  outline: 1.5px dashed var(--warn);
+  outline-offset: 1px;
+}
+
+/* ---------- Anomalies ---------- */
+
+.anomalies-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.anomalie {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--danger);
+  border-radius: var(--radius-sm);
+  padding: 9px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--surface);
+  margin-bottom: 8px;
+}
+
+.anomalie--warn { border-left-color: var(--warn); }
+
+.anomalie__titre {
+  font-weight: 600;
+  font-size: 12.5px;
+}
+
+.anomalie__detail {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.anomalie__actions {
+  margin-top: 3px;
+}
+
+/* ---------- Indicatifs (frise + trajectoire) ----------
+   La vue réutilise la frise de la vue Missions (`ui/frise.js`/`.timeline*`,
+   même jour, même filtre équipe, depuis le 2026-09-23) : seul le contenu
+   d'un bloc change (`.indicatif-cell` ci-dessous), pour rester dans le
+   même repère visuel plutôt que de retomber dans une page à part
+   déconnectée du planning (cause du rejet de la toute première version) —
+   et pour ne plus dépendre de colonnes communes à toutes les missions, qui
+   explosaient dès que leurs créneaux propres divergeaient (§6.2). */
+
+.indicatifs-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mode-bandeau {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--brand-tint);
+  color: var(--brand-ink);
+  font-size: 12.5px;
+}
+
+.mode-bandeau button {
+  margin-left: auto;
+}
+
+.indicatif-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  /* Sans ça, un enfant non compressible (le code d'une puce, par exemple)
+     peut forcer cette cellule — et donc le bloc de frise qui la porte — à
+     déborder plus large que la largeur qui lui est réellement allouée,
+     jusque sur le bloc voisin (retour Connexion Grist 2026-09-23). */
+  min-width: 0;
+  box-sizing: border-box;
+  min-height: 52px;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.indicatif-cell--cible {
+  cursor: pointer;
+}
+
+.indicatif-cell--cible:hover {
+  outline: 2px dashed var(--brand);
+  outline-offset: -2px;
+}
+
+.indicatif-cell--dropzone {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+  background: var(--brand-tint);
+}
+
+/* Alt+glisser (ajoute une position au lieu de déplacer) : distingue le
+   survol du glisser normal avant même de relâcher. */
+.indicatif-cell--dropzone-copie {
+  outline: 2px dashed var(--accent-2);
+  background: var(--accent-2-tint);
+}
+
+.indicatif-cell--surlignee {
+  background: var(--brand-tint);
+}
+
+.indicatif-cell__eff {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 12px;
+  min-width: 0;
+}
+
+/* Sur un bloc de 15-30 min, ni "min 2" ni "≈1 binôme" ne tiennent en
+   entier. Un retour à la ligne libre (`overflow-wrap`) a été essayé et
+   rejeté : sans mot assez court où couper, le texte s'empile caractère
+   par caractère et gonfle la hauteur du bloc à plus de 300px (mesuré en
+   Chromium réel) — pire que le rognage d'origine. Une troncature en
+   ellipse sur une seule ligne reste illisible en entier mais garde une
+   hauteur normale ; le texte complet reste dans `title`
+   (`indicatif-cell__reco`) ou visible dès que le bloc est un peu plus
+   large. */
+.indicatif-cell__eff span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* `.besoin-cell__libelle` (l'horaire du créneau) est en `white-space:
+   nowrap` pour son usage d'origine, la cellule de tableau `.besoin-cell`
+   (108px, largement assez large). Dans la frise Indicatifs, un bloc de
+   15-30 min est plus étroit que l'horaire lui-même : tronquer en ellipse
+   plutôt que déborder hors du bloc (disparaît sous l'overflow:hidden) ou
+   passer à la ligne (même défaut de hauteur explosive que ci-dessus).
+   Scopé à `.indicatif-cell` : la frise Missions, qui réutilise la même
+   classe sans ce conteneur, n'est pas concernée. */
+.indicatif-cell .besoin-cell__libelle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.indicatif-cell__eff--sous {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.indicatif-cell__eff .flag {
+  color: var(--warn);
+  font-family: var(--font-body);
+}
+
+.indicatif-cell__reco {
+  color: var(--text-faint);
+  opacity: 0.75;
+}
+
+.groupe-chip {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 3px 5px;
+  cursor: grab;
+}
+
+.groupe-chip:active { cursor: grabbing; }
+.groupe-chip:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+
+.groupe-chip__code {
+  font-weight: 700;
+  font-size: 10.5px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  padding: 1px 5px;
+  flex: 0 0 auto;
+}
+
+.groupe-chip__noms {
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  text-align: left;
+}
+
+.groupe-chip--vide .groupe-chip__noms {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.groupe-chip--selectionnee {
+  border-color: var(--brand);
+  background: var(--brand-tint);
+  box-shadow: 0 0 0 1px var(--brand) inset;
+}
+
+.groupe-chip--estompee { opacity: 0.4; }
+
+/* Couleur par créneau (retour Antoine du 2026-09-23, point 3) : verte
+   pourvue, rouge non pourvue sur une mission Critique, orange non pourvue
+   sur Normale/Confort — voir `puceGroupe`, `views/indicatifs.js`. */
+.groupe-chip--pourvu { background: var(--ok-tint); border-color: var(--ok); }
+.groupe-chip--critique { background: var(--danger-tint); border-color: var(--danger); }
+.groupe-chip--non-pourvu { background: var(--warn-tint); border-color: var(--warn); }
+/* Jaune : un membre du binôme est pointé absent à l'appel (§8, 2026-09-24) —
+   prime sur les trois couleurs ci-dessus, voir `puceGroupe`. */
+.groupe-chip--absence { background: var(--absence-tint); border-color: var(--absence); }
+
+.groupe-chip__ordre {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--brand);
+  color: var(--brand-contrast);
+  font-size: 9.5px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Icône seule (pas un bouton en toutes lettres) et visible au repos, jamais
+   seulement au survol : sur un bloc de 15-30 min, ce qui n'est pas visible
+   sans survoler n'existe pas pour l'utilisateur (retour Connexion Grist
+   2026-09-23, après que l'élargissement au survol a recouvert le bloc
+   voisin plutôt que d'aider). */
+.ajouter-binome {
+  align-self: flex-start;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--text-faint);
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 0;
+  cursor: pointer;
+}
+
+.ajouter-binome:hover {
+  color: var(--brand);
+  border-color: var(--brand);
+  background: var(--brand-tint);
+}
+
+.trajectoire-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.trajectoire-etape {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.trajectoire-etape__badge {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--brand);
+  color: var(--brand-contrast);
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.trajectoire-etape__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.trajectoire-etape__mission {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.trajectoire-etape__creneau {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.membre {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 2px 0;
+}
+
+.membre .rang {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  width: 14px;
+}
+
+.membre select {
+  flex: 1;
+}
+
+.membre--verrouillee {
+  background: var(--night-tint);
+  border-radius: var(--radius-sm);
+  padding-left: 4px;
+}
+
+/* ---------- Jour J ---------- */
+
+.jourj-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) 1fr;
+  gap: 18px;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .jourj-layout { grid-template-columns: 1fr; }
+  .app-shell { flex-direction: column; }
+  .rail {
+    position: sticky;
+    width: 100%;
+    height: auto;
+    flex-direction: row;
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding: 8px 10px;
+  }
+  /* .rail redevient un élément du flux (barre horizontale) ici : plus
+     besoin que `.main` lui réserve sa largeur en desktop. */
+  .main { margin-left: 0; }
+  .rail__brand { display: none; }
+  .rail__item { flex-direction: row; width: auto; padding: 8px 10px; }
+  .rail__section {
+    width: auto;
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    white-space: nowrap;
+  }
+}
+
+.benevole-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+
+.benevole-row .nom { font-weight: 600; font-size: 12.5px; }
+.benevole-row .equipe { font-size: 11px; color: var(--text-muted); }
+
+.permutation {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+
+.permutation__chaine {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+  font-size: 12.5px;
+}
+
+.permutation__etape {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+  padding: 5px 9px;
+}
+
+.permutation__etape .place {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* ---------- Affectation manuelle (glisser-déposer) ---------- */
+
+.affectation__layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) 1fr;
+  gap: 18px;
+  align-items: start;
+}
+
+.affectation__banniere {
+  margin-bottom: 12px;
+}
+
+.affectation__roster {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: sticky;
+  top: 0;
+}
+
+.affectation__roster-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.affectation__roster-liste {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: calc(100dvh - 220px);
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.roster-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 7px 10px;
+  background: var(--surface);
+  cursor: grab;
+}
+
+.roster-card:active { cursor: grabbing; }
+
+.roster-card--absent {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.roster-card__nom {
+  flex: 1;
+  font-weight: 600;
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.roster-card__meta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.affectation__board {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.besoin-carte {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  background: var(--surface);
+}
+
+.besoin-carte__tete {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.besoin-carte__mission { font-weight: 700; font-size: 13.5px; }
+.besoin-carte__sous-creneau { font-size: 11.5px; color: var(--text-muted); }
+
+.besoin-carte__groupes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.groupe-carte {
+  flex: 0 0 200px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  background: var(--bg);
+}
+
+.groupe-carte__code {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 11.5px;
+  margin-bottom: 6px;
+  display: block;
+}
+
+.place-slot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 5px 6px;
+  margin-bottom: 5px;
+  background: var(--surface);
+}
+
+.place-slot--occupee {
+  border-style: solid;
+  cursor: grab;
+}
+
+.place-slot--occupee:active { cursor: grabbing; }
+
+.place-slot--verrouillee {
+  border-color: var(--night);
+  background: var(--night-tint);
+}
+
+.place-slot--survol {
+  border-color: var(--brand);
+  background: var(--brand-tint);
+}
+
+.place-slot__rang {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  width: 16px;
+}
+
+.place-slot__contenu {
+  flex: 1;
+  min-width: 0;
+}
+
+.place-slot__nom {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.place-slot__pourquoi {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 3px;
+}
+
+.place-slot__vide-texte {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.place-slot__raison-vide {
+  display: block;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.place-slot__candidats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.place-slot__candidats .candidat {
+  padding: 6px 8px;
+  gap: 3px;
+}
+
+.place-slot__candidats .candidat__nom {
+  font-size: 11.5px;
+}
+
+.place-slot__candidats .candidat__raisons {
+  gap: 3px;
+}
+
+.place-slot__candidats .btn {
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+.place-slot__actions {
+  display: flex;
+  gap: 2px;
+}
+
+@media (max-width: 860px) {
+  .affectation__layout { grid-template-columns: 1fr; }
+  .affectation__roster { position: static; }
+  .affectation__roster-liste { max-height: none; }
+}
+
+/* ---------- Tableau générique (bénévole, équipe, artistes) ---------- */
+
+.tableau-simple {
+  border-collapse: collapse;
+  width: 100%;
+  background: var(--surface);
+}
+
+.tableau-simple th, .tableau-simple td {
+  text-align: left;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px;
+}
+
+.tableau-simple thead th {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+/* ---------- Vue bénévole : feuille de route ---------- */
+
+.feuille-benevole__entete {
+  margin-bottom: 12px;
+}
+
+.feuille-benevole__entete h2 {
+  font-size: 18px;
+  margin-bottom: 2px;
+}
+
+.feuille-benevole__entete p {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  margin: 0;
+}
+
+.feuille-benevole__ligne--chevauche td {
+  background: var(--warn-tint);
+}
+
+.feuille-benevole__jour {
+  margin-bottom: 14px;
+  break-inside: avoid;
+}
+
+.feuille-benevole__jour-titre {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  margin: 10px 0 4px;
+}
+
+.benevole-row--actif {
+  border-color: var(--brand);
+}
+
+/* ---------- Impression ---------- */
+
+#zone-impression {
+  display: none;
+}
+
+@media print {
+  body.impression-active > :not(#zone-impression) {
+    display: none !important;
+  }
+
+  body.impression-active #zone-impression {
+    display: block;
+  }
+
+  .feuille-benevole {
+    break-after: page;
+    padding: 12mm 0 0;
+  }
+
+  .feuille-benevole:last-child {
+    break-after: auto;
+  }
+
+  .feuille-benevole .pill {
+    border: 1px solid currentColor;
+    background: none !important;
+  }
+
+  .tableau-simple th, .tableau-simple td {
+    padding: 4px 6px;
+    font-size: 11px;
+  }
+}
+
+/* ---------- Disponibilités (grille bénévoles × quart d'heure) ----------
+   Utilise --accent-2 / --accent-2-tint pour l'état « veut voir un artiste »,
+   une troisième teinte distincte de brand/ok/warn/danger. */
+
+.dispos-barre {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.dispos-jours {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.dispos-jour-tab {
+  all: unset;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  border: 1px solid var(--border-strong);
+}
+
+.dispos-jour-tab:hover {
+  border-color: var(--text-faint);
+}
+
+.dispos-jour-tab[aria-selected="true"] {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--brand-contrast);
+}
+
+.dispos-barre__filtres {
+  display: flex;
+  gap: 8px;
+  flex: 1 1 260px;
+}
+
+.dispos-barre__filtres .input {
+  flex: 1;
+}
+
+.dispos-legende {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.dispos-legende__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dispos-legende .dispos-cellule {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+}
+
+.dispos-scroll {
+  overflow: auto;
+  max-height: 70vh;
+  max-width: 100%;
+  width: fit-content;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+table.dispos-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+table.dispos-table th,
+table.dispos-table td {
+  border-bottom: 1px solid var(--border);
+}
+
+.dispos-table__coin {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  background: var(--surface);
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.dispos-table__heure {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
+  /* Doublé de 11 à 22px (= `LARGEUR_QUART_PX`, `ui/frise.js`, déjà éprouvé
+     lisible ailleurs dans l'app) : trop étroit pour être lisible au clic,
+     demande explicite d'Antoine le 2026-09-23. La grille défile déjà
+     horizontalement (`.dispos-scroll`), s'allonger n'a pas d'autre effet. */
+  width: 22px;
+  min-width: 22px;
+  max-width: 22px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 400;
+  color: var(--text-faint);
+  text-align: left;
+  padding: 2px 0 2px 2px;
+  overflow: visible;
+}
+
+.dispos-table__heure--limite-macro {
+  border-left: 2px solid var(--border-strong);
+}
+
+.dispos-table__benevole {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface);
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.dispos-cellule {
+  width: 22px;
+  min-width: 22px;
+  height: 18px;
+  padding: 0;
+}
+
+.dispos-cellule--limite-macro {
+  border-left: 2px solid var(--border-strong);
+}
+
+.dispos-cellule--disponible { background: var(--brand-tint); }
+.dispos-cellule--indisponible { background: var(--surface-muted); }
+/* Teinte pleine, pas `--accent-2-tint` : sur une cellule de 11×18px, deux
+   pastels pâles (bleu/violet) ne se distinguent pas assez au survol rapide
+   de la grille — demande explicite d'Antoine le 2026-09-23. */
+.dispos-cellule--artiste { background: var(--accent-2); }
+
+.contrainte-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: 5px;
+  border-radius: 50%;
+  font-size: 9px;
+  font-weight: 700;
+  cursor: help;
+  flex: 0 0 auto;
+}
+
+.contrainte-badge--danger { background: var(--danger-tint); color: var(--danger); }
+.contrainte-badge--warn { background: var(--warn-tint); color: var(--warn); }
+
+/* ---------- Terrain (où est chaque bénévole à l'instant t) ---------- */
+
+.terrain-barre {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.terrain-curseur {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 220px;
+}
+
+.terrain-curseur__range {
+  flex: 1;
+  accent-color: var(--brand);
+}
+
+.terrain-curseur__heure {
+  font-size: 13px;
+  font-weight: 700;
+  min-width: 46px;
+  text-align: right;
+}
+
+.terrain-section {
+  margin-bottom: 22px;
+}
+
+.terrain-mission {
+  margin-bottom: 8px;
+}
+
+.terrain-mission__titre {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.terrain-mission__lieu {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.terrain-mission__benevoles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.terrain-libres {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin: 0 0 6px;
+}
+
+.terrain-libres strong {
+  color: var(--text);
+}
+
+.terrain-effectifs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.terrain-effectif-ligne {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.terrain-effectif-ligne__mission {
+  font-weight: 600;
+  font-size: 12.5px;
+  margin-right: 8px;
+}
+
+.terrain-effectif-ligne__lieu {
+  color: var(--text-muted);
+  font-size: 11.5px;
+}

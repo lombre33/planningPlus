@@ -29,9 +29,11 @@ Phase 1 : cadrage. Voir [`docs/`](docs/).
 
 ## Déploiement du widget (GitHub Pages)
 
-`.github/workflows/deploy-widget.yml` construit `widget/` (tests, vérification
-de types, `vite build`) et publie `widget/dist` sur GitHub Pages à chaque
-poussée sur `main` qui touche `widget/`.
+`.github/workflows/deploy-widget.yml` teste et construit `widget/` (tests,
+vérification de types, `vite build`), teste `widget-js/` et publie le tout sur
+GitHub Pages à chaque poussée sur `main` qui touche l'un des deux : le paquet de
+`widget/` à la racine, les fichiers de `widget-js/` sous `/js/` (voir la section
+suivante).
 
 **Ce qui reste à activer, une seule fois, côté dépôt GitHub** (le workflow ne
 peut pas le faire lui-même) : Settings → Pages → *Build and deployment* →
@@ -47,3 +49,24 @@ depuis un CDN, `grist-plugin-api.js` vendorisé dans le dépôt
 (`widget/public/vendor/`, voir son `README.md`) plutôt que chargé d'ailleurs,
 et aucune variable d'environnement ni secret dans le bundle — le widget ne
 lit que `window.grist`, fourni par l'instance Grist qui l'embarque.
+
+## V2 en JavaScript natif (en construction)
+
+Antoine a demandé le 2026-09-29 « une infra simple sans framework, sans
+compilation », puis « une V2 avec les corrections de la maquette et du code ».
+[`widget-js/`](widget-js/) est cette V2 : du JavaScript natif, où les fichiers du
+dépôt sont ceux que le navigateur charge, sans paquet à construire. Son point de
+départ est la conversion exacte de `widget/` (la V1, TypeScript, qui reste en
+production) ; la maquette B et les corrections des audits s'y ajoutent
+directement. Elle est publiée à côté de la V1, à
+`https://lombre33.github.io/planningPlus/js/`, pour être essayée dans Grist
+avant la bascule. La conversion, ses preuves d'équivalence, le sceau qui
+l'arrête dès que la V2 est modifiée et la marche de la bascule sont dans
+[`migration/README.md`](migration/README.md).
+
+## Licence
+
+PlanningPlus est un logiciel libre, publié sous licence GNU GPL version 3 ou
+(à votre choix) toute version ultérieure : voir [`LICENSE`](LICENSE). Le fichier
+`grist-plugin-api.js`, repris de Grist, garde sa licence d'origine
+(Apache-2.0).

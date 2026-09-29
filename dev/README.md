@@ -298,6 +298,8 @@ widget — pas une réimplémentation. À relancer après tout changement dans
 
 ```
 cd widget && npx vite-node scripts/verifier-integration.ts --doc=<id> --cle=<clé> --url=<url>
+# ou, dans le widget en JavaScript natif (Node 22.12 ou plus, rien à installer) :
+cd widget-js && node scripts/verifier-integration.js --doc=<id> --cle=<clé> --url=<url>
 # (ou GRIST_DOC_ID/GRIST_API_KEY/GRIST_URL dans l'environnement, comme dev/.env)
 ```
 
@@ -333,3 +335,14 @@ Pour le tester en local : `npm run build` dans `widget/`, servir `dist/` en
 statique (`python3 -m http.server` par exemple), puis dans Grist : Add
 widget to page → Custom → coller l'URL locale. Un document créé par
 `seed.mjs` fournit de vraies données à lire.
+
+## V2 en JavaScript natif (`widget-js/`)
+
+Le même widget sans compilation (décision du 2026-09-29), en construction à côté
+de `widget/` (la V1) : `cd widget-js && npm ci && npm run dev` sert le dossier
+tel quel sur `http://127.0.0.1:5173/index.html`, et `npm run dev:bench` ouvre le
+banc de développement. Aucune étape de construction : coller cette adresse (en
+HTTPS si Grist l'exige) dans Add widget to page → Custom. `widget-js/README.md`
+dit le reste, `migration/README.md` d'où il vient et comment se fait la bascule.
+Le schéma reste écrit dans `dev/seed/schema.mjs` ; `widget-js/src/grist/schema.js`
+en est une copie (voir `migration/README.md`, « Le schéma »).

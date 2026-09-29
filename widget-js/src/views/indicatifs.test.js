@@ -1,0 +1,793 @@
+/**
+ * Vérifie que la page Indicatifs ne casse jamais face à un document Grist
+ * pris à un stade incomplet — le point de départ réel d'Antoine (V0.1) : un
+ * document vierge (tables présentes, aucune ligne), puis chaque étape
+ * intermédiaire du parcours (macro-créneaux posés mais aucun sous-créneau,
+ * sous-créneaux posés mais aucune mission), jamais le jeu de démonstration
+ * figé. Complète `partiel.test.js` (Bénévole/Équipe/Artistes), qui ne
+ * couvre pas cette vue.
+ */
+import {beforeEach, describe, expect, it} from 'vitest';
+import {Magasin} from '../store.js';
+import {montrerIndicatifs} from './indicatifs.js';
+
+function modeleVide() {
+  return {
+    equipes: [], lieux: [], benevoles: [], missions: [], artistes: [],
+    macroCreneaux: [], sousCreneaux: [], besoins: [], groupes: [],
+    positionsGroupe: [], places: [], disponibilites: [], souhaitsMissions: [], affinites: [], presences: [],
+  };
+}
+
+let container;
+beforeEach(() => {
+  container = document.createElement('div');
+  document.body.append(container);
+  return () => container.remove();
+});
+
+describe('document vierge (avant toute saisie)', () => {
+  it('ne lève pas et invite à commencer par l’agenda', () => {
+    const m = new Magasin(modeleVide());
+    expect(() => montrerIndicatifs(container, m)).not.toThrow();
+    expect(container.textContent).toContain('macro-créneau');
+  });
+});
+
+describe('macro-créneaux posés, aucun sous-créneau dessous', () => {
+  function modele() {
+    return {
+      ...modeleVide(),
+      macroCreneaux: [{id: 1, Nom: 'Vendredi', Debut: 1_700_000_000, Fin: 1_700_030_000}],
+    };
+  }
+
+  it('ne lève pas et distingue ce cas du document vierge', () => {
+    const m = new Magasin(modele());
+    expect(() => montrerIndicatifs(container, m)).not.toThrow();
+    expect(container.textContent).toContain('Aucun sous-créneau ce jour');
+  });
+});
+
+describe('sous-créneaux posés, aucune mission créée', () => {
+  function modele() {
+    return {
+      ...modeleVide(),
+      macroCreneaux: [{id: 1, Nom: 'Vendredi', Debut: 1_700_000_000, Fin: 1_700_030_000}],
+      sousCreneaux: [{
+        id: 1, Macro_creneau: 1, Mission: null, Libelle: '10h-11h',
+        Debut: 1_700_000_000, Fin: 1_700_003_600,
+      }],
+    };
+  }
+
+  it('ne lève pas et invite à créer des missions', () => {
+    const m = new Magasin(modele());
+    expect(() => montrerIndicatifs(container, m)).not.toThrow();
+    expect(container.textContent).toContain('Aucune mission');
+  });
+});
+
+describe('planning complet : missions et besoin, mais zone volontairement vide', () => {
+  function modele() {
+    return {
+      ...modeleVide(),
+      equipes: [{id: 1, Nom: 'Bars', Couleur: '#c00', Referent: null, Notes: ''}],
+      missions: [{
+        id: 1, Nom: 'Buvette', Description: '', Lieu: 1, Equipe: 1,
+        Priorite: 'Normale', Competences_requises: [],
+      }],
+      lieux: [{id: 1, Nom: 'Scène A', Description: ''}],
+      macroCreneaux: [{id: 1, Nom: 'Vendredi', Debut: 1_700_000_000, Fin: 1_700_030_000}],
+      sousCreneaux: [{
+        id: 1, Macro_creneau: 1, Mission: null, Libelle: '10h-11h',
+        Debut: 1_700_000_000, Fin: 1_700_003_600,
+      }],
+      // Aucun besoin pour ce couple mission/sous-créneau : case hachurée.
+    };
+  }
+
+  it('affiche la grille avec une case vide, sans bouton de création (réservé à la vue Missions)', () => {
+    const m = new Magasin(modele());
+    expect(() => montrerIndicatifs(container, m)).not.toThrow();
+    expect(container.querySelector('.besoin-cell--vide')).not.toBeNull();
+    expect(container.querySelector('.ajouter-binome')).toBeNull();
+  });
+
+  it("un besoin fraîchement créé n'a encore aucun binôme (plus de création automatique)", () => {
+    const m = new Magasin(modele());
+    m.creerBesoin(1, 1);
+    montrerIndicatifs(container, m);
+    expect(container.querySelector('.groupe-chip')).toBeNull();
+    expect(container.querySelector('.ajouter-binome')?.textContent).toBe('+');
+    expect(container.querySelector('.ajouter-binome')?.getAttribute('title')).toBe('Positionner un binôme sur ce besoin (§6.3)');
+  });
+
+  it('indique le nombre de binômes recommandé (effectif ÷ 2, arrondi au-dessus), sans jamais en créer', () => {
+    const m = new Magasin(modele());
+    m.creerBesoin(1, 1, {effectifMin: 5});
+    montrerIndicatifs(container, m);
+    expect(container.querySelector('.indicatif-cell__reco')?.textContent).toBe('≈3 binômes');
+    expect(container.querySelector('.groupe-chip')).toBeNull();
+  });
+
+  describe('création explicite d’un binôme depuis la case (bouton « + binôme », selectionnerNouveauGroupe)', () => {
+    function ecritureQuiRefuseTout() {
+      const refuse = () => async () => { throw new Error('document indisponible'); };
+      return {
+        creerEquipe: refuse(), creerMission: refuse(), creerMacroCreneau: refuse(), modifierMacroCreneau: refuse(),
+        supprimerMacroCreneau: refuse(), creerArtiste: refuse(), modifierArtiste: refuse(),
+        remplacerSousCreneaux: refuse(), modifierSousCreneaux: refuse(), repointerBesoins: refuse(),
+        creerBesoin: refuse(), creerGroupe: refuse(), positionnerGroupe: refuse(),
+        definirPlaces: refuse(), deplacerPosition: refuse(), ajouterPosition: refuse(),
+        modifierPlaces: refuse(), supprimerPosition: refuse(), definirAbsence: refuse(),
+        valeursColonneBrute: refuse(),
+        colonnesTable: refuse(),
+        tablesDocument: refuse(),
+        definirParametre: refuse(),
+        remplacerDisponibilites: refuse(),
+        peuplerBenevoles: refuse(),
+        creerAffinites: refuse(),
+        definirPresence: refuse(),
+      };
+    }
+
+    it('en mode démo, chaque clic crée un binôme de plus, sans limite ni message d’échec', async () => {
+      const m = new Magasin(modele());
+      await m.creerBesoin(1, 1);
+      montrerIndicatifs(container, m);
+
+      for (const attendu of [1, 2, 3]) {
+        container.querySelector('.ajouter-binome').click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(container.querySelectorAll('.groupe-chip')).toHaveLength(attendu);
+      }
+      expect(container.querySelector('.pill--danger')).toBeNull();
+    });
+
+    it('en mode connecté, si le pont refuse, affiche un message d’échec et ne crée rien de plus', async () => {
+      const m = new Magasin(modele());
+      await m.creerBesoin(1, 1);
+      m.brancherEcriture(ecritureQuiRefuseTout());
+      montrerIndicatifs(container, m);
+      const nbGroupesAvant = m.groupes.length;
+
+      container.querySelector('.ajouter-binome').click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(m.groupes).toHaveLength(nbGroupesAvant);
+      expect(container.querySelector('.pill--danger')?.textContent).toContain("Échec de l'écriture");
+    });
+  });
+});
+
+describe('glisser un binôme entre deux besoins (retour Antoine 2026-09-23 : Alt = ajouter au lieu de déplacer)', () => {
+  function modele() {
+    return {
+      ...modeleVide(),
+      equipes: [{id: 1, Nom: 'Bars', Couleur: '#c00', Referent: null, Notes: ''}],
+      missions: [{
+        id: 1, Nom: 'Buvette', Description: '', Lieu: 1, Equipe: 1,
+        Priorite: 'Normale', Competences_requises: [],
+      }],
+      lieux: [{id: 1, Nom: 'Scène A', Description: ''}],
+      macroCreneaux: [{id: 1, Nom: 'Vendredi', Debut: 1_700_000_000, Fin: 1_700_030_000}],
+      sousCreneaux: [
+        {id: 1, Macro_creneau: 1, Mission: null, Libelle: '10h-11h', Debut: 1_700_000_000, Fin: 1_700_003_600},
+        {id: 2, Macro_creneau: 1, Mission: null, Libelle: '11h-12h', Debut: 1_700_003_600, Fin: 1_700_007_200},
+      ],
+    };
+  }
+
+  async function preparer() {
+    const m = new Magasin(modele());
+    await m.creerBesoin(1, 1);
+    await m.creerBesoin(1, 2);
+    const groupeId = await m.creerGroupeSurBesoin(m.besoins[0].id);
+    montrerIndicatifs(container, m);
+    return {m, groupeId};
+  }
+
+  // jsdom ne fournit pas `DragEvent`/`DataTransfer` : un `MouseEvent` porte
+  // déjà tout ce que nos écouteurs lisent (`altKey`, `preventDefault`), donc
+  // sert de doublure fidèle sans dépendre d'une API absente de l'environnement
+  // de test.
+  function glisser(source, cible, altKey) {
+    const options = {bubbles: true, cancelable: true, altKey};
+    source.dispatchEvent(new MouseEvent('dragstart', options));
+    cible.dispatchEvent(new MouseEvent('dragover', options));
+    cible.dispatchEvent(new MouseEvent('drop', options));
+    source.dispatchEvent(new MouseEvent('dragend', options));
+  }
+
+  it('sans Alt : déplace (retire la position d’origine)', async () => {
+    const {m, groupeId} = await preparer();
+    const cellules = container.querySelectorAll('.indicatif-cell');
+    glisser(cellules[0].querySelector('.groupe-chip'), cellules[1], false);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(m.positionsGroupe.filter((p) => p.Groupe === groupeId)).toHaveLength(1);
+    const apres = container.querySelectorAll('.indicatif-cell');
+    expect(apres[0].querySelector('.groupe-chip')).toBeNull();
+    expect(apres[1].querySelector('.groupe-chip')).not.toBeNull();
+  });
+
+  it('Alt+glisser : ajoute une position sur la case cible sans retirer l’origine', async () => {
+    const {m, groupeId} = await preparer();
+    const cellules = container.querySelectorAll('.indicatif-cell');
+    glisser(cellules[0].querySelector('.groupe-chip'), cellules[1], true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(m.positionsGroupe.filter((p) => p.Groupe === groupeId)).toHaveLength(2);
+    const apres = container.querySelectorAll('.indicatif-cell');
+    expect(apres[0].querySelector('.groupe-chip')).not.toBeNull();
+    expect(apres[1].querySelector('.groupe-chip')).not.toBeNull();
+  });
+
+  it('Alt+glisser déposé sur la case d’origine ne fait rien (comme sans Alt)', async () => {
+    const {m, groupeId} = await preparer();
+    const cellules = container.querySelectorAll('.indicatif-cell');
+    glisser(cellules[0].querySelector('.groupe-chip'), cellules[0], true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(m.positionsGroupe.filter((p) => p.Groupe === groupeId)).toHaveLength(1);
+  });
+});
+
+describe('panneau : supprimer une position (retour Antoine 2026-09-23 : jusqu’ici on ne pouvait que déplacer)', () => {
+  function modele() {
+    return {
+      ...modeleVide(),
+      equipes: [{id: 1, Nom: 'Bars', Couleur: '#c00', Referent: null, Notes: ''}],
+      missions: [{
+        id: 1, Nom: 'Buvette', Description: '', Lieu: 1, Equipe: 1,
+        Priorite: 'Normale', Competences_requises: [],
+      }],
+      lieux: [{id: 1, Nom: 'Scène A', Description: ''}],
+      macroCreneaux: [{id: 1, Nom: 'Vendredi', Debut: 1_700_000_000, Fin: 1_700_030_000}],
+      sousCreneaux: [
+        {id: 1, Macro_creneau: 1, Mission: null, Libelle: '10h-11h', Debut: 1_700_000_000, Fin: 1_700_003_600},
+        {id: 2, Macro_creneau: 1, Mission: null, Libelle: '11h-12h', Debut: 1_700_003_600, Fin: 1_700_007_200},
+      ],
+    };
+  }
+
+  async function preparerAvecPanneauOuvert() {
+    const m = new Magasin(modele());
+    await m.creerBesoin(1, 1);
+    await m.creerBesoin(1, 2);
+    const groupeId = await m.creerGroupeSurBesoin(m.besoins[0].id);
+    await m.ajouterPosition(groupeId, m.besoins[1].id);
+    montrerIndicatifs(container, m);
+    container.querySelector('.groupe-chip').click();
+    return {m, groupeId};
+  }
+
+  function boutonsSupprimer() {
+    return Array.from(document.querySelectorAll('#panneau-lateral .trajectoire-etape button'))
+      .filter((b) => b.textContent === 'Supprimer');
+  }
+
+  it('un bouton Supprimer apparaît à côté de Déplacer… pour chaque étape', async () => {
+    const {} = await preparerAvecPanneauOuvert();
+    const etapes = document.querySelectorAll('#panneau-lateral .trajectoire-etape');
+    expect(etapes).toHaveLength(2);
+    expect(boutonsSupprimer()).toHaveLength(2);
+  });
+
+  it('cliquer Supprimer retire cette seule position, garde le groupe et ses places', async () => {
+    const {m, groupeId} = await preparerAvecPanneauOuvert();
+    const placesAvant = m.places.filter((p) => p.Groupe === groupeId);
+
+    boutonsSupprimer()[0].click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(m.positionsGroupe.filter((p) => p.Groupe === groupeId)).toHaveLength(1);
+    expect(m.groupes.find((g) => g.id === groupeId)).toBeDefined();
+    expect(m.places.filter((p) => p.Groupe === groupeId)).toEqual(placesAvant);
+    expect(document.querySelectorAll('#panneau-lateral .trajectoire-etape')).toHaveLength(1);
+  });
+
+  it('supprimer la dernière position affiche « pas encore positionné », sans supprimer le groupe', async () => {
+    const {m, groupeId} = await preparerAvecPanneauOuvert();
+
+    // Les deux boutons capturés ici restent valides même après le
+    // redessin synchrone déclenché par le premier clic (mode démo : sans
+    // écriture branchée, `supprimerPosition` n'attend rien de réel, donc
+    // `notifier()` — et le redessin qu'il déclenche — s'exécute avant que
+    // ce clic ne retourne) : chaque bouton garde sa propre position en
+    // fermeture, indépendamment de son détachement du DOM.
+    for (const bouton of boutonsSupprimer()) { bouton.click(); }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(m.positionsGroupe.filter((p) => p.Groupe === groupeId)).toHaveLength(0);
+    expect(m.groupes.find((g) => g.id === groupeId)).toBeDefined();
+    expect(document.querySelector('#panneau-lateral .empty')?.textContent).toContain('Pas encore positionné');
+  });
+
+  it('en mode connecté, si le pont refuse, affiche un message d’échec et garde la position', async () => {
+    const {m} = await preparerAvecPanneauOuvert();
+    m.brancherEcriture({
+      creerEquipe: async () => 1, creerMission: async () => 1, creerMacroCreneau: async () => 1,
+      modifierMacroCreneau: async () => {}, supprimerMacroCreneau: async () => {},
+      creerArtiste: async () => 1, modifierArtiste: async () => {},
+      remplacerSousCreneaux: async () => [], modifierSousCreneaux: async () => {}, repointerBesoins: async () => {},
+      creerBesoin: async () => 1, creerGroupe: async () => 1, positionnerGroupe: async () => {},
+      definirPlaces: async () => {}, deplacerPosition: async () => {}, ajouterPosition: async () => 1,
+      modifierPlaces: async () => {}, definirAbsence: async () => {},
+      valeursColonneBrute: async () => new Map(),
+      colonnesTable: async () => [],
+      tablesDocument: async () => [],
+      definirParametre: async () => {},
+      remplacerDisponibilites: async () => {},
+      peuplerBenevoles: async () => ({benevoles: [], crees: 0, actualises: 0}),
+      creerAffinites: async () => [],
+      supprimerPosition: async () => { throw new Error('document indisponible'); },
+      definirPresence: async () => 1,
+    });
+    const nbPositionsAvant = m.positionsGroupe.length;
+
+    boutonsSupprimer()[0].click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(m.positionsGroupe).toHaveLength(nbPositionsAvant);
+    expect(container.querySelector('.pill--danger')?.textContent).toContain("Échec de l'écriture");
+  });
+});
+
+describe('couleur de la puce par créneau (retour Antoine 2026-09-23, point 3)', () => {
+  function benevole(id, equipeId) {
+    return {
+      id, Nom: `Bénévole ${id}`, Contact: '', Equipe: equipeId, Competences: [],
+      Quota_heures_min: 0, Quota_heures_max: 40, Statut: 'Actif', Notes: '',
+    };
+  }
+
+  function modele() {
+    return {
+      ...modeleVide(),
+      equipes: [{id: 1, Nom: 'Bars', Couleur: '#c00', Referent: null, Notes: ''}],
+      benevoles: [benevole(1, 1), benevole(2, 1)],
+      missions: [
+        {id: 1, Nom: 'Sécurité scène', Description: '', Lieu: 1, Equipe: 1, Priorite: 'Critique', Competences_requises: []},
+        {id: 2, Nom: 'Buvette', Description: '', Lieu: 1, Equipe: 1, Priorite: 'Normale', Competences_requises: []},
+      ],
+      lieux: [{id: 1, Nom: 'Scène A', Description: ''}],
+      macroCreneaux: [{id: 1, Nom: 'Vendredi', Debut: 1_700_000_000, Fin: 1_700_030_000}],
+      sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: '10h-11h', Debut: 1_700_000_000, Fin: 1_700_003_600}],
+    };
+  }
+
+  function classesPuce() {
+    return Array.from(document.querySelectorAll('.groupe-chip')).map((el) => el.className);
+  }
+
+  it('non pourvu sur une mission Critique : rouge (groupe-chip--critique)', async () => {
+    const m = new Magasin(modele());
+    await m.creerBesoin(1, 1);
+    await m.creerGroupeSurBesoin(m.besoins[0].id);
+    montrerIndicatifs(container, m);
+
+    expect(classesPuce()[0]).toContain('groupe-chip--critique');
+    expect(classesPuce()[0]).not.toContain('groupe-chip--pourvu');
+  });
+
+  it('non pourvu sur une mission Normale : orange (groupe-chip--non-pourvu)', async () => {
+    const m = new Magasin(modele());
+    await m.creerBesoin(2, 1);
+    await m.creerGroupeSurBesoin(m.besoins[0].id);
+    montrerIndicatifs(container, m);
+
+    expect(classesPuce()[0]).toContain('groupe-chip--non-pourvu');
+    expect(classesPuce()[0]).not.toContain('groupe-chip--critique');
+  });
+
+  it('les deux places pourvues, même sur une mission Critique : vert (groupe-chip--pourvu)', async () => {
+    const m = new Magasin(modele());
+    await m.creerBesoin(1, 1);
+    const groupeId = await m.creerGroupeSurBesoin(m.besoins[0].id);
+    const [p1, p2] = m.places.filter((p) => p.Groupe === groupeId);
+    await m.assignerPlace(p1.id, 1);
+    await m.assignerPlace(p2.id, 2);
+    montrerIndicatifs(container, m);
+
+    expect(classesPuce()[0]).toContain('groupe-chip--pourvu');
+    expect(classesPuce()[0]).not.toContain('groupe-chip--critique');
+    expect(classesPuce()[0]).not.toContain('groupe-chip--non-pourvu');
+  });
+
+  it('une seule des deux places pourvue reste un trou (pas vert)', async () => {
+    const m = new Magasin(modele());
+    await m.creerBesoin(2, 1);
+    const groupeId = await m.creerGroupeSurBesoin(m.besoins[0].id);
+    const [p1] = m.places.filter((p) => p.Groupe === groupeId);
+    await m.assignerPlace(p1.id, 1);
+    montrerIndicatifs(container, m);
+
+    expect(classesPuce()[0]).toContain('groupe-chip--non-pourvu');
+    expect(classesPuce()[0]).not.toContain('groupe-chip--pourvu');
+  });
+
+  it("un binôme pourvu dont un membre est pointé absent aujourd'hui : jaune (groupe-chip--absence), prime sur pourvu", async () => {
+    const m = new Magasin(modele());
+    await m.creerBesoin(1, 1);
+    const groupeId = await m.creerGroupeSurBesoin(m.besoins[0].id);
+    const [p1, p2] = m.places.filter((p) => p.Groupe === groupeId);
+    await m.assignerPlace(p1.id, 1);
+    await m.assignerPlace(p2.id, 2);
+    await m.definirPresence(1, '2023-11-14', false);
+    montrerIndicatifs(container, m);
+
+    expect(classesPuce()[0]).toContain('groupe-chip--absence');
+    expect(classesPuce()[0]).not.toContain('groupe-chip--pourvu');
+  });
+
+  it("un pointage absent pour un AUTRE jour ne colore pas le binôme (le pointage est par jour)", async () => {
+    const m = new Magasin(modele());
+    await m.creerBesoin(1, 1);
+    const groupeId = await m.creerGroupeSurBesoin(m.besoins[0].id);
+    const [p1, p2] = m.places.filter((p) => p.Groupe === groupeId);
+    await m.assignerPlace(p1.id, 1);
+    await m.assignerPlace(p2.id, 2);
+    await m.definirPresence(1, '2099-01-01', false);
+    montrerIndicatifs(container, m);
+
+    expect(classesPuce()[0]).toContain('groupe-chip--pourvu');
+    expect(classesPuce()[0]).not.toContain('groupe-chip--absence');
+  });
+
+  it("un pointage présent (pas encore pointé, ou pointé présent) ne colore jamais en jaune", async () => {
+    const m = new Magasin(modele());
+    await m.creerBesoin(1, 1);
+    const groupeId = await m.creerGroupeSurBesoin(m.besoins[0].id);
+    const [p1, p2] = m.places.filter((p) => p.Groupe === groupeId);
+    await m.assignerPlace(p1.id, 1);
+    await m.assignerPlace(p2.id, 2);
+    await m.definirPresence(1, '2023-11-14', true);
+    montrerIndicatifs(container, m);
+
+    expect(classesPuce()[0]).toContain('groupe-chip--pourvu');
+    expect(classesPuce()[0]).not.toContain('groupe-chip--absence');
+  });
+});
+
+describe('panneau d’appel (retour Antoine du 2026-09-24 : pointer les présences, sans toucher aux affectations)', () => {
+  function benevole(id, equipeId) {
+    return {
+      id, Nom: `Bénévole ${id}`, Contact: '', Equipe: equipeId, Competences: [],
+      Quota_heures_min: 0, Quota_heures_max: 40, Statut: 'Actif', Notes: '',
+    };
+  }
+
+  function modele() {
+    return {
+      ...modeleVide(),
+      equipes: [{id: 1, Nom: 'Bars', Couleur: '#c00', Referent: null, Notes: ''}],
+      benevoles: [benevole(1, 1), benevole(2, 1)],
+      missions: [{id: 1, Nom: 'Buvette', Description: '', Lieu: 1, Equipe: 1, Priorite: 'Normale', Competences_requises: []}],
+      lieux: [{id: 1, Nom: 'Scène A', Description: ''}],
+      macroCreneaux: [{id: 1, Nom: 'Vendredi', Debut: 1_700_000_000, Fin: 1_700_030_000}],
+      sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: '10h-11h', Debut: 1_700_000_000, Fin: 1_700_003_600}],
+    };
+  }
+
+  function boutonAppel() {
+    return Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent === 'Faire l’appel');
+  }
+
+  it("n'ouvre rien tant qu'on ne clique pas le bouton, puis ouvre un panneau listant les bénévoles positionnés ce jour", async () => {
+    const m = new Magasin(modele());
+    await m.creerBesoin(1, 1);
+    const groupeId = await m.creerGroupeSurBesoin(m.besoins[0].id);
+    const [p1] = m.places.filter((p) => p.Groupe === groupeId);
+    await m.assignerPlace(p1.id, 1);
+    montrerIndicatifs(container, m);
+    expect(document.getElementById('panneau-lateral')).toBeNull();
+
+    boutonAppel().click();
+    expect(document.getElementById('panneau-lateral')?.textContent).toContain('Bénévole 1');
+  });
+
+  it("ne liste jamais deux fois le même bénévole s'il tient plusieurs indicatifs ce jour", async () => {
+    const m = new Magasin(modele());
+    await m.creerBesoin(1, 1);
+    const g1 = await m.creerGroupeSurBesoin(m.besoins[0].id, 1);
+    await m.assignerPlace(m.places.find((p) => p.Groupe === g1).id, 1);
+    await m.ajouterPosition(g1, m.besoins[0].id);
+    montrerIndicatifs(container, m);
+
+    boutonAppel().click();
+    const lignes = document.querySelectorAll('#panneau-lateral .membre');
+    expect(lignes).toHaveLength(1);
+  });
+
+  it("marquer absent pointe la présence sans toucher à la place (pas de régression sur l'affectation)", async () => {
+    const m = new Magasin(modele());
+    await m.creerBesoin(1, 1);
+    const groupeId = await m.creerGroupeSurBesoin(m.besoins[0].id);
+    const [p1] = m.places.filter((p) => p.Groupe === groupeId);
+    await m.assignerPlace(p1.id, 1);
+    montrerIndicatifs(container, m);
+
+    boutonAppel().click();
+    const boutonAbsent = Array.from(document.querySelectorAll('#panneau-lateral .membre button'))
+      .find((b) => b.title === 'Marquer absent·e');
+    boutonAbsent.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(m.presences).toHaveLength(1);
+    expect(m.presences[0]).toMatchObject({Benevole: 1, Present: false});
+    expect(m.places.find((p) => p.id === p1.id)?.Benevole).toBe(1);
+    expect(document.querySelector('#panneau-lateral .pill--danger')?.textContent).toBe('Absent·e');
+  });
+
+  it("aucun bénévole positionné ce jour : message plutôt qu'une liste vide", async () => {
+    const m = new Magasin(modele());
+    montrerIndicatifs(container, m);
+
+    boutonAppel().click();
+    expect(document.querySelector('#panneau-lateral .empty')?.textContent).toContain('Aucun bénévole positionné');
+  });
+
+  it('reclique le bouton pour fermer le panneau', async () => {
+    const m = new Magasin(modele());
+    montrerIndicatifs(container, m);
+
+    boutonAppel().click();
+    expect(document.getElementById('panneau-lateral')).not.toBeNull();
+    boutonAppel().click();
+    expect(document.getElementById('panneau-lateral')).toBeNull();
+  });
+});
+
+describe('panneau : candidats suggérés sur #1/#2 (retour Antoine 2026-09-23, point 9)', () => {
+  const DEBUT = 1_700_000_000;
+  const QUARTS = [DEBUT, DEBUT + 900, DEBUT + 1800, DEBUT + 2700];
+
+  function modele() {
+    return {
+      ...modeleVide(),
+      equipes: [{id: 1, Nom: 'Bars', Couleur: '#c00', Referent: null, Notes: ''}],
+      benevoles: [{
+        id: 1, Nom: 'Ada', Contact: '', Equipe: 1, Competences: [],
+        Quota_heures_min: 0, Quota_heures_max: 40, Statut: 'Actif', Notes: '',
+      }],
+      missions: [{id: 1, Nom: 'Buvette', Description: '', Lieu: 1, Equipe: 1, Priorite: 'Normale', Competences_requises: []}],
+      lieux: [{id: 1, Nom: 'Scène A', Description: ''}],
+      macroCreneaux: [{id: 1, Nom: 'Vendredi', Debut: DEBUT, Fin: DEBUT + 30_000}],
+      sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: '10h-11h', Debut: DEBUT, Fin: DEBUT + 3600}],
+      disponibilites: QUARTS.map((q) => ({Benevole: 1, Quart_heure: q, Statut: 'Disponible', Artiste: null})),
+    };
+  }
+
+  async function preparerAvecPanneauOuvert() {
+    const m = new Magasin(modele());
+    await m.creerBesoin(1, 1);
+    await m.creerGroupeSurBesoin(m.besoins[0].id);
+    montrerIndicatifs(container, m);
+    container.querySelector('.groupe-chip').click();
+    return m;
+  }
+
+  function boutonRang(rang) {
+    return Array.from(document.querySelectorAll('#panneau-lateral .rang'))
+      .find((b) => b.textContent === rang);
+  }
+
+  it('#1 et #2 sont cliquables tant que la place est vide et non verrouillée', async () => {
+    await preparerAvecPanneauOuvert();
+    expect(boutonRang('#1').tagName).toBe('BUTTON');
+    expect(boutonRang('#2').tagName).toBe('BUTTON');
+  });
+
+  it('cliquer #1 affiche un bénévole disponible et classé, sans bouton d’affectation', async () => {
+    await preparerAvecPanneauOuvert();
+
+    boutonRang('#1').click();
+
+    const candidats = document.querySelectorAll('#panneau-lateral .candidat');
+    expect(candidats).toHaveLength(1);
+    expect(candidats[0].querySelector('.candidat__nom')?.textContent).toBe('Ada');
+    expect(candidats[0].querySelector('button')).toBeNull();
+  });
+
+  it('recliquer #1 referme la liste', async () => {
+    await preparerAvecPanneauOuvert();
+
+    boutonRang('#1').click();
+    boutonRang('#1').click();
+
+    expect(document.querySelectorAll('#panneau-lateral .candidat')).toHaveLength(0);
+  });
+
+  it('ne propose rien pour une place déjà pourvue ou verrouillée', async () => {
+    const m = await preparerAvecPanneauOuvert();
+    const groupeId = m.groupes[0].id;
+    const [p1, p2] = m.places.filter((p) => p.Groupe === groupeId);
+    await m.assignerPlace(p1.id, 1);
+    await m.basculerVerrouillage(p2.id);
+
+    expect(document.querySelectorAll('#panneau-lateral .rang').length).toBe(2);
+    expect(document.querySelectorAll('#panneau-lateral button.rang')).toHaveLength(0);
+  });
+});
+
+describe('panneau : artistes à voir (retour Antoine 2026-09-23, point 8)', () => {
+  const DEBUT = 1_700_000_000;
+
+  function modele() {
+    return {
+      ...modeleVide(),
+      equipes: [{id: 1, Nom: 'Bars', Couleur: '#c00', Referent: null, Notes: ''}],
+      benevoles: [{
+        id: 1, Nom: 'Ada', Contact: '', Equipe: 1, Competences: [],
+        Quota_heures_min: 0, Quota_heures_max: 40, Statut: 'Actif', Notes: '',
+      }],
+      missions: [{id: 1, Nom: 'Buvette', Description: '', Lieu: 1, Equipe: 1, Priorite: 'Normale', Competences_requises: []}],
+      lieux: [{id: 1, Nom: 'Scène A', Description: ''}],
+      // Le binôme occupe seulement 10h-11h : le reste du jour (jusqu'à 12h) est libre.
+      macroCreneaux: [{id: 1, Nom: 'Vendredi', Debut: DEBUT, Fin: DEBUT + 7200}],
+      sousCreneaux: [{id: 1, Macro_creneau: 1, Mission: null, Libelle: '10h-11h', Debut: DEBUT, Fin: DEBUT + 3600}],
+      artistes: [
+        // Passage entier (30 min) pendant le créneau libre : visible.
+        {id: 1, Nom: 'DJ Libre', Lieu: 1, Debut: DEBUT + 3600, Fin: DEBUT + 3600 + 1800},
+        // Passage entièrement pendant la mission du binôme : jamais visible.
+        {id: 2, Nom: 'DJ Occupé', Lieu: 1, Debut: DEBUT, Fin: DEBUT + 1800},
+      ],
+    };
+  }
+
+  async function preparerAvecPanneauOuvert(souhaite = false) {
+    const m = new Magasin(modele());
+    if (souhaite) {
+      m.disponibilites.push({Benevole: 1, Quart_heure: DEBUT + 3600, Statut: 'Artiste', Artiste: 1});
+    }
+    await m.creerBesoin(1, 1);
+    const groupeId = await m.creerGroupeSurBesoin(m.besoins[0].id);
+    const [p1] = m.places.filter((p) => p.Groupe === groupeId);
+    await m.assignerPlace(p1.id, 1);
+    montrerIndicatifs(container, m);
+    container.querySelector('.groupe-chip').click();
+    return m;
+  }
+
+  function nomsVisibles() {
+    return Array.from(document.querySelectorAll('#panneau-lateral .artiste-visible span:first-child'))
+      .map((el) => el.textContent ?? '');
+  }
+
+  it('liste l’artiste visible pendant le créneau libre, jamais celui couvert par la mission', async () => {
+    await preparerAvecPanneauOuvert();
+
+    expect(nomsVisibles()).toEqual(['DJ Libre']);
+  });
+
+  it('marque un artiste souhaité par un bénévole affecté', async () => {
+    await preparerAvecPanneauOuvert(true);
+
+    const ligne = document.querySelector('#panneau-lateral .artiste-visible');
+    expect(ligne.querySelector('.tag--plus')?.textContent).toContain('souhaité');
+    expect(ligne.querySelector('.tag--plus')?.getAttribute('title')).toContain('Ada');
+  });
+
+  it('n’affiche pas de tag souhaité sans souhait enregistré', async () => {
+    await preparerAvecPanneauOuvert(false);
+
+    const ligne = document.querySelector('#panneau-lateral .artiste-visible');
+    expect(ligne.querySelector('.tag--plus')).toBeNull();
+  });
+
+  it('n’affiche pas la section quand le document n’a aucun artiste', async () => {
+    const m = new Magasin({...modeleVide(), artistes: []});
+    await m.creerEquipe({Nom: 'Bars', Couleur: '#c00', Notes: ''});
+    await m.creerMission({Nom: 'Buvette', Description: '', Lieu: 0, Equipe: 1, Priorite: 'Normale', Competences_requises: []});
+    await m.enregistrerMacroCreneau({Nom: 'Vendredi', Debut: DEBUT, Fin: DEBUT + 7200});
+    m.enregistrerSousCreneau({Macro_creneau: 1, Mission: null, Libelle: '10h-11h', Debut: DEBUT, Fin: DEBUT + 3600});
+    await m.creerBesoin(1, 1);
+    await m.creerGroupeSurBesoin(m.besoins[0].id);
+    montrerIndicatifs(container, m);
+    container.querySelector('.groupe-chip').click();
+
+    const titres = Array.from(document.querySelectorAll('#panneau-lateral h2')).map((h) => h.textContent);
+    expect(titres).not.toContain('Artistes à voir');
+  });
+});
+
+describe('créneaux propres à une mission (retour Antoine 2026-09-23, §6.2 : « communs, avec exceptions »)', () => {
+  // Mission A (id 1) a matérialisé ses deux créneaux propres (décalés de
+  // 30 min par rapport aux communs, comme le fait un glisser dans la vue
+  // Missions) ; Mission B (id 2) n'a jamais touché aux siens et voit encore
+  // les communs. §6.2 est tout ou rien par mission par jour : dès qu'une
+  // mission a un propre, ses communs ne s'appliquent plus du tout à elle.
+  function modele() {
+    return {
+      ...modeleVide(),
+      equipes: [{id: 1, Nom: 'Bars', Couleur: '#c00', Referent: null, Notes: ''}],
+      missions: [
+        {id: 1, Nom: 'Buvette', Description: '', Lieu: 1, Equipe: 1, Priorite: 'Normale', Competences_requises: []},
+        {id: 2, Nom: 'Accueil', Description: '', Lieu: 1, Equipe: 1, Priorite: 'Normale', Competences_requises: []},
+      ],
+      lieux: [{id: 1, Nom: 'Scène A', Description: ''}],
+      macroCreneaux: [{id: 1, Nom: 'Vendredi', Debut: 1_700_000_000, Fin: 1_700_030_000}],
+      sousCreneaux: [
+        {id: 1, Macro_creneau: 1, Mission: null, Libelle: '10h-11h (commun)', Debut: 1_700_000_000, Fin: 1_700_003_600},
+        {id: 2, Macro_creneau: 1, Mission: null, Libelle: '11h-12h (commun)', Debut: 1_700_003_600, Fin: 1_700_007_200},
+        {id: 10, Macro_creneau: 1, Mission: 1, Libelle: '10h30-11h30 (propre A)', Debut: 1_700_001_800, Fin: 1_700_005_400},
+        {id: 11, Macro_creneau: 1, Mission: 1, Libelle: '11h30-12h30 (propre A)', Debut: 1_700_005_400, Fin: 1_700_009_000},
+      ],
+      besoins: [
+        // Mission A repointée vers sa copie propre (même id de besoin,
+        // `Sous_creneau` change — c'est ce que fait `repointerBesoins`).
+        {id: 1, Mission: 1, Sous_creneau: 10, Effectif_min: 2, Effectif_max: 2, Taille_groupe: 2},
+        // Mission B, elle, est toujours sur le commun.
+        {id: 2, Mission: 2, Sous_creneau: 1, Effectif_min: 2, Effectif_max: 2, Taille_groupe: 2},
+      ],
+      groupes: [{id: 1, Code: 'A1', Taille: 2, Equipe: 1, Notes: ''}],
+      positionsGroupe: [{id: 1, Groupe: 1, Besoin: 1}],
+      places: [
+        {id: 1, Groupe: 1, Rang: 1, Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0},
+        {id: 2, Groupe: 1, Rang: 2, Benevole: null, Origine: 'Manuel', Verrouillee: false, Score: 0},
+      ],
+    };
+  }
+
+  // La frise (retour Antoine 2026-09-23 : un tableau à colonnes communes
+  // explose dès que plusieurs missions divergent) n'a pas de colonnes
+  // partagées entre missions : chaque ligne ne montre que ses propres blocs,
+  // reliés à leur ligne via le même `style.gridRow` que `ui/frise.js` leur
+  // pose (aucun autre lien dans le DOM entre un bloc et sa mission).
+  function blocsDeLigne(nomMission) {
+    const labels = Array.from(container.querySelectorAll('.timeline__label'));
+    const label = labels.find((l) => l.textContent?.includes(nomMission));
+    const rangee = label.style.gridRow;
+    return Array.from(container.querySelectorAll('.timeline__bloc'))
+      .filter((b) => b.style.gridRow === rangee);
+  }
+
+  it('chaque mission ne montre que ses créneaux applicables, plus de colonnes communes à toutes', () => {
+    const m = new Magasin(modele());
+    montrerIndicatifs(container, m);
+    expect(blocsDeLigne('Buvette')).toHaveLength(2); // ses 2 propres, jamais les communs qu'elle n'utilise plus
+    expect(blocsDeLigne('Accueil')).toHaveLength(2); // ses 2 communs à elle, jamais les propres de Buvette
+  });
+
+  it('le binôme de la mission A apparaît sous son créneau propre, l’autre propre reste vide', () => {
+    const m = new Magasin(modele());
+    montrerIndicatifs(container, m);
+    const blocs = blocsDeLigne('Buvette');
+    const avecBinome = blocs.find((b) => b.querySelector('.groupe-chip'));
+    expect(avecBinome).not.toBeUndefined();
+    expect(avecBinome.textContent).toContain('10h30-11h30 (propre A)');
+    const autre = blocs.find((b) => b !== avecBinome);
+    expect(autre.className).toContain('besoin-cell--vide');
+    expect(autre.title).toBe('11h30-12h30 (propre A)');
+  });
+
+  it('la mission B, non concernée, garde ses deux communs et ne voit jamais les propres de A', () => {
+    const m = new Magasin(modele());
+    montrerIndicatifs(container, m);
+    const blocs = blocsDeLigne('Accueil');
+    expect(blocs).toHaveLength(2);
+    expect(blocs.some((b) => b.textContent?.includes('10h-11h (commun)'))).toBe(true);
+    expect(blocs.some((b) => b.title === '11h-12h (commun)' && b.className.includes('besoin-cell--vide'))).toBe(true);
+    expect(blocs.some((b) => b.textContent?.includes('propre A'))).toBe(false);
+    expect(blocs.every((b) => b.querySelector('.groupe-chip') === null)).toBe(true); // aucun binôme positionné pour B
+  });
+
+  it('un redimensionnement fait ailleurs (vue Missions) se répercute ici sans démonter la vue', async () => {
+    const m = new Magasin(modele());
+    montrerIndicatifs(container, m);
+    const blocAvant = blocsDeLigne('Buvette').find((b) => b.querySelector('.groupe-chip'));
+    const libelleAvant = blocAvant.textContent;
+
+    // Même écriture que la vue Missions (`Magasin.redimensionnerCreneauMission`,
+    // poignée de bord) — les deux vues partagent le même Magasin, donc pas
+    // besoin de remonter la vue pour voir le changement (retour Antoine :
+    // « il faut que les créneaux affichés s'adaptent en temps réel »).
+    await m.redimensionnerCreneauMission(10, 1, false, 1800);
+    const blocApres = blocsDeLigne('Buvette').find((b) => b.querySelector('.groupe-chip'));
+
+    expect(blocApres.textContent).not.toBe(libelleAvant);
+  });
+});

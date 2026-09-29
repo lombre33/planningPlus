@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PlanningPlus</title>
+    <!--
+      Aucune étape de construction : le navigateur charge ces fichiers tels
+      quels. Les feuilles de style vont dans l'ordre de la cascade (la seconde
+      complète la première). Une nouvelle feuille se déclare ici et dans
+      dev-bench.html, jamais par un `import` dans un module (le navigateur ne
+      sait pas l'importer) : `npm run site` échoue sur un fichier cité qui
+      n'existe pas et sur un import de feuille de style.
+    -->
+    <link rel="stylesheet" href="./src/style.css" />
+    <link rel="stylesheet" href="./src/ui/impression.css" />
+    <!--
+      Chargé en script classique (pas type="module") car le fichier vendorisé
+      s'exécute dans le scope global et expose `window.grist`. Voir
+      vendor/README.md pour la provenance de ce fichier.
+    -->
+    <script src="./vendor/grist-plugin-api.js"></script>
+  </head>
+  <body>
+    <div id="app">Connexion au document…</div>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
