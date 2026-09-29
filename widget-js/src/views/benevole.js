@@ -125,7 +125,7 @@ export function montrerBenevole(container, m) {
               onclick: () => imprimer([construireFeuille(feuille)]),
             }, 'Imprimer cette feuille'),
           ),
-          h('div', {class: 'card'}, construireFeuille(feuille)),
+          h('div', {class: 'card papier'}, construireFeuille(feuille)),
         );
       }
     } else {

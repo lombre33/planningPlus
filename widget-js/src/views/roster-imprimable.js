@@ -275,7 +275,7 @@ export function montrerRosterImprimable(container, m) {
       indexDispos, indexDispoReelle, afficherConflits, LARGEUR_QUART_ECRAN_PX,
     );
 
-    container.append(barre, h('div', {class: 'impression-scroll'}, table));
+    container.append(barre, h('div', {class: 'impression-scroll papier'}, table));
   }
 
   const desabonner = m.subscribe(rafraichir);

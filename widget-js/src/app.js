@@ -11,6 +11,7 @@ import {regrouperParJour} from './logic/derive.js';
 import {cleJourFestival} from './temps.js';
 import {construireBandeauJours} from './ui/bandeauJours.js';
 import {h, ICONES, icone, vider} from './ui/dom.js';
+import {marqueEtReglages} from './ui/reglages.js';
 import {montrerAffectation} from './views/affectation.js';
 import {montrerAgenda} from './views/agenda.js';
 import {montrerAnomalies} from './views/anomalies.js';
@@ -215,6 +216,7 @@ export function demarrerApp(racine, magasin, sourceLibelle) {
       ),
       h('div', {class: 'topbar__actions'},
         h('span', {class: 'pill pill--neutral'}, sourceLibelle),
+        ...marqueEtReglages(),
       ),
     );
     redessinerBandeauJours();

@@ -24,6 +24,9 @@ describe.each([
       bouton.click();
       expect(racine.querySelector('h1')?.textContent, bouton.textContent ?? '').toBeTruthy();
       expect(racine.querySelector('.view')?.children.length, bouton.textContent ?? '').toBeGreaterThan(0);
+      // Roue crantée des Réglages puis logo, en dernier dans le coin haut-droit.
+      const coin = [...racine.querySelector('.topbar__actions').children].slice(-2);
+      expect(coin.map((e) => e.getAttribute('aria-label') ?? e.getAttribute('alt')), bouton.textContent ?? '').toEqual(['Réglages', 'Grist Factory']);
     }
   });
 });

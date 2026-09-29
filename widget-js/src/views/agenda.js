@@ -15,7 +15,7 @@
 
 import {regrouperParJour} from '../logic/derive.js';
 import {epochMinuitLocal} from '../temps.js';
-import {h, vider} from '../ui/dom.js';
+import {h, ICONES, icone, vider} from '../ui/dom.js';
 import {ouvrirModalCreationCreneau, ouvrirModalEditionCreneau} from '../ui/modalCreneau.js';
 import {
   construirePlageJournaliere, graduationsHoraires, graduationsMinuit, longueurAxePx, positionCreneau,
@@ -138,7 +138,8 @@ export function montrerAgenda(container, m) {
         h('div', {class: 'agenda__toolbar'},
           h('button', {class: 'btn btn--primary btn--sm', type: 'button', onclick: () => ouvrirModalCreationCreneau(m, null)}, '+ Nouveau jour'),
           h('span', {class: 'view__intro', style: {margin: '0'}},
-            "Glissez l'en-tête d'un macro-créneau pour le déplacer, ses bords gauche/droit pour le redimensionner ; l'icône ✎ ouvre le détail."),
+            "Glissez l'en-tête d'un macro-créneau pour le déplacer, ses bords gauche/droit pour le redimensionner ; l'icône ",
+            icone(ICONES.crayon, 'icone-texte'), ' ouvre le détail.'),
         ),
         dernierMessage ? h('span', {class: `pill pill--${dernierMessage.ton}`}, dernierMessage.texte) : null,
         grille,
@@ -157,13 +158,13 @@ export function montrerAgenda(container, m) {
     const entete = h('div', {class: 'macro-bloc__head'},
       h('span', null, macro.Nom),
       h('button', {
-        class: 'btn btn--ghost btn--sm', type: 'button', style: {padding: '0 2px'}, title: 'Modifier',
+        class: 'btn btn--ghost btn--sm btn--icone', type: 'button', style: {padding: '0 2px'}, title: 'Modifier', 'aria-label': 'Modifier',
         onclick: (e) => { e.stopPropagation(); ouvrirModalEditionCreneau(m, macro); },
-      }, '✎'),
+      }, icone(ICONES.crayon)),
       h('button', {
-        class: 'btn btn--ghost btn--sm', type: 'button', style: {padding: '0 2px'}, title: 'Supprimer',
+        class: 'btn btn--ghost btn--sm btn--icone', type: 'button', style: {padding: '0 2px'}, title: 'Supprimer', 'aria-label': 'Supprimer',
         onclick: (e) => { e.stopPropagation(); void demanderSuppressionMacro(macro); },
-      }, '🗑'),
+      }, icone(ICONES.corbeille)),
     );
     const poigneeGauche = h('div', {class: 'macro-bloc__resize macro-bloc__resize--gauche', title: 'Glisser pour changer le début'});
     const poigneeDroite = h('div', {class: 'macro-bloc__resize macro-bloc__resize--droite', title: 'Glisser pour changer la fin'});

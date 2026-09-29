@@ -27,8 +27,10 @@
 import {demarrerApp} from './app.js';
 import {jeuMinimal} from './dev/jeu-minimal.js';
 import {Magasin} from './store.js';
+import {appliquerTheme, themeMemorise} from './ui/reglages.js';
 
 const racine = document.getElementById('app');
 if (racine) {
+  appliquerTheme(themeMemorise());
   demarrerApp(racine, new Magasin(jeuMinimal()), 'Banc de développement — jeu minimal');
 }

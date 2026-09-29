@@ -33,7 +33,7 @@ import {
   preparerMoteur, scenariosPourPlace,
 } from '../logic/scenarios.js';
 import {libelleHeure, libelleHeurePlage, PAS_SECONDES} from '../temps.js';
-import {h, vider} from '../ui/dom.js';
+import {h, ICONES, icone, vider} from '../ui/dom.js';
 
 const ORDRE_TEXTE = 'Classés par : disponibilité (obligatoire), puis binômes souhaités, puis 30 min de chaque artiste souhaité, puis le moins de changements.';
 const AUTRES_AFFICHES = 40;
@@ -279,7 +279,7 @@ export function montrerAffectation(container, m) {
     const cellule = celluleNom([
       b != null ? boutonsAppel(b) : h('span', {class: 'tj-appel-vide'}),
       h('div', {class: 'tj-nom__txt'},
-        h('strong', null, b != null ? nom(b) : '! À pourvoir', coeur, verrouillee ? h('span', {title: 'Verrouillée : corrigée à la main'}, '🔒') : null),
+        h('strong', null, b != null ? nom(b) : '! À pourvoir', coeur, verrouillee ? h('span', {class: 'tj-verrou', title: 'Verrouillée : corrigée à la main'}, icone(ICONES.cadenas, 'icone-texte')) : null),
         h('small', null, ...sousTitre),
       ),
     ], onChoisir, libelle);
@@ -462,7 +462,7 @@ export function montrerAffectation(container, m) {
 
   function blocVerrou(placeId, texte) {
     return [
-      h('p', {class: 'tj-panneau__vide'}, texte),
+      h('p', {class: 'tj-panneau__vide'}, icone(ICONES.cadenas, 'icone-texte'), ' ', texte),
       h('button', {class: 'btn btn--sm tj-panneau__bouton', type: 'button', onclick: () => void changerVerrou(placeId, false)}, 'Déverrouiller'),
     ];
   }
@@ -535,7 +535,7 @@ export function montrerAffectation(container, m) {
       occupant != null ? h('p', null, `Pointé·e absent·e à l’appel : la place reste à son nom tant que vous ne choisissez pas un remplacement.${autre != null ? ` Reste en place : ${nom(autre)}.` : ''}`) : null,
     );
     if (place.Verrouillee) {
-      return [tete, ...blocVerrou(placeId, '🔒 Place verrouillée : corrigée à la main, jamais touchée par un scénario ni par l’algorithme. Déverrouillez-la pour voir ses remplacements.')];
+      return [tete, ...blocVerrou(placeId, 'Place verrouillée : corrigée à la main, jamais touchée par un scénario ni par l’algorithme. Déverrouillez-la pour voir ses remplacements.')];
     }
     const {scenarios, ecartes} = scenariosPourPlace(journee, r.moteur(), placeId);
     return [
@@ -562,7 +562,7 @@ export function montrerAffectation(container, m) {
       h('p', null, [etiquette(placeId), equipe, horairesGroupe(g)].filter(Boolean).join(' · ')),
     );
     if (place.Verrouillee) {
-      return [tete, etatPersonne(benevoleId), ...blocVerrou(placeId, '🔒 Place verrouillée : corrigée à la main, jamais déplacée par un scénario ni par l’algorithme. Déverrouillez-la pour voir ses échanges.')];
+      return [tete, etatPersonne(benevoleId), ...blocVerrou(placeId, 'Place verrouillée : corrigée à la main, jamais déplacée par un scénario ni par l’algorithme. Déverrouillez-la pour voir ses échanges.')];
     }
     const {scenarios, ecartes} = echangesPourPlace(journee, r.moteur(), placeId);
     const positifs = scenarios.filter(ameliore).length;
@@ -737,7 +737,7 @@ export function montrerAffectation(container, m) {
         h('span', null, h('i', {class: 'tj-l-art'}), 'voit son artiste'),
         h('span', null, h('i', {class: 'tj-l-rate'}), 'rate son artiste'),
         h('span', null, h('i', {class: 'tj-l-change'}), 'changé dans le brouillon'),
-        h('span', null, '♥ binôme souhaité · 🔒 verrouillée'),
+        h('span', null, '♥ binôme souhaité · ', icone(ICONES.cadenas, 'icone-texte'), ' verrouillée'),
       ),
       message ? h('div', {class: `tj-message tj-message--${message.ton}`, role: 'status'}, message.texte) : null,
       apercu ? h('div', {class: 'tj-message tj-message--info', role: 'status'}, 'Aperçu : les lignes marquées en pointillé changeraient. Ajoutez au brouillon pour garder ce scénario.') : null,

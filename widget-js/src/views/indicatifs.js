@@ -29,7 +29,7 @@ import {
 import {classerCandidats} from '../moteur/adaptateur-magasin.js';
 import {peutVoirArtiste, SEUIL_MINUTES_VOIR_ARTISTE, seChevauchent} from '../moteur/index.js';
 import {PAS_SECONDES} from '../temps.js';
-import {fermerPanneau, h, ouvrirPanneau, vider} from '../ui/dom.js';
+import {fermerPanneau, h, ICONES, icone, ouvrirPanneau, vider} from '../ui/dom.js';
 import {construireFrise} from '../ui/frise.js';
 
 export function montrerIndicatifs(container, m) {
@@ -493,10 +493,11 @@ export function montrerIndicatifs(container, m) {
                   ? h('span', {style: {flex: '1'}}, ix.benevole.get(place.Benevole).Nom)
                   : h('span', {style: {flex: '1', color: 'var(--text-faint)'}}, 'Non pourvue'),
                 h('button', {
-                  class: 'btn btn--ghost btn--sm', type: 'button',
+                  class: 'btn btn--ghost btn--sm btn--icone', type: 'button',
                   title: place.Verrouillee ? 'Déverrouiller' : 'Verrouiller',
+                  'aria-label': place.Verrouillee ? 'Déverrouiller' : 'Verrouiller',
                   onclick: () => m.basculerVerrouillage(place.id),
-                }, place.Verrouillee ? '🔒' : '🔓'),
+                }, icone(place.Verrouillee ? ICONES.cadenas : ICONES.cadenasOuvert)),
               ),
               placeCandidatsVisible === place.id ? candidatsSuggeres(ix, groupe.id) : null,
             );
