@@ -17,6 +17,13 @@
  *
  * Remplace l'ancienne vue à cartes et glisser-déposer : ici, un clic ouvre
  * les options, au clavier comme à la souris.
+ *
+ * Reprend aussi les signalements de l'ancienne page Anomalies (ménage du
+ * 2026-09-29), sur le jour affiché et l'occupation affichée : chaque ligne
+ * dit ce qu'elle enfreint (hors disponibilité, mission refusée, deux places
+ * en même temps, quota dépassé, disponibilités non déclarées, binôme
+ * séparé, artiste raté), les besoins hors de leurs effectifs ont leurs
+ * lignes en tête de table, et un compteur les additionne.
  */
 
 import {indexerDisponibilites, regrouperParJour} from '../logic/derive.js';
@@ -25,7 +32,8 @@ import {
   placesChangees, planningDuBrouillon, relancerAlgorithme, retirerDeLaPlace, toutAnnuler, verrouillerDansBrouillon,
 } from '../logic/brouillon.js';
 import {
-  appliquerMouvements, binomesDuBenevole, construireJournee, estACouvrir, jourAffiche, mesurer, souhaitsDuBenevole,
+  appliquerMouvements, binomesDuBenevole, construireJournee, estACouvrir, jourAffiche, mesurer, signalementsDuJour,
+  souhaitsDuBenevole,
 } from '../logic/journee.js';
 import {nomsCompletsDepuisSource} from '../logic/noms-complets.js';
 import {
@@ -33,7 +41,7 @@ import {
   preparerMoteur, scenariosPourPlace,
 } from '../logic/scenarios.js';
 import {libelleHeure, libelleHeurePlage, PAS_SECONDES} from '../temps.js';
-import {h, ICONES, icone, vider} from '../ui/dom.js';
+import {formatHeures, h, ICONES, icone, vider} from '../ui/dom.js';
 
 const ORDRE_TEXTE = 'Classés par : disponibilité (obligatoire), puis binômes souhaités, puis 30 min de chaque artiste souhaité, puis le moins de changements.';
 const AUTRES_AFFICHES = 40;
@@ -58,6 +66,9 @@ export function montrerAffectation(container, m) {
   let nomsComplets = new Map();
   let vueActive = true;
   let cleJourAffiche = null;
+  // Fermés d'abord : tant que le planning se remplit, presque chaque besoin
+  // est sous son minimum, et la table sert d'abord à pourvoir les places.
+  let effectifsOuverts = false;
   // Rendu courant, pour les gestes (voir `rafraichir`).
   let r = null;
 
@@ -68,6 +79,7 @@ export function montrerAffectation(container, m) {
   }).catch(() => { /* jamais bloquant : la table garde Benevole.Nom */ });
 
   const nom = (id) => nomsComplets.get(id) ?? m.benevoles.find((b) => b.id === id)?.Nom ?? 'Bénévole introuvable';
+  const absence = (id) => (r.journee.desistes.has(id) ? 'désisté·e' : 'absent·e');
   const etiquette = (placeId) => {
     const place = r.journee.placeParId.get(placeId);
     return `${r.journee.groupeDePlace.get(placeId).groupe.Code} #${place.Rang}`;
@@ -230,6 +242,9 @@ export function montrerAffectation(container, m) {
   }
 
   function boutonsAppel(benevoleId) {
+    if (r.journee.desistes.has(benevoleId)) {
+      return h('span', {class: 'tj-appel-vide', title: 'Désisté·e pour tout le festival (Bénévoles › Désistements)'});
+    }
     const absent = r.journee.absents.has(benevoleId);
     const present = r.journee.presents.has(benevoleId);
     return h('div', {class: 'tj-appel', role: 'group', 'aria-label': `Appel : ${nom(benevoleId)}`, onclick: (e) => e.stopPropagation(), onkeydown: (e) => e.stopPropagation()},
@@ -251,6 +266,39 @@ export function montrerAffectation(container, m) {
     }, ...contenu);
   }
 
+  const creneauTexte = ({sousCreneau, mission}) => `${mission?.Nom ?? 'Mission introuvable'} ${libelleHeurePlage(sousCreneau.Debut, sousCreneau.Fin)}`;
+
+  /** Ce qu'une place tenue enfreint (ancienne page Anomalies), du plus grave
+   *  au moins grave : `texte` pour la ligne, `detail` pour le panneau. Une
+   *  personne sans aucune disponibilité déclarée n'est ni en règle ni hors
+   *  disponibilité : on n'a rien pu vérifier, on le dit (même règle que
+   *  l'ancienne vérification bénévole par bénévole). */
+  function alertesPlace(g, placeId, b) {
+    const alertes = [];
+    if (!r.aDesDispos.has(b)) {
+      alertes.push({texte: 'pas de disponibilité déclarée', neutre: true, detail: 'Aucune disponibilité déclarée : impossible de vérifier ses créneaux.'});
+    } else {
+      const hors = g.positions.filter(({sousCreneau}) => !disponibleSur(b, sousCreneau));
+      if (hors.length > 0) {
+        alertes.push({texte: 'hors disponibilité', grave: true, detail: `Placé·e hors de ses disponibilités : ${hors.map(creneauTexte).join(', ')}.`});
+      }
+    }
+    for (const autre of r.signalements.enMemeTemps.get(placeId) ?? []) {
+      alertes.push({texte: `en même temps sur ${etiquette(autre)}`, grave: true, detail: `Tient aussi ${etiquette(autre)}, sur des créneaux qui se recouvrent.`});
+    }
+    for (const mission of r.signalements.refus.get(placeId) ?? []) {
+      alertes.push({texte: `a refusé ${mission.Nom}`, grave: true, detail: `A refusé la mission ${mission.Nom}.`});
+    }
+    const quota = r.signalements.quotas.get(b);
+    if (quota) {
+      alertes.push({
+        texte: `quota dépassé (${formatHeures(quota.heures)} / ${formatHeures(quota.max)})`,
+        detail: `Quota dépassé : ${formatHeures(quota.heures)} sur tout le festival, pour ${formatHeures(quota.max)} au plus.`,
+      });
+    }
+    return alertes;
+  }
+
   function lignePlace(g, place, premiere) {
     const {journee, reelle} = r;
     const b = r.affiche.get(place.id) ?? null;
@@ -259,52 +307,123 @@ export function montrerAffectation(container, m) {
     const changeReel = b !== avant;
     const enApercu = apercu != null && b !== dansBrouillon;
     const absent = b != null && journee.absents.has(b);
+    const present = b != null && !absent;
     const verrouillee = journee.placeParId.get(place.id).Verrouillee;
     const choisie = selection?.type === 'place' && selection.placeId === place.id;
     const onChoisir = () => choisir({type: 'place', placeId: place.id});
     const code = `${g.groupe.Code} #${place.Rang}`;
+    const alertes = r.alertes.get(place.id) ?? [];
+    const refusees = r.signalements.refus.get(place.id) ?? [];
+    const enMemeTemps = r.signalements.enMemeTemps.has(place.id);
 
-    const coeur = b != null && !absent && binomesDuBenevole(journee, r.affiche, b).some((x) => x.reunis)
-      ? h('span', {class: 'tj-coeur', title: 'Avec son binôme souhaité'}, '♥') : null;
-    const rates = b != null && !absent ? souhaitsDuBenevole(journee, r.affiche, b).filter((s) => !s.vu) : [];
-    const horsDispo = b != null && !absent && g.positions.some(({sousCreneau}) => !disponibleSur(b, sousCreneau));
+    const binomes = present ? binomesDuBenevole(journee, r.affiche, b) : [];
+    const separes = binomes.filter((x) => !x.reunis).map((x) => `${nom(x.partenaireId)} (${x.codes.length > 0 ? x.codes.join(', ') : 'sans indicatif'})`);
+    const coeur = binomes.some((x) => x.reunis) ? h('span', {class: 'tj-coeur', title: 'Avec son binôme souhaité'}, '♥') : null;
+    const coeurVide = separes.length > 0
+      ? h('span', {class: 'tj-coeur tj-coeur--vide', title: `Binôme souhaité ailleurs : ${separes.join(', ')}`}, '♡') : null;
+    const rates = present ? souhaitsDuBenevole(journee, r.affiche, b).filter((s) => !s.vu) : [];
+    const verifiable = present && r.aDesDispos.has(b);
+
+    // Sous le nom : l'indicatif, puis tout ce que la ligne enfreint (en
+    // rouge ce qui est à corriger), l'équipe seulement s'il n'y a rien à dire.
     const sousTitre = [h('span', {class: 'tj-code'}, code)];
-    if (changeReel) { sousTitre.push(' · avant : ', h('s', null, avant != null ? nom(avant) : 'vide')); }
-    else if (absent) { sousTitre.push(' · absent·e à l’appel'); }
-    else if (horsDispo) { sousTitre.push(' · hors disponibilité'); }
-    else if (rates.length > 0) { sousTitre.push(` · rate ${rates.map((s) => s.artiste.Nom).join(', ')}`); }
-    else if (r.ix.equipe.get(g.groupe.Equipe)) { sousTitre.push(` · ${r.ix.equipe.get(g.groupe.Equipe).Nom}`); }
+    const texte = [code];
+    const noter = (t, element = t) => { sousTitre.push(' · ', element); texte.push(t); };
+    if (changeReel) {
+      const ancien = avant != null ? nom(avant) : 'vide';
+      sousTitre.push(' · avant : ', h('s', null, ancien));
+      texte.push(`avant : ${ancien}`);
+    }
+    if (absent) { noter(journee.desistes.has(b) ? 'désisté·e' : 'absent·e à l’appel'); }
+    for (const a of alertes) { noter(a.texte, a.grave ? h('span', {class: 'tj-alerte'}, a.texte) : a.texte); }
+    if (rates.length > 0) { noter(`rate ${rates.map((s) => s.artiste.Nom).join(', ')}`); }
+    const equipe = r.ix.equipe.get(g.groupe.Equipe);
+    if (texte.length === 1 && equipe) { noter(equipe.Nom); }
 
-    const libelle = b != null ? `${nom(b)}${absent ? ', absent·e' : ''}, ${code}` : `${code} à pourvoir`;
+    // Nom accessible : qui, où, puis ce que la ligne montre d'autre.
+    const details = [
+      changeReel ? `avant : ${avant != null ? nom(avant) : 'vide'}` : null,
+      ...alertes.map((a) => a.texte),
+      rates.length > 0 ? `rate ${rates.map((s) => s.artiste.Nom).join(', ')}` : null,
+      coeur ? 'avec son binôme souhaité' : null,
+      coeurVide ? `binôme souhaité ailleurs : ${separes.join(', ')}` : null,
+      verrouillee ? 'verrouillée' : null,
+    ].filter(Boolean);
+    const libelle = [b != null ? `${nom(b)}${absent ? `, ${absence(b)}` : ''}, ${code}` : `${code} à pourvoir`, ...details].join(', ');
     const cellule = celluleNom([
       b != null ? boutonsAppel(b) : h('span', {class: 'tj-appel-vide'}),
       h('div', {class: 'tj-nom__txt'},
-        h('strong', null, b != null ? nom(b) : '! À pourvoir', coeur, verrouillee ? h('span', {class: 'tj-verrou', title: 'Verrouillée : corrigée à la main'}, icone(ICONES.cadenas, 'icone-texte')) : null),
-        h('small', null, ...sousTitre),
+        h('strong', null, b != null ? nom(b) : '! À pourvoir', coeur, coeurVide, verrouillee ? h('span', {class: 'tj-verrou', title: 'Verrouillée : corrigée à la main'}, icone(ICONES.cadenas, 'icone-texte')) : null),
+        h('small', {title: texte.join(' · ')}, ...sousTitre),
       ),
     ], onChoisir, libelle);
 
     const blocs = g.positions.map(({sousCreneau, mission}) => {
       const classes = ['tj-bloc'];
-      const horsDispo = b != null && !absent && !disponibleSur(b, sousCreneau);
+      const horsDispo = verifiable && !disponibleSur(b, sousCreneau);
+      const refusee = present && refusees.includes(mission);
       if (b == null) { classes.push('tj-bloc--vide'); if (g.critique) { classes.push('tj-bloc--vide-critique'); } }
       else if (absent) { classes.push('tj-bloc--absent'); }
       else if (mission?.Priorite === 'Critique') { classes.push('tj-bloc--critique'); }
       if (horsDispo) { classes.push('tj-bloc--hors-dispo'); }
+      if (refusee || (present && enMemeTemps)) { classes.push('tj-bloc--alerte'); }
       if (changeReel && b != null) { classes.push(enApercu ? 'tj-bloc--apercu' : 'tj-bloc--change'); }
       const nomMission = mission?.Nom ?? 'Mission introuvable';
-      const etat = b == null ? ' · à pourvoir' : absent ? ' · absent·e' : horsDispo ? ' · hors disponibilité' : '';
+      const etat = b == null ? ' · à pourvoir' : absent ? ` · ${absence(b)}` : horsDispo ? ' · hors disponibilité' : refusee ? ' · refusée' : '';
       return h('span', {
         class: classes.join(' '), style: position(sousCreneau.Debut, sousCreneau.Fin),
         title: `${nomMission} ${libelleHeurePlage(sousCreneau.Debut, sousCreneau.Fin)}${etat}`,
       }, `${nomMission}${etat}`);
     });
-    const fond = b != null && !absent ? [...indisponibilites(b), ...marquesArtistes(b)] : [];
+    const fond = verifiable ? [...indisponibilites(b), ...marquesArtistes(b)] : [];
     const classes = ['tj-ligne'];
     if (choisie) { classes.push('tj-ligne--choisie'); }
     if (changeReel) { classes.push('tj-ligne--change'); }
     if (premiere) { classes.push('tj-groupe-debut'); }
     return h('div', {class: classes.join(' ')}, cellule, piste([...fond, ...blocs], onChoisir));
+  }
+
+  /** Un besoin hors de ses bornes, en une phrase : ce qui manque ou déborde, et où le corriger. */
+  function texteEffectif(e) {
+    const {besoin, places, pourvues} = e;
+    const creneau = creneauTexte(e);
+    if (pourvues > besoin.Effectif_max) {
+      return `${creneau} : ${pourvues} ${pluriel(pourvues, 'personne')} pour un maximum de ${besoin.Effectif_max}.`;
+    }
+    const aCouvrir = places - pourvues;
+    const suite = places < besoin.Effectif_min
+      ? ` Seulement ${places} ${pluriel(places, 'place positionnée', 'places positionnées')} : positionnez un indicatif de plus (étape 3) ou baissez le minimum (étape 2).${aCouvrir > 0 ? ` Et ${aCouvrir} à couvrir ci-dessous.` : ''}`
+      : ` ${aCouvrir} ${pluriel(aCouvrir, 'place')} à couvrir ci-dessous.`;
+    return `${creneau} : ${pourvues} ${pluriel(pourvues, 'personne')} pour un minimum de ${besoin.Effectif_min}.${suite}`;
+  }
+
+  /** Une ligne par mission dont un besoin du jour est hors de ses bornes
+   *  (ancienne page Anomalies, sous-effectif et sur-effectif). */
+  function ligneEffectifs(liste) {
+    const mission = liste[0].mission;
+    const nomMission = mission?.Nom ?? 'Mission introuvable';
+    const cle = mission?.id ?? null;
+    const choisie = selection?.type === 'effectifs' && selection.missionId === cle;
+    const onChoisir = () => choisir({type: 'effectifs', missionId: cle});
+    const sous = liste.filter((e) => e.pourvues < e.besoin.Effectif_min).length;
+    const sur = liste.length - sous;
+    const resume = [
+      sous > 0 ? `${sous} ${pluriel(sous, 'créneau', 'créneaux')} sous le minimum` : null,
+      sur > 0 ? `${sur} au-dessus du maximum` : null,
+    ].filter(Boolean).join(', ');
+    const blocs = liste.map((e) => {
+      const manque = e.pourvues < e.besoin.Effectif_min;
+      return h('span', {
+        class: `tj-bloc ${manque ? 'tj-bloc--sous' : 'tj-bloc--sur'}`,
+        style: position(e.sousCreneau.Debut, e.sousCreneau.Fin), title: texteEffectif(e),
+      }, manque ? `${e.pourvues} / ${e.besoin.Effectif_min} min` : `${e.pourvues} / ${e.besoin.Effectif_max} max`);
+    });
+    return h('div', {class: `tj-ligne tj-effectifs${choisie ? ' tj-ligne--choisie' : ''}`},
+      celluleNom([
+        h('span', {class: 'tj-appel-vide'}),
+        h('div', {class: 'tj-nom__txt'}, h('strong', null, nomMission), h('small', {title: resume}, resume)),
+      ], onChoisir, `${nomMission} : ${resume}`),
+      piste(blocs, onChoisir));
   }
 
   function ligneLibre(benevoleId, absent) {
@@ -351,6 +470,28 @@ export function montrerAffectation(container, m) {
           title: `${a.Nom} ${libelleHeurePlage(a.Debut, a.Fin)}`,
         }, a.Nom)))));
     }
+    const effectifs = r.signalements.effectifs;
+    if (effectifs.length > 0) {
+      const parMission = new Map();
+      for (const e of effectifs) {
+        const cle = e.mission?.id ?? null;
+        parMission.set(cle, [...(parMission.get(cle) ?? []), e]);
+      }
+      lignes.push(h('div', {class: 'tj-ligne tj-section'},
+        h('div', {class: 'tj-nom'}, h('button', {
+          class: 'tj-section__bascule', type: 'button', 'aria-expanded': String(effectifsOuverts),
+          title: effectifsOuverts ? 'Masquer les effectifs hors bornes' : 'Afficher les missions dont un créneau du jour est sous son minimum ou au-dessus de son maximum',
+          onclick: () => { effectifsOuverts = !effectifsOuverts; rafraichir(); },
+        }, `${effectifsOuverts ? '▾' : '▸'} Effectifs hors bornes (${effectifs.length})`)),
+        h('div', {class: 'tj-piste'})));
+      const nomDe = (liste) => liste[0].mission?.Nom ?? '';
+      if (effectifsOuverts) {
+        for (const liste of [...parMission.values()].sort((a, b) => nomDe(a).localeCompare(nomDe(b), 'fr'))) {
+          lignes.push(ligneEffectifs(liste));
+        }
+      }
+      lignes.push(h('div', {class: 'tj-ligne tj-section'}, h('div', {class: 'tj-nom'}, 'Places du jour'), h('div', {class: 'tj-piste'})));
+    }
     if (journee.groupes.length === 0) {
       lignes.push(h('p', {class: 'tj-vide'}, 'Aucun indicatif positionné ce jour-là. Positionnez des indicatifs depuis la vue Indicatifs (étape 3), puis revenez ici.'));
     }
@@ -380,7 +521,7 @@ export function montrerAffectation(container, m) {
     const {journee} = r;
     const remplace = (vers) => {
       const q = journee.occupantParPlace.get(vers);
-      return q != null && journee.absents.has(q) ? `, à la place de ${nom(q)} (absent·e)` : '';
+      return q != null && journee.absents.has(q) ? `, à la place de ${nom(q)} (${absence(q)})` : '';
     };
     const [a, b] = mouvements;
     if (mouvements.length === 2 && a.de != null && a.vers != null && b.de != null && b.vers != null && a.de === b.vers && b.de === a.vers) {
@@ -522,6 +663,26 @@ export function montrerAffectation(container, m) {
     return pills.length > 0 ? h('div', {class: 'tj-panneau__etat'}, ...pills) : null;
   }
 
+  /** Ce que la place enfreint, en toutes lettres (même liste que sa ligne). */
+  function blocAlertes(placeId, benevoleId) {
+    if (r.affiche.get(placeId) !== benevoleId) { return null; } // un aperçu montre quelqu'un d'autre sur cette ligne
+    const alertes = r.alertes.get(placeId) ?? [];
+    if (alertes.length === 0) { return null; }
+    return h('div', {class: 'tj-panneau__etat'},
+      ...alertes.map((a) => h('span', {class: `pill ${a.grave ? 'pill--danger' : a.neutre ? 'pill--neutral' : 'pill--warn'}`}, a.detail)));
+  }
+
+  function panneauEffectifs(missionId) {
+    const liste = r.signalements.effectifs.filter((e) => (e.mission?.id ?? null) === missionId);
+    return [
+      h('div', {class: 'tj-panneau__tete'},
+        h('h2', null, `${liste[0].mission?.Nom ?? 'Mission introuvable'} : effectifs`),
+        h('p', null, 'Créneaux du jour hors de leurs effectifs minimum ou maximum, avec le planning affiché (brouillon compris). Les absents ne comptent pas.'),
+      ),
+      h('ul', {class: 'tj-effectifs-liste'}, ...liste.map((e) => h('li', null, texteEffectif(e)))),
+    ];
+  }
+
   function panneauPlace(placeId) {
     const {journee} = r;
     const place = journee.placeParId.get(placeId);
@@ -532,7 +693,7 @@ export function montrerAffectation(container, m) {
     const tete = h('div', {class: 'tj-panneau__tete'},
       h('h2', null, occupant != null ? `Remplacer ${nom(occupant)} en ${code}` : `${code} à pourvoir`),
       h('p', null, horairesGroupe(g)),
-      occupant != null ? h('p', null, `Pointé·e absent·e à l’appel : la place reste à son nom tant que vous ne choisissez pas un remplacement.${autre != null ? ` Reste en place : ${nom(autre)}.` : ''}`) : null,
+      occupant != null ? h('p', null, `${journee.desistes.has(occupant) ? 'Désisté·e pour tout le festival' : 'Pointé·e absent·e à l’appel'} : la place reste à son nom tant que vous ne choisissez pas un remplacement.${autre != null ? ` Reste en place : ${nom(autre)}.` : ''}`) : null,
     );
     if (place.Verrouillee) {
       return [tete, ...blocVerrou(placeId, 'Place verrouillée : corrigée à la main, jamais touchée par un scénario ni par l’algorithme. Déverrouillez-la pour voir ses remplacements.')];
@@ -562,12 +723,13 @@ export function montrerAffectation(container, m) {
       h('p', null, [etiquette(placeId), equipe, horairesGroupe(g)].filter(Boolean).join(' · ')),
     );
     if (place.Verrouillee) {
-      return [tete, etatPersonne(benevoleId), ...blocVerrou(placeId, 'Place verrouillée : corrigée à la main, jamais déplacée par un scénario ni par l’algorithme. Déverrouillez-la pour voir ses échanges.')];
+      return [tete, blocAlertes(placeId, benevoleId), etatPersonne(benevoleId), ...blocVerrou(placeId, 'Place verrouillée : corrigée à la main, jamais déplacée par un scénario ni par l’algorithme. Déverrouillez-la pour voir ses échanges.')];
     }
     const {scenarios, ecartes} = echangesPourPlace(journee, r.moteur(), placeId);
     const positifs = scenarios.filter(ameliore).length;
     return [
       tete,
+      blocAlertes(placeId, benevoleId),
       etatPersonne(benevoleId),
       h('h3', null, 'Échanges possibles'),
       h('p', {class: 'tj-panneau__ordre'}, `${positifs === 0 ? 'Aucun échange n’améliore vos critères.' : `${positifs} ${pluriel(positifs, 'échange améliore', 'échanges améliorent')} vos critères.`} ${ORDRE_TEXTE}`),
@@ -617,6 +779,8 @@ export function montrerAffectation(container, m) {
         : panneauPlace(selection.placeId);
     } else if (selection?.type === 'benevole' && r.journee.duJour.has(selection.benevoleId)) {
       contenu = panneauPersonneLibre(selection.benevoleId);
+    } else if (selection?.type === 'effectifs' && r.signalements.effectifs.some((e) => (e.mission?.id ?? null) === selection.missionId)) {
+      contenu = panneauEffectifs(selection.missionId);
     } else {
       contenu = [h('p', {class: 'tj-panneau__vide'}, 'Cliquez une place à pourvoir ou une personne pour voir toutes les options, classées selon vos priorités.')];
     }
@@ -627,10 +791,22 @@ export function montrerAffectation(container, m) {
 
   function compteurs(mes) {
     const aCouvrir = mes.aCouvrir.length;
+    const aVerifier = r.alertes.size + r.signalements.effectifs.length;
+    // Rouge pour une règle enfreinte, jaune pour un quota, neutre quand on
+    // n'a seulement rien pu vérifier (pas de disponibilité déclarée).
+    const alertes = [...r.alertes.values()].flat();
+    const ton = r.signalements.effectifs.length > 0 || alertes.some((a) => a.grave) ? 'danger'
+      : alertes.some((a) => !a.neutre) ? 'warn' : 'neutral';
     return h('div', {class: 'tj-compteurs'},
       h('span', {class: `pill ${aCouvrir ? 'pill--warn' : 'pill--ok'}`}, `${aCouvrir ? '! ' : '✓ '}${mes.couvertes} / ${mes.totalPlaces} places couvertes`),
       h('span', {class: `pill ${mes.binomes === mes.binomesTotal ? 'pill--ok' : 'pill--neutral'}`}, `♥ Binômes souhaités ${mes.binomes} / ${mes.binomesTotal}`),
       h('span', {class: `pill ${mes.artistes === mes.artistesTotal ? 'pill--ok' : 'tj-pill--art'}`}, `♪ Artistes souhaités vus ${mes.artistes} / ${mes.artistesTotal}`),
+      aVerifier > 0
+        ? h('span', {
+          class: `pill pill--${ton}`,
+          title: 'Lignes qui enfreignent une règle (hors disponibilité, mission refusée, deux places en même temps, quota dépassé, disponibilités non déclarées) et effectifs hors bornes, en tête de table.',
+        }, `! ${aVerifier} à vérifier`)
+        : null,
     );
   }
 
@@ -662,6 +838,20 @@ export function montrerAffectation(container, m) {
         toutAnnuler(brouillon); apercu = null; message = {ton: 'info', texte: 'Brouillon vidé : le planning n’a pas bougé.'}; rafraichir();
       }}, 'Tout annuler'),
       h('button', {class: 'btn btn--primary', type: 'button', disabled: brouillon.modifs.size === 0, onclick: () => void appliquer()}, 'Appliquer au planning'),
+    );
+  }
+
+  /** Deux sous-créneaux d'un même macro-créneau qui se recouvrent : voulu
+   *  quand deux missions tournent à des rythmes différents (§6.2), d'où une
+   *  simple mention repliée plutôt qu'une ligne de la table. */
+  function chevauchements() {
+    const paires = r.signalements.chevauchements;
+    if (paires.length === 0) { return null; }
+    const libelle = (sc) => `${sc.Mission != null ? (r.ix.mission.get(sc.Mission)?.Nom ?? 'Mission introuvable') : 'Créneau commun'} ${libelleHeurePlage(sc.Debut, sc.Fin)}`;
+    return h('details', {class: 'tj-chevauchements'},
+      h('summary', null, `${paires.length} ${pluriel(paires.length, 'paire')} de sous-créneaux se recouvrent ce jour`),
+      h('p', {class: 'tj-note'}, 'Voulu quand deux missions tournent à des rythmes différents ; sinon, à corriger dans Missions ou l’Agenda.'),
+      h('ul', null, ...paires.map(([a, z]) => h('li', null, `${libelle(a)} et ${libelle(z)}`))),
     );
   }
 
@@ -708,14 +898,29 @@ export function montrerAffectation(container, m) {
     const planning = planningDuBrouillon(m, brouillon);
     const journee = construireJournee(planning, jour);
     let moteur = null;
+    const affiche = apercu ? appliquerMouvements(journee.occupantParPlace, apercu.mouvements) : journee.occupantParPlace;
+    // Les signalements portent sur ce que la table montre, aperçu compris.
+    const planningAffiche = apercu
+      ? {...planning, places: planning.places.map((p) => (affiche.has(p.id) ? {...p, Benevole: affiche.get(p.id)} : p))}
+      : planning;
     r = {
-      jour, journee, reelle: construireJournee(m, jour), ix: journee.ix,
-      affiche: apercu ? appliquerMouvements(journee.occupantParPlace, apercu.mouvements) : journee.occupantParPlace,
+      jour, journee, reelle: construireJournee(m, jour), ix: journee.ix, affiche,
       dispos: indexerDisponibilites(m),
+      aDesDispos: new Set(m.disponibilites.map((d) => d.Benevole)),
+      signalements: signalementsDuJour(journee, affiche, planningAffiche),
+      alertes: new Map(),
       quartsTries: [...journee.quarts].sort((a, b) => a - b),
       moteur: () => { moteur ??= preparerMoteur(planning); return moteur; },
     };
     if (r.quartsTries.length === 0) { r.quartsTries = [journee.debut]; }
+    for (const g of journee.groupes) {
+      for (const place of g.places) {
+        const b = affiche.get(place.id) ?? null;
+        if (b == null || journee.absents.has(b)) { continue; }
+        const alertes = alertesPlace(g, place.id, b);
+        if (alertes.length > 0) { r.alertes.set(place.id, alertes); }
+      }
+    }
 
     const brouillonNonVide = brouillon.modifs.size > 0;
     container.append(...[
@@ -737,8 +942,10 @@ export function montrerAffectation(container, m) {
         h('span', null, h('i', {class: 'tj-l-art'}), 'voit son artiste'),
         h('span', null, h('i', {class: 'tj-l-rate'}), 'rate son artiste'),
         h('span', null, h('i', {class: 'tj-l-change'}), 'changé dans le brouillon'),
-        h('span', null, '♥ binôme souhaité · ', icone(ICONES.cadenas, 'icone-texte'), ' verrouillée'),
+        h('span', null, h('i', {class: 'tj-l-sous'}), 'effectif sous le minimum'),
+        h('span', null, '♥ binôme réuni · ♡ binôme séparé · ', icone(ICONES.cadenas, 'icone-texte'), ' verrouillée'),
       ),
+      chevauchements(),
       message ? h('div', {class: `tj-message tj-message--${message.ton}`, role: 'status'}, message.texte) : null,
       apercu ? h('div', {class: 'tj-message tj-message--info', role: 'status'}, 'Aperçu : les lignes marquées en pointillé changeraient. Ajoutez au brouillon pour garder ce scénario.') : null,
       h('div', {class: 'tj-corps'}, table(), panneau()),

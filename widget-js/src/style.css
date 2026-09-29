@@ -361,6 +361,58 @@ button {
   opacity: 0.85;
 }
 
+/* Sous la barre de titre : les vues d'une entrée qui en regroupe
+   plusieurs (Bénévoles, Impressions), puis le bandeau des jours. */
+.app-sous-vues:not(:empty) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 12px 24px 0;
+}
+
+.app-bandeau-jours:not(:empty) {
+  padding: 12px 24px 0;
+}
+
+.segmente {
+  display: inline-flex;
+  flex-wrap: wrap;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.segmente__option {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.segmente__option + .segmente__option {
+  border-left: 1px solid var(--border-strong);
+}
+
+.segmente__option:hover {
+  color: var(--text);
+}
+
+.segmente__option[aria-pressed="true"] {
+  background: var(--brand-tint);
+  color: var(--brand-ink);
+}
+
+.segmente__option:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+}
+
 .view {
   padding: 20px 24px 48px;
   flex: 1 1 auto;
@@ -1325,7 +1377,6 @@ table.grille .mission-cell .lieu {
 }
 
 /* "sous" : seul état qui appelle une vraie action → bordure gauche épaissie
-   (même grammaire que .anomalie, donc cohérente avec le reste de l'appli)
    et chiffre renforcé (couleur + taille) pour gagner le balayage visuel. */
 .besoin--sous {
   background: var(--danger-tint);
@@ -1378,43 +1429,6 @@ table.grille .mission-cell .lieu {
 .chip-groupe--incomplet {
   outline: 1.5px dashed var(--warn);
   outline-offset: 1px;
-}
-
-/* ---------- Anomalies ---------- */
-
-.anomalies-cols {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 14px;
-  align-items: start;
-}
-
-.anomalie {
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--danger);
-  border-radius: var(--radius-sm);
-  padding: 9px 11px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  background: var(--surface);
-  margin-bottom: 8px;
-}
-
-.anomalie--warn { border-left-color: var(--warn); }
-
-.anomalie__titre {
-  font-weight: 600;
-  font-size: 12.5px;
-}
-
-.anomalie__detail {
-  font-size: 11.5px;
-  color: var(--text-muted);
-}
-
-.anomalie__actions {
-  margin-top: 3px;
 }
 
 /* ---------- Indicatifs (frise + trajectoire) ----------
@@ -1771,34 +1785,36 @@ table.grille .mission-cell .lieu {
 .benevole-row .nom { font-weight: 600; font-size: 12.5px; }
 .benevole-row .equipe { font-size: 11px; color: var(--text-muted); }
 
-.permutation {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 12px 14px;
-  margin-bottom: 12px;
+/* ---------- Bénévoles › Désistements ---------- */
+
+.desistements {
+  max-width: 760px;
 }
 
-.permutation__chaine {
+.desistement {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 8px;
-  margin: 8px 0;
+  font-size: 13px;
+}
+
+.desistement h4 {
+  font-size: 13px;
+  margin: 4px 0 0;
+}
+
+.desistement__places {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   font-size: 12.5px;
 }
 
-.permutation__etape {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: var(--bg);
-  border-radius: var(--radius-sm);
-  padding: 5px 9px;
-}
-
-.permutation__etape .place {
+.desistement__note {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 12.5px;
 }
 
 /* ---------- Affectation manuelle (glisser-déposer) ---------- */
@@ -2130,33 +2146,6 @@ table.grille .mission-cell .lieu {
   align-items: center;
   gap: 12px;
   margin-bottom: 12px;
-}
-
-.dispos-jours {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
-.dispos-jour-tab {
-  all: unset;
-  cursor: pointer;
-  padding: 6px 12px;
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-  border: 1px solid var(--border-strong);
-}
-
-.dispos-jour-tab:hover {
-  border-color: var(--text-faint);
-}
-
-.dispos-jour-tab[aria-selected="true"] {
-  background: var(--brand);
-  border-color: var(--brand);
-  color: var(--brand-contrast);
 }
 
 .dispos-barre__filtres {

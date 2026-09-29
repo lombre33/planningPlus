@@ -345,9 +345,11 @@ describe('démarrage du widget', () => {
   }
 
   async function ouvrirReglagesDisponibilitesEtChoisirTableEtColonne() {
-    const ongletDispos = Array.from(document.querySelectorAll('.rail__item'))
-      .find((b) => b.textContent?.includes('Disponibilit'));
-    ongletDispos.click();
+    // Disponibilités est l'une des vues de l'entrée Bénévoles (menu à sept entrées).
+    Array.from(document.querySelectorAll('.rail__item'))
+      .find((b) => b.textContent?.includes('Bénévoles')).click();
+    Array.from(document.querySelectorAll('.segmente__option'))
+      .find((b) => b.textContent === 'Disponibilités').click();
     Array.from(document.querySelectorAll('button'))
       .find((b) => b.textContent === "Réglages d'import").click();
     await new Promise((resolve) => setTimeout(resolve, 0));

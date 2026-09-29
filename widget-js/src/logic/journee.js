@@ -11,9 +11,9 @@
  */
 
 import {
-  benevolesDisponiblesCeJour, indexer, positionsDuGroupe, quartsDuJour, quartsDuSousCreneau,
+  benevolesDisponiblesCeJour, heuresAffectees, indexer, positionsDuGroupe, quartsDuJour, quartsDuSousCreneau,
 } from './derive.js';
-import {peutVoirArtiste} from '../moteur/index.js';
+import {peutVoirArtiste, seChevauchent} from '../moteur/index.js';
 import {PAS_SECONDES} from '../temps.js';
 
 /** Même convention que le moteur (`estMissionRestauration`, `moteur/eligibilite.js`) :
@@ -81,10 +81,19 @@ export function construireJournee(m, jour) {
     if (p.Jour !== cleJour) { continue; }
     (p.Present ? presents : absents).add(p.Benevole);
   }
+  // Un désistement (Bénévoles › Désistements) vaut absence tous les jours :
+  // ses places non verrouillées sont déjà vidées ; une place verrouillée
+  // reste à son nom et passe « à couvrir », comme celle d'un absent à l'appel.
+  const desistes = new Set(m.benevoles.filter((b) => b.Statut === 'Absent').map((b) => b.id));
+  for (const b of desistes) { absents.add(b); presents.delete(b); }
 
   const duJour = benevolesDisponiblesCeJour(m, quarts);
-  for (const b of occupantParPlace.values()) { if (b != null) { duJour.add(b); } }
-  for (const b of [...duJour]) { if (!ix.benevole.has(b)) { duJour.delete(b); } }
+  const tenus = new Set();
+  for (const b of occupantParPlace.values()) { if (b != null) { duJour.add(b); tenus.add(b); } }
+  for (const b of [...duJour]) {
+    // Un désisté sans place ce jour n'a rien à faire dans la table.
+    if (!ix.benevole.has(b) || (desistes.has(b) && !tenus.has(b))) { duJour.delete(b); }
+  }
   const comptes = (b) => duJour.has(b) && !absents.has(b);
 
   const paires = [];
@@ -126,7 +135,7 @@ export function construireJournee(m, jour) {
   return {
     m, ix, jour, quarts, macroIds, debut, fin,
     groupes, placeParId, groupeDePlace, occupantParPlace,
-    absents, presents, duJour, paires, partenaires, souhaits, restauSouhaitee,
+    absents, presents, desistes, duJour, paires, partenaires, souhaits, restauSouhaitee,
   };
 }
 
@@ -241,6 +250,91 @@ export function binomesDuBenevole(journee, occupant, benevoleId) {
     reunis: partagentUnIndicatif(groupes, benevoleId, partenaireId),
     codes: (groupes.get(partenaireId) ?? []).map((g) => g.groupe.Code),
   }));
+}
+
+/**
+ * Ce que signalait la page Anomalies, ramené au jour affiché et à une
+ * occupation (brouillon, aperçu) : l'entrée Anomalies disparaît et ses
+ * signalements passent dans la table (ménage choisi par Antoine le
+ * 2026-09-29). Mêmes règles que le moteur (`moteur/anomalies.js`), avec la
+ * seule différence de toute la table : la place d'un absent (appel du jour
+ * ou désistement) ne compte pas comme tenue.
+ *
+ * - `effectifs` : besoins du jour hors de leurs bornes (`detecterEffectifs`),
+ *   seulement là où un indicatif est positionné (décision du 2026-09-21 :
+ *   une zone pas encore construite n'est pas une anomalie) ;
+ * - `refus` : place → missions de ses créneaux que son occupant a refusées
+ *   (`souhait_refuse`) ;
+ * - `enMemeTemps` : place → autres places du jour que son occupant tient sur
+ *   des quarts qui se recouvrent (`double_engagement`) ;
+ * - `quotas` : bénévole → heures affectées sur tout le festival, quand elles
+ *   dépassent son quota (`hors_quota`) ; `planning` doit porter la même
+ *   occupation que `occupant` ;
+ * - `chevauchements` : paires de sous-créneaux d'un même macro-créneau du
+ *   jour qui se recouvrent (`chevauchement_creneaux`), pour information.
+ *
+ * Indisponibilités et artistes ratés (`indisponibilite`, `conflit_artiste`)
+ * n'y sont pas : la table les montre déjà sur chaque ligne.
+ */
+export function signalementsDuJour(journee, occupant, planning) {
+  const {ix, groupes, groupeDePlace, absents} = journee;
+  const tient = (b) => b != null && !absents.has(b);
+
+  const parBesoin = new Map();
+  for (const g of groupes) {
+    const tenues = g.places.filter((p) => tient(occupant.get(p.id))).length;
+    for (const {besoin, sousCreneau, mission} of g.positions) {
+      const e = parBesoin.get(besoin.id) ?? {besoin, sousCreneau, mission, places: 0, pourvues: 0};
+      e.places += g.places.length;
+      e.pourvues += tenues;
+      parBesoin.set(besoin.id, e);
+    }
+  }
+  const effectifs = [...parBesoin.values()]
+    .filter((e) => e.pourvues < e.besoin.Effectif_min || e.pourvues > e.besoin.Effectif_max)
+    .sort((a, b) => a.sousCreneau.Debut - b.sousCreneau.Debut);
+
+  const refusees = new Set(planning.souhaitsMissions.filter((s) => s.Preference === 'Refuse').map((s) => `${s.Benevole}:${s.Mission}`));
+  const refus = new Map();
+  const placesParBenevole = new Map();
+  for (const [placeId, b] of occupant) {
+    const g = groupeDePlace.get(placeId);
+    if (!tient(b) || !g) { continue; }
+    const missions = [...new Set(g.positions.map((p) => p.mission))].filter((mi) => mi != null && refusees.has(`${b}:${mi.id}`));
+    if (missions.length > 0) { refus.set(placeId, missions); }
+    placesParBenevole.set(b, [...(placesParBenevole.get(b) ?? []), placeId]);
+  }
+
+  const enMemeTemps = new Map();
+  const quotas = new Map();
+  for (const [b, placeIds] of placesParBenevole) {
+    for (let i = 0; i < placeIds.length; i++) {
+      for (let j = i + 1; j < placeIds.length; j++) {
+        const [a, z] = [placeIds[i], placeIds[j]];
+        const quartsZ = groupeDePlace.get(z).quarts;
+        if (![...groupeDePlace.get(a).quarts].some((q) => quartsZ.has(q))) { continue; }
+        enMemeTemps.set(a, [...(enMemeTemps.get(a) ?? []), z]);
+        enMemeTemps.set(z, [...(enMemeTemps.get(z) ?? []), a]);
+      }
+    }
+    const max = ix.benevole.get(b)?.Quota_heures_max;
+    if (max == null) { continue; }
+    const heures = heuresAffectees(planning, ix, b);
+    if (heures > max) { quotas.set(b, {heures, max}); }
+  }
+
+  const chevauchements = [];
+  for (const macroId of journee.macroIds) {
+    const sousCreneaux = planning.sousCreneaux.filter((sc) => sc.Macro_creneau === macroId).sort((a, b) => a.Debut - b.Debut);
+    for (let i = 0; i < sousCreneaux.length; i++) {
+      for (let j = i + 1; j < sousCreneaux.length; j++) {
+        const [a, z] = [sousCreneaux[i], sousCreneaux[j]];
+        if (seChevauchent(a.Debut, a.Fin, z.Debut, z.Fin)) { chevauchements.push([a, z]); }
+      }
+    }
+  }
+
+  return {effectifs, refus, enMemeTemps, quotas, chevauchements};
 }
 
 /**

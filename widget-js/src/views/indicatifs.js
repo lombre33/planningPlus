@@ -16,16 +16,19 @@
  * classer/cibler pour l'accessibilité clavier.
  *
  * Ce que cette vue ne fait pas : affecter un·e bénévole à une place, ni
- * déplacer/redimensionner un créneau. C'est le rôle de la vue Missions (et,
- * à terme, de l'outil d'affectation dédié) — ici, une place se lit et se
+ * déplacer/redimensionner un créneau, ni faire l'appel. Les places se
+ * pourvoient et l'appel se fait dans la table du jour (étape 5), les
+ * créneaux se déplacent dans Missions — ici, une place se lit et se
  * verrouille, mais ne se pourvoit pas ; un créneau se positionne dans le
- * temps, mais n'est jamais glissable depuis cette vue.
+ * temps, mais n'est jamais glissable depuis cette vue. Le jour affiché est
+ * celui du bandeau commun.
  */
 
 import {
   couvertureBesoin, indexer, placesDuGroupe, positionsDuGroupe,
   quartsCouvertsParGroupe, regrouperParJour, sousCreneauxApplicables,
 } from '../logic/derive.js';
+import {jourAffiche} from '../logic/journee.js';
 import {classerCandidats} from '../moteur/adaptateur-magasin.js';
 import {peutVoirArtiste, SEUIL_MINUTES_VOIR_ARTISTE, seChevauchent} from '../moteur/index.js';
 import {PAS_SECONDES} from '../temps.js';
@@ -33,8 +36,10 @@ import {fermerPanneau, h, ICONES, icone, ouvrirPanneau, vider} from '../ui/dom.j
 import {construireFrise} from '../ui/frise.js';
 
 export function montrerIndicatifs(container, m) {
-  let jourIndex = 0;
   let equipeFiltre = 'toutes';
+  /** Jour affiché au rendu précédent : le bandeau commun (`app.js`) le
+   *  choisit ; en changer ferme ce qui visait l'ancien jour. */
+  let cleJourAffiche = null;
   let groupeSelectionne = null;
   let modeCible = null;
   let dernierMessage = null;
@@ -42,14 +47,6 @@ export function montrerIndicatifs(container, m) {
    *  Antoine 2026-09-23, point 9 : cliquer #1/#2). Purement informatif —
    *  jamais d'affectation depuis cette vue, voir `panneauIndicatif`. */
   let placeCandidatsVisible = null;
-  /** Panneau d'appel ouvert (demande d'Antoine du 2026-09-24) : remplace le
-   *  panneau d'indicatif tant qu'il est actif — un seul panneau latéral à la
-   *  fois, voir `rafraichir`. Purement un pointage de présence par jour de
-   *  festival ; ne touche jamais `Places` ni `Groupes` (voir
-   *  `Magasin.definirPresence`), à la différence du bouton Absent/De retour
-   *  de la vue Jour J, qui vide les places non verrouillées pour tout le
-   *  festival — un mécanisme volontairement distinct, voir `panneauAppel`. */
-  let appelOuvert = false;
 
   // État transitoire du glisser-déposer natif (pas dans le magasin : ça ne
   // survit pas à un rafraîchissement, et n'a pas à le faire).
@@ -87,9 +84,14 @@ export function montrerIndicatifs(container, m) {
 
   function rafraichir() {
     const ix = indexer(m);
+    // Le jour vient du bandeau commun (un seul jour pour toutes les vues,
+    // ménage du 2026-09-29) : plus de sélecteur propre à cet écran.
     const jours = regrouperParJour(m.macroCreneaux);
-    jourIndex = Math.min(jourIndex, Math.max(jours.length - 1, 0));
-    const jour = jours[jourIndex];
+    const jour = jourAffiche(jours, m.macroCreneauSelectionne);
+    if ((jour?.cle ?? null) !== cleJourAffiche) {
+      if (cleJourAffiche != null) { groupeSelectionne = null; modeCible = null; placeCandidatsVisible = null; }
+      cleJourAffiche = jour?.cle ?? null;
+    }
     const tousSousCreneaux = jour
       ? m.sousCreneaux.filter((sc) => jour.macros.some((ma) => ma.id === sc.Macro_creneau))
       : [];
@@ -100,7 +102,7 @@ export function montrerIndicatifs(container, m) {
     vider(container);
     container.append(
       h('div', {class: 'indicatifs-layout'},
-        barreOutils(jours),
+        barreOutils(),
         dernierMessage ? h('span', {class: `pill pill--${dernierMessage.ton}`}, dernierMessage.texte) : null,
         modeCible ? bandeauCible() : null,
         jours.length === 0
@@ -115,9 +117,7 @@ export function montrerIndicatifs(container, m) {
       ),
     );
 
-    if (appelOuvert) {
-      panneauAppel(ix, jour, tousSousCreneaux);
-    } else if (groupeSelectionne != null && ix.groupe.has(groupeSelectionne)) {
+    if (groupeSelectionne != null && ix.groupe.has(groupeSelectionne)) {
       panneauIndicatif(ix, groupeSelectionne, jour);
     } else {
       fermerPanneau();
@@ -134,14 +134,10 @@ export function montrerIndicatifs(container, m) {
     return {debut, fin};
   }
 
-  // --- Barre d'outils : jour + équipe (mêmes contrôles que la vue Missions) --
+  // --- Barre d'outils : équipe (même contrôle que la vue Missions) ----------
 
-  function barreOutils(jours) {
+  function barreOutils() {
     return h('div', {class: 'agenda__toolbar'},
-      ...jours.map((j, i) => h('button', {
-        class: `btn btn--sm${i === jourIndex ? ' btn--primary' : ''}`, type: 'button',
-        onclick: () => { jourIndex = i; groupeSelectionne = null; modeCible = null; placeCandidatsVisible = null; rafraichir(); },
-      }, j.libelle.split(' ').slice(0, 1).join(' '))),
       h('select', {
         class: 'select',
         onchange: (e) => {
@@ -153,16 +149,6 @@ export function montrerIndicatifs(container, m) {
         h('option', {value: 'toutes'}, 'Toutes les équipes'),
         ...m.equipes.map((eq) => h('option', {value: String(eq.id), selected: equipeFiltre === eq.id}, eq.Nom)),
       ),
-      h('button', {
-        class: `btn btn--sm${appelOuvert ? ' btn--primary' : ''}`, type: 'button',
-        title: "Pointer les bénévoles présents ce jour — sans effet sur les affectations.",
-        onclick: () => {
-          appelOuvert = !appelOuvert;
-          groupeSelectionne = null;
-          placeCandidatsVisible = null;
-          rafraichir();
-        },
-      }, 'Faire l’appel'),
     );
   }
 
@@ -383,7 +369,6 @@ export function montrerIndicatifs(container, m) {
       if (modeCible) { return; }
       groupeSelectionne = groupeSelectionne === groupe.id ? null : groupe.id;
       placeCandidatsVisible = null;
-      appelOuvert = false;
       rafraichir();
     });
     chip.addEventListener('dragstart', () => {
@@ -572,72 +557,6 @@ export function montrerIndicatifs(container, m) {
     ouvrirPanneau(panneau);
   }
 
-  /** Panneau d'appel (retour Antoine du 2026-09-24) : une ligne par
-   *  bénévole positionné ce jour (`groupesDuJour`, dédupliqué — un même
-   *  bénévole peut tenir plusieurs indicatifs), avec deux boutons pour
-   *  pointer présent/absent. Purement un pointage (`Magasin.definirPresence`) :
-   *  ne libère, ne verrouille ni ne modifie aucune place — à la différence
-   *  du bouton Absent/De retour de la vue Jour J. La couleur du binôme
-   *  (`puceGroupe`) est la conséquence visible de ce pointage, pas l'inverse. */
-  function panneauAppel(ix, jour, tousSousCreneaux) {
-    if (!jour) {
-      ouvrirPanneau(h('p', {class: 'empty'}, 'Choisissez un jour avant de faire l’appel.'));
-      return;
-    }
-    const vus = new Set();
-    const lignes = [];
-    for (const groupe of groupesDuJour(ix, tousSousCreneaux)) {
-      for (const place of placesDuGroupe(m, groupe.id)) {
-        if (place.Benevole == null || vus.has(place.Benevole)) { continue; }
-        const benevole = ix.benevole.get(place.Benevole);
-        if (!benevole) { continue; }
-        vus.add(place.Benevole);
-        lignes.push({benevole, groupe});
-      }
-    }
-    lignes.sort((a, b) => a.benevole.Nom.localeCompare(b.benevole.Nom, 'fr'));
-
-    const panneau = h('div', {style: {display: 'flex', flexDirection: 'column', gap: '16px'}},
-      h('div', {class: 'side-panel__head'},
-        h('div', null,
-          h('h3', null, 'Appel'),
-          h('p', {class: 'topbar__subtitle'}, jour.libelle),
-        ),
-        h('button', {
-          class: 'btn btn--ghost btn--sm', type: 'button',
-          onclick: () => { appelOuvert = false; rafraichir(); },
-        }, 'Fermer'),
-      ),
-      lignes.length === 0
-        ? h('p', {class: 'empty'}, "Aucun bénévole positionné ce jour-là — positionnez des indicatifs avant de faire l'appel.")
-        : h('div', {class: 'card', style: {display: 'flex', flexDirection: 'column', gap: '6px'}},
-          ...lignes.map(({benevole, groupe}) => {
-            const present = presenceDuJour(benevole.id, jour.cle);
-            return h('div', {class: 'membre'},
-              h('span', {style: {flex: '1'}}, benevole.Nom),
-              h('span', {class: 'groupe-chip__code mono', style: {color: 'var(--text-faint)'}}, groupe.Code),
-              present === undefined ? null
-                : present ? h('span', {class: 'pill pill--ok'}, 'Présent·e')
-                  : h('span', {class: 'pill pill--danger'}, 'Absent·e'),
-              h('button', {
-                class: 'btn btn--ghost btn--sm', type: 'button', title: 'Marquer présent·e',
-                onclick: () => void ecrire(async () => { await m.definirPresence(benevole.id, jour.cle, true); }),
-              }, '✓'),
-              h('button', {
-                class: 'btn btn--ghost btn--sm', type: 'button', title: 'Marquer absent·e',
-                onclick: () => void ecrire(async () => { await m.definirPresence(benevole.id, jour.cle, false); }),
-              }, '✗'),
-            );
-          }),
-        ),
-      h('p', {class: 'view__intro', style: {marginTop: '8px', marginBottom: '0'}},
-        'Un pointage n’affecte ni ne libère aucune place : c’est un rappel visuel séparé de l’affectation. '
-          + 'Un binôme dont un membre pointé absent est toujours positionné passe en jaune sur la frise.',
-      ),
-    );
-    ouvrirPanneau(panneau);
-  }
-
   function executerCible(besoinId) {
     if (!modeCible) { return; }
     const cible = modeCible;
@@ -661,26 +580,6 @@ export function montrerIndicatifs(container, m) {
    *  voir l'en-tête de `domain/types.d.ts`, `Presence`). */
   function presenceDuJour(benevoleId, jourCle) {
     return m.presences.find((p) => p.Benevole === benevoleId && p.Jour === jourCle)?.Present;
-  }
-
-  /** Les indicatifs positionnés sur au moins un besoin du jour affiché —
-   *  même filtre que la frise (`tousSousCreneaux`, `rafraichir`), mais à
-   *  plat et dédupliqué par groupe plutôt que ligne de mission par ligne de
-   *  mission : sert de base à `panneauAppel`, qui liste les bénévoles à
-   *  pointer plutôt que les cases où ils sont positionnés. */
-  function groupesDuJour(ix, tousSousCreneaux) {
-    const scIds = new Set(tousSousCreneaux.map((sc) => sc.id));
-    const vus = new Set();
-    const groupes = [];
-    for (const position of m.positionsGroupe) {
-      const besoin = ix.besoin.get(position.Besoin);
-      if (!besoin || !scIds.has(besoin.Sous_creneau) || vus.has(position.Groupe)) { continue; }
-      const groupe = ix.groupe.get(position.Groupe);
-      if (!groupe) { continue; } // groupe orphelin : position ignorée, même garde que `couvertureBesoin`.
-      vus.add(position.Groupe);
-      groupes.push(groupe);
-    }
-    return groupes;
   }
 
   const desabonner = m.subscribe(rafraichir);

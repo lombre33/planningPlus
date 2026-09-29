@@ -76,8 +76,8 @@ GitHub Pages que `widget/` :
 ## Limites connues
 
 - **Plus de vérification de types.** `tsc` disparaît avec la compilation. Les
-  tests, dont un test de démarrage qui monte les 13 onglets sur deux jeux de
-  données, sont le filet. Des types en commentaires JSDoc, que `tsc --checkJs`
+  tests, dont un test de démarrage qui monte chaque vue des sept entrées du
+  menu sur deux jeux de données, sont le filet. Des types en commentaires JSDoc, que `tsc --checkJs`
   peut vérifier sans rien compiler, pourront être ajoutés plus tard.
 - **Chargement à froid plus lent.** Une cinquantaine de petits fichiers
   plutôt qu'un paquet : environ trois fois le temps de chargement du paquet

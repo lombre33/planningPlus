@@ -29,7 +29,7 @@ export const LIBELLE_INELIGIBILITE = {
   deja_occupe: 'déjà pris·e sur ces créneaux',
   autre_indicatif_meme_jour: 'tient déjà un autre indicatif sur ce créneau du jour',
   refus_mission: 'a refusé une de ses missions',
-  statut_absent: 'marqué·e absent·e pour tout le festival',
+  statut_absent: 'désisté·e pour tout le festival',
   absent_appel: 'pointé·e absent·e à l’appel ce jour-là',
 };
 
@@ -165,7 +165,9 @@ export function scenariosPourPlace(journee, moteur, placeId) {
   const impliques = new Set(scenarios.flatMap((sc) => sc.mouvements.map((mv) => mv.benevoleId)));
   const ecartes = [...raisons].filter(([b]) => !impliques.has(b)).map(([benevoleId, raison]) => ({benevoleId, raison}));
   for (const b of journee.absents) {
-    if (b !== occupant && journee.duJour.has(b)) { ecartes.push({benevoleId: b, raison: LIBELLE_INELIGIBILITE.absent_appel}); }
+    if (b !== occupant && journee.duJour.has(b)) {
+      ecartes.push({benevoleId: b, raison: journee.desistes?.has(b) ? LIBELLE_INELIGIBILITE.statut_absent : LIBELLE_INELIGIBILITE.absent_appel});
+    }
   }
   return {scenarios, ecartes, verrouillee: false};
 }
