@@ -7,9 +7,10 @@
     <!--
       Aucune étape de construction : le navigateur charge ces fichiers tels
       quels. Les feuilles de style vont dans l'ordre de la cascade (la seconde
-      complète la première). Toute nouvelle feuille importée par le code doit
-      être ajoutée ici et dans dev-bench.html : `node migration/convertir.mjs`
-      le contrôle, et `npm test` vérifie que chaque fichier cité existe.
+      complète la première). Une nouvelle feuille se déclare ici et dans
+      dev-bench.html, jamais par un `import` dans un module (le navigateur ne
+      sait pas l'importer) : `npm run site` échoue sur un fichier cité qui
+      n'existe pas et sur un import de feuille de style.
     -->
     <link rel="stylesheet" href="./src/style.css" />
     <link rel="stylesheet" href="./src/ui/impression.css" />

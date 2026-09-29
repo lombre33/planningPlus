@@ -64,6 +64,6 @@ jobs:
       # sert qu'à cette conversion, vient de widget/.
       - run: npm ci
         working-directory: widget
-      - name: Contrôler que widget-js reflète widget
+      - name: Contrôler que la V2 n'a pas manqué un changement de la V1
         run: |
-          node migration/convertir.mjs --verifier || echo "::warning::widget-js est en retard sur widget, relancer node migration/convertir.mjs puis committer widget-js/"
+          node migration/convertir.mjs --verifier || echo "::warning::widget/ a changé depuis la conversion de widget-js/ : voir migration/README.md (le sceau dit s'il suffit de relancer la conversion ou s'il faut reporter le changement à la main)"

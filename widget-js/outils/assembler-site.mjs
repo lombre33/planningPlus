@@ -13,8 +13,9 @@
  *
  * Les fichiers à copier se trouvent en suivant les imports (`import … from
  * './x.js'`, `export … from`, `import('./x.js')`) depuis les scripts de type
- * module de la page. Un import qui ne mène à aucun fichier arrête l'assemblage
- * plutôt que de publier un widget cassé.
+ * module de la page. Un import qui ne mène à aucun fichier, ou qui vise une
+ * feuille de style (un navigateur ne l'importe pas, elle se charge par <link>),
+ * arrête l'assemblage plutôt que de publier un widget cassé.
  */
 
 import {cp, mkdir, readFile, rm, stat} from 'node:fs/promises';
@@ -84,6 +85,7 @@ export async function assemblerSite({racine = RACINE_WIDGET, sortie, page = 'ind
     for (const specificateur of importsRelatifs(source)) {
       const cible = path.posix.normalize(path.posix.join(path.posix.dirname(courant), specificateur));
       if (cible.startsWith('..')) throw new Error(`${courant} : import qui sort du dossier du widget : ${specificateur}`);
+      if (cible.endsWith('.css')) throw new Error(`${courant} : import d'une feuille de style (${specificateur}) : un navigateur ne l'importe pas depuis un module, elle se charge par <link> dans ${page}`);
       if (!(await existe(cible))) throw new Error(`${courant} : import introuvable : ${specificateur}`);
       copies.add(cible);
       aVisiter.push(cible);

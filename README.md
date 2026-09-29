@@ -50,16 +50,18 @@ depuis un CDN, `grist-plugin-api.js` vendorisé dans le dépôt
 et aucune variable d'environnement ni secret dans le bundle — le widget ne
 lit que `window.grist`, fourni par l'instance Grist qui l'embarque.
 
-## Widget en JavaScript natif (essai)
+## V2 en JavaScript natif (en construction)
 
 Antoine a demandé le 2026-09-29 « une infra simple sans framework, sans
-compilation ». [`widget-js/`](widget-js/) est le même widget en JavaScript
-natif : les fichiers du dépôt sont ceux que le navigateur charge, sans
-paquet à construire. Il est publié à côté du widget de production, à
-`https://lombre33.github.io/planningPlus/js/`, pour être essayé dans Grist
-avant la bascule. Tant que les deux coexistent, `widget-js/src` est produit à
-partir de `widget/src` par `node migration/convertir.mjs` ; le déroulé de la
-conversion, ses preuves d'équivalence et la marche de la bascule sont dans
+compilation », puis « une V2 avec les corrections de la maquette et du code ».
+[`widget-js/`](widget-js/) est cette V2 : du JavaScript natif, où les fichiers du
+dépôt sont ceux que le navigateur charge, sans paquet à construire. Son point de
+départ est la conversion exacte de `widget/` (la V1, TypeScript, qui reste en
+production) ; la maquette B et les corrections des audits s'y ajoutent
+directement. Elle est publiée à côté de la V1, à
+`https://lombre33.github.io/planningPlus/js/`, pour être essayée dans Grist
+avant la bascule. La conversion, ses preuves d'équivalence, le sceau qui
+l'arrête dès que la V2 est modifiée et la marche de la bascule sont dans
 [`migration/README.md`](migration/README.md).
 
 ## Licence

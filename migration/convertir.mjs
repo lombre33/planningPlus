@@ -1,17 +1,24 @@
 /**
- * Convertit `widget/` (TypeScript) en `widget-js/` (JavaScript natif) : les
- * types sont effacés, les imports reçoivent leur extension, rien d'autre ne
- * change. Le dossier produit se sert tel quel, sans compilation.
+ * Convertit `widget/` (TypeScript, la V1) en `widget-js/` (JavaScript natif, la
+ * V2) : les types sont effacés, les imports reçoivent leur extension, rien
+ * d'autre ne change. Le dossier produit se sert tel quel, sans compilation.
  *
  * Usage (depuis la racine du dépôt, après `npm ci` dans `widget/`) :
  *
- *   node migration/convertir.mjs             écrit widget-js/src et widget-js/scripts
- *   node migration/convertir.mjs --verifier  n'écrit rien : signale ce qui a changé
+ *   node migration/convertir.mjs                 écrit widget-js/src et widget-js/scripts
+ *   node migration/convertir.mjs --verifier      n'écrit rien : signale ce qui a changé
+ *   node migration/convertir.mjs --sortie <dir>  écrit dans <dir> au lieu de widget-js/
+ *                                                (pour comparer, ou reporter un changement de widget/)
+ *   node migration/convertir.mjs --forcer        écrase widget-js/ même s'il a été modifié à la main
  *
- * Pendant la migration, `widget/` reste la référence et `widget-js/src` en est
- * le reflet. À la bascule, ce dossier `migration/` disparaît avec `widget/`.
+ * Tant que personne n'a modifié `widget-js/src` ni `scripts`, ces dossiers sont
+ * le reflet de `widget/`. Le sceau `widget-js/.sceau-conversion`, écrit avec
+ * eux, le constate : dès qu'un fichier a bougé à la main (la V2 se construit),
+ * la conversion refuse d'écraser et `--verifier` n'a plus rien à comparer. À
+ * la bascule, ce dossier `migration/` disparaît avec `widget/`.
  */
 
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import {createRequire} from 'node:module';
@@ -21,11 +28,20 @@ import {comparer, erreursDeSyntaxe, estVide} from './equivalence.mjs';
 import {appliquerRetouches, reecrireMentionsCss, reecrireMentionsTs} from './retouches.mjs';
 
 const racine = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const args = new Set(process.argv.slice(2));
+const argv = process.argv.slice(2);
+const args = new Set(argv);
 const verifierSeulement = args.has('--verifier');
+const forcer = args.has('--forcer');
+const positionSortie = argv.indexOf('--sortie');
+const dossierSortie = positionSortie >= 0 ? argv[positionSortie + 1] : null;
+if (positionSortie >= 0 && !dossierSortie) {
+  console.error('--sortie attend un dossier.');
+  process.exit(2);
+}
 
 const source = path.join(racine, 'widget');
-const cible = path.join(racine, 'widget-js');
+const miroir = path.join(racine, 'widget-js');
+const cible = dossierSortie ? path.resolve(dossierSortie) : miroir;
 const schemaPartage = path.join(racine, 'dev', 'seed', 'schema.mjs');
 
 let ts;
@@ -248,17 +264,48 @@ for (const [page, module] of [['index.html', 'src/main.js'], ['dev-bench.html', 
 const dossiersGeneres = [path.join(cible, 'src'), path.join(cible, 'scripts')];
 const existants = dossiersGeneres.flatMap((d) => (fs.existsSync(d) ? lister(d) : []));
 
+/**
+ * Sceau : empreinte de tous les fichiers produits (chemin et contenu), écrite avec eux dans
+ * `widget-js/.sceau-conversion`. Elle dit deux choses sans autre comparaison : si `widget-js/`
+ * a été modifié à la main depuis (l'empreinte du disque diffère du sceau) et si `widget/` a
+ * changé depuis (l'empreinte de la conversion d'aujourd'hui diffère du sceau).
+ */
+const fichierSceau = path.join(miroir, '.sceau-conversion');
+function empreinte(fichiers) {
+  const h = crypto.createHash('sha256');
+  for (const chemin of [...fichiers.keys()].sort()) {
+    const relatif = path.relative(cible, chemin).split(path.sep).join('/');
+    h.update(`${relatif}\0${crypto.createHash('sha256').update(fichiers.get(chemin)).digest('hex')}\n`);
+  }
+  return h.digest('hex');
+}
+const scelle = !dossierSortie;
+const sceauEcrit = scelle && fs.existsSync(fichierSceau) ? fs.readFileSync(fichierSceau, 'utf8').trim() : null;
+const modifieAMain = scelle && existants.length > 0 && sceauEcrit !== empreinte(new Map(existants.map((f) => [f, fs.readFileSync(f)])));
+const widgetChange = scelle && sceauEcrit !== empreinte(sorties);
+
+if (modifieAMain && !verifierSeulement && !forcer) {
+  console.error(`${path.relative(racine, miroir)}/ a été modifié depuis la dernière conversion : elle refuse d'écraser ce travail.
+  --sortie <dossier>  produit la conversion ailleurs, pour la comparer ou en reporter un changement de widget/
+  --forcer            écrase quand même`);
+  process.exit(2);
+}
+
 let enRetard = 0;
 if (verifierSeulement) {
-  for (const [chemin, contenu] of sorties) {
-    const actuel = fs.existsSync(chemin) ? fs.readFileSync(chemin) : null;
-    if (!actuel || !actuel.equals(Buffer.isBuffer(contenu) ? contenu : Buffer.from(contenu))) {
-      enRetard++;
-      console.log(`en retard : ${path.relative(racine, chemin)}`);
+  // Un dossier modifié à la main n'a plus de raison de ressembler à la conversion : on ne compare
+  // plus fichier par fichier, seul compte de savoir si widget/ a bougé depuis.
+  if (!modifieAMain) {
+    for (const [chemin, contenu] of sorties) {
+      const actuel = fs.existsSync(chemin) ? fs.readFileSync(chemin) : null;
+      if (!actuel || !actuel.equals(Buffer.isBuffer(contenu) ? contenu : Buffer.from(contenu))) {
+        enRetard++;
+        console.log(`en retard : ${path.relative(racine, chemin)}`);
+      }
     }
-  }
-  for (const f of existants) {
-    if (!sorties.has(f)) { enRetard++; console.log(`en trop : ${path.relative(racine, f)}`); }
+    for (const f of existants) {
+      if (!sorties.has(f)) { enRetard++; console.log(`en trop : ${path.relative(racine, f)}`); }
+    }
   }
 } else {
   for (const f of existants) if (!sorties.has(f)) fs.rmSync(f);
@@ -266,6 +313,7 @@ if (verifierSeulement) {
     fs.mkdirSync(path.dirname(chemin), {recursive: true});
     fs.writeFileSync(chemin, contenu);
   }
+  if (scelle) fs.writeFileSync(fichierSceau, `${empreinte(sorties)}\n`);
 }
 
 // --- Rapport ---------------------------------------------------------------
@@ -284,5 +332,18 @@ if (rapport.erreurs.length) {
   console.log(`\n${rapport.erreurs.length} erreur(s) :`);
   for (const e of rapport.erreurs) console.log(`  ${e}`);
 }
-if (verifierSeulement) console.log(enRetard ? `\n${enRetard} fichier(s) en retard sur widget/ : relancer la conversion.` : '\nwidget-js est à jour.');
-process.exit(rapport.erreurs.length || rapport.differences.length || (verifierSeulement && enRetard) ? 1 : 0);
+let enRetardSurWidget = false;
+if (verifierSeulement) {
+  if (modifieAMain) {
+    enRetardSurWidget = widgetChange;
+    console.log(sceauEcrit === null
+      ? '\nwidget-js/ n\'a pas de sceau de conversion : impossible de dire s\'il reflète widget/. Faire une conversion avec --forcer pour le sceller.'
+      : widgetChange
+        ? '\nwidget-js/ a été modifié depuis la conversion, et widget/ a changé depuis : reporter le changement dans widget-js/ (voir migration/README.md, « Reporter un changement de widget/ »).'
+        : '\nwidget-js/ a été modifié depuis la conversion (la V2 se construit) ; widget/ n\'a pas changé depuis : rien à reporter.');
+  } else {
+    enRetardSurWidget = enRetard > 0;
+    console.log(enRetard ? `\n${enRetard} fichier(s) en retard sur widget/ : widget-js/ n'a pas été modifié depuis la conversion, la relancer suffit (node migration/convertir.mjs).` : '\nwidget-js est à jour.');
+  }
+}
+process.exit(rapport.erreurs.length || rapport.differences.length || enRetardSurWidget ? 1 : 0);

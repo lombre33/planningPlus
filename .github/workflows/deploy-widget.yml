@@ -57,12 +57,13 @@ jobs:
       - run: npm test
         working-directory: widget-js
 
-      # Information seulement : tant que les deux dossiers coexistent, widget-js/
-      # est produit à partir de widget/ (migration/README.md). Un retard n'arrête
-      # pas la publication de widget/, il apparaît en avertissement.
-      - name: Contrôler que widget-js reflète widget
+      # Information seulement : tant que les deux dossiers coexistent, un
+      # changement de widget/ (la V1) que widget-js/ (la V2) n'a pas reçu
+      # apparaît en avertissement (migration/README.md, « Le sceau »). Il
+      # n'arrête pas la publication.
+      - name: Contrôler que la V2 n'a pas manqué un changement de la V1
         run: |
-          node migration/convertir.mjs --verifier || echo "::warning::widget-js est en retard sur widget, relancer node migration/convertir.mjs puis committer widget-js/"
+          node migration/convertir.mjs --verifier || echo "::warning::widget/ a changé depuis la conversion de widget-js/ : voir migration/README.md (le sceau dit s'il suffit de relancer la conversion ou s'il faut reporter le changement à la main)"
 
       # Le site publié : le paquet TypeScript à la racine, les seuls fichiers
       # dont le JavaScript natif a besoin sous js/ (l'assemblage échoue si un

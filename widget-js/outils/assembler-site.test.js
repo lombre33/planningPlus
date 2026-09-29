@@ -79,6 +79,14 @@ describe('assemblerSite', () => {
     await expect(assemblerSite({racine, sortie: path.join(racine, 'sortie')})).rejects.toThrow(/import introuvable : \.\/absent\.js/);
   });
 
+  it('arrête l\'assemblage sur l\'import d\'une feuille de style, que le navigateur ne sait pas charger ainsi', async () => {
+    const racine = await dossierTemporaire();
+    await writeFile(path.join(racine, 'index.html'), '<script type="module" src="./a.js"></script>');
+    await writeFile(path.join(racine, 'a.js'), "import './style.css';\n");
+    await writeFile(path.join(racine, 'style.css'), 'body {}\n');
+    await expect(assemblerSite({racine, sortie: path.join(racine, 'sortie')})).rejects.toThrow(/import d'une feuille de style \(\.\/style\.css\).*<link> dans index\.html/);
+  });
+
   it('arrête l\'assemblage sur une balise qui cite un fichier absent', async () => {
     const racine = await dossierTemporaire();
     await writeFile(path.join(racine, 'index.html'), '<link rel="stylesheet" href="./style.css" />');

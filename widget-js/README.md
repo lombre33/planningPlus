@@ -6,11 +6,12 @@ ceux que le navigateur charge, tels qu'ils sont écrits. Il n'y a rien à
 construire avant de les servir, et rien entre le code du dépôt et le code
 exécuté (choix d'Antoine, 2026-09-29).
 
-> **Où en est ce dossier.** Il est en essai à côté de `widget/` (TypeScript),
-> qui reste le widget en production. Tant que la bascule n'a pas eu lieu,
-> `src/` et `scripts/` sont produits à partir de `widget/` par
-> `node migration/convertir.mjs` : ne les modifier qu'à travers `widget/`, sans
-> quoi la conversion suivante écrase la modification. Voir
+> **Où en est ce dossier.** C'est la V2 de PlanningPlus, en construction. Son
+> point de départ est la conversion exacte de `widget/` (TypeScript, la V1, qui
+> reste le widget en production) ; s'y ajoutent la maquette B validée par
+> Antoine et les corrections des audits. `src/` et `scripts/` se modifient
+> directement : le sceau `.sceau-conversion` en prend acte et le convertisseur
+> (`node migration/convertir.mjs`) refuse dès lors de les écraser. Voir
 > [`../migration/README.md`](../migration/README.md), qui dit aussi comment se
 > fait la bascule. Ce paragraphe disparaît avec elle.
 
@@ -24,7 +25,8 @@ exécuté (choix d'Antoine, 2026-09-29).
 - **Feuilles de style par `<link>`.** Un navigateur ne sait pas importer du
   CSS depuis un module : `index.html` charge `src/style.css` puis
   `src/ui/impression.css`, dans cet ordre (la seconde complète la première).
-  Une nouvelle feuille se déclare dans `index.html` **et** `dev-bench.html`.
+  Une nouvelle feuille se déclare dans `index.html` **et** `dev-bench.html`,
+  jamais par un `import` dans un module (`npm run site` échoue dessus).
 - **Un seul script classique**, `vendor/grist-plugin-api.js` : il expose
   `window.grist` (voir `vendor/README.md` pour sa provenance et son empreinte).
 - **JSON importé avec son attribut** : `import jeu from './festival.json' with {type: 'json'}`
@@ -63,8 +65,8 @@ l'assemblage plutôt que de publier un widget cassé. Le workflow
 touche ce dossier, et publie le résultat sous `/js/` de la même adresse
 GitHub Pages que `widget/` :
 
-- widget en production (TypeScript) : <https://lombre33.github.io/planningPlus/>
-- widget en JavaScript natif (essai) : <https://lombre33.github.io/planningPlus/js/>
+- widget en production (V1, TypeScript) : <https://lombre33.github.io/planningPlus/>
+- V2 en JavaScript natif (essai) : <https://lombre33.github.io/planningPlus/js/>
 
 ## Limites connues
 
