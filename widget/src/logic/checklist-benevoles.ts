@@ -31,6 +31,14 @@
  * souhaite B, les deux lignes sont jugées sur cette paire) — une seule paire
  * cassée compte donc double en nombre de bénévoles, d'où le compteur de
  * paires distinctes renvoyé par `calculerChecklistBenevoles`.
+ *
+ * Troisième piège, trouvé par Antoine le 2026-09-25 12h21 : un souhait
+ * « voir cet artiste » (`Disponibilite.Statut === 'Artiste'`) se déclare
+ * quart par quart sur toute la durée du festival, pas seulement le jour
+ * affiché — `verifierArtistes` doit filtrer ces quarts sur le jour affiché
+ * (`quarts`, même Set que pour la disponibilité et le binôme), sous peine de
+ * juger un souhait d'un autre jour contre les quarts affectés du jour
+ * affiché, qui ne s'en approchent jamais : toujours "respecté" à tort.
  */
 
 import type {Id, StatutDisponibilite} from '../domain/types';
@@ -164,15 +172,20 @@ function compterPairesBinomeCassees(
 }
 
 function verifierArtistes(
-  ix: Index, m: Magasin, benevoleId: Id, quartsAffectes: readonly number[],
+  ix: Index, m: Magasin, benevoleId: Id, quartsAffectes: readonly number[], quarts: ReadonlySet<number>,
 ): VerdictCritere {
+  // Un souhait « voir cet artiste » se déclare quart par quart (`Quart_heure`),
+  // sur toute la durée du festival, pas seulement le jour affiché — sans ce
+  // filtre, un souhait pour un artiste d'un autre jour se retrouvait jugé ici
+  // contre les quarts affectés du jour affiché (qui ne s'en approchent jamais),
+  // et ressortait donc toujours "respecté" à tort (Antoine, 2026-09-25 12h21).
   const artisteIds = [...new Set(
     m.disponibilites
-      .filter((d) => d.Benevole === benevoleId && d.Statut === 'Artiste' && d.Artiste != null)
+      .filter((d) => d.Benevole === benevoleId && d.Statut === 'Artiste' && d.Artiste != null && quarts.has(d.Quart_heure))
       .map((d) => d.Artiste!),
   )];
   if (artisteIds.length === 0) {
-    return {etat: 'sans-objet', detail: 'Ne souhaite voir aucun artiste.'};
+    return {etat: 'sans-objet', detail: 'Ne souhaite voir aucun artiste ce jour-là.'};
   }
   const occupes = new Set(quartsAffectes);
   const vus: string[] = [];
@@ -226,7 +239,7 @@ export function calculerChecklistBenevoles(
       nom: nomDe(benevoleId),
       disponibilite: verifierDisponibilite(m, benevoleId, quartsAffectes, indexDispoReelle, affectationsBenevole),
       binome: verifierBinome(m, ix, benevoleId, nomDe, quarts, benevolesAffectesAujourdhui),
-      artiste: verifierArtistes(ix, m, benevoleId, quartsAffectes),
+      artiste: verifierArtistes(ix, m, benevoleId, quartsAffectes, quarts),
     });
   }
   return {

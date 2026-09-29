@@ -26,6 +26,13 @@ const Q4 = Q0 + 3600;
 const EQUIPE = {id: 1, Nom: 'Bénévoles', Couleur: '#000', Referent: null, Notes: ''};
 const MACRO = {id: 1, Nom: 'Jour 1', Debut: Q0, Fin: Q4 + 900};
 
+// Un second jour de festival, largement décalé (pas de coupure à 6h à gérer ici).
+const JOUR2_DEBUT = Q0 + 24 * 3600;
+const QB0 = JOUR2_DEBUT;
+const QB2 = JOUR2_DEBUT + 1800;
+const QB4 = JOUR2_DEBUT + 3600;
+const MACRO2 = {id: 2, Nom: 'Jour 2', Debut: QB0, Fin: QB4 + 900};
+
 function benevole(id: number, nom: string) {
   return {id, Nom: nom, Contact: '', Equipe: 1, Competences: [], Quota_heures_min: 0, Quota_heures_max: 99, Statut: 'Actif' as const, Notes: ''};
 }
@@ -45,6 +52,10 @@ function fixtureAssignation(idGroupe: number, benevoleId: number, debut: number,
 function jourUnique(m: InstanceType<typeof Magasin>) {
   const jours = regrouperParJour(m.macroCreneaux);
   return jours[0]!;
+}
+
+function jourContenant(m: InstanceType<typeof Magasin>, macroId: number) {
+  return regrouperParJour(m.macroCreneaux).find((j) => j.macros.some((ma) => ma.id === macroId))!;
 }
 
 describe('calculerChecklistBenevoles', () => {
@@ -226,6 +237,31 @@ describe('calculerChecklistBenevoles', () => {
       const [ligne] = calculerChecklistBenevoles(m, ix, jourUnique(m), new Map()).lignes;
       expect(ligne!.artiste.etat).toBe('viole');
       expect(ligne!.artiste.detail).toContain('DJ Test');
+    });
+
+    it('ignore un souhait d’artiste déclaré un autre jour (jamais jugé "respecté" par défaut faute de recoupement)', () => {
+      // Marie est affectée le Jour 1 (Q0-Q1) ET le Jour 2 (QB0-QB2, un
+      // indicatif distinct). Son souhait "voir DJ Test" est déclaré sur un
+      // quart du Jour 2 (QB2), pendant le passage de l'artiste, qui a lieu
+      // aussi le Jour 2. On calcule la checklist du JOUR 1 : ce souhait ne
+      // le concerne pas et ne doit ni y apparaître, ni y être jugé.
+      const a1 = fixtureAssignation(1, 1, Q0, Q1);
+      const a2 = fixtureAssignation(2, 1, QB0, QB2);
+      const m = new Magasin({
+        ...modeleVide(), macroCreneaux: [MACRO, MACRO2], equipes: [EQUIPE], benevoles: [benevole(1, 'Marie')],
+        missions: [...a1.missions, ...a2.missions],
+        sousCreneaux: [...a1.sousCreneaux, ...a2.sousCreneaux],
+        besoins: [...a1.besoins, ...a2.besoins],
+        groupes: [...a1.groupes, ...a2.groupes],
+        positionsGroupe: [...a1.positionsGroupe, ...a2.positionsGroupe],
+        places: [...a1.places, ...a2.places],
+        artistes: [{id: 1, Nom: 'DJ Test', Lieu: 0, Debut: QB0, Fin: QB4}],
+        disponibilites: [{Benevole: 1, Quart_heure: QB2, Statut: 'Artiste', Artiste: 1}],
+      });
+      const ix = indexer(m);
+      const [ligne] = calculerChecklistBenevoles(m, ix, jourContenant(m, 1), new Map()).lignes;
+      expect(ligne!.artiste.etat).toBe('sans-objet');
+      expect(ligne!.artiste.detail).toBe('Ne souhaite voir aucun artiste ce jour-là.');
     });
   });
 });
