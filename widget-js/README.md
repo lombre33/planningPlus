@@ -15,16 +15,63 @@ exécuté (choix d'Antoine, 2026-09-29).
 > [`../migration/README.md`](../migration/README.md), qui dit aussi comment se
 > fait la bascule. Ce paragraphe disparaît avec elle.
 
+## À quoi sert ce widget
+
+PlanningPlus construit un planning d'affectation de personnes sur des missions
+découpées en créneaux (le cas pilote : des bénévoles de festival), puis
+l'ajuste le jour J : agenda, missions, indicatifs, disponibilités,
+affectation, vue terrain, impressions. Le parcours est décrit dans le
+[README du dépôt](../README.md#à-quoi-sert-planningplus).
+
+## Accès au document, données conservées, sécurité
+
+Le widget demande l'accès complet au document (`requiredAccess: 'full'`) : il
+lit et écrit seize tables qu'aucune section ne lui lie, ce que seul ce niveau
+permet. Il crée lui-même les tables qui lui manquent et n'écrit que dans celles
+qu'il reconnaît comme siennes, à leur identifiant. Dans le navigateur, il ne
+conserve (`localStorage`) que la langue et le thème. Il ne fait aucune requête
+vers l'extérieur. Le détail (tables lues et écrites, limite connue,
+dépendances, garanties de sécurité) est dans le
+[README du dépôt](../README.md#accès-au-document).
+
+## Carte du code
+
+Par où commencer : `index.html` charge `vendor/grist-plugin-api.js` puis
+`src/main.js`, qui se connecte à Grist, lit le document (en créant au besoin
+les tables qui manquent) et monte `src/app.js`, le menu et les écrans.
+
+| Où | Rôle |
+| --- | --- |
+| `src/main.js` | Connexion à Grist (`grist.ready`), lecture du document, création des tables manquantes, branchement des écritures. |
+| `src/app.js` | Le cadre : menu, sous-vues, choix du jour, zone d'impression. |
+| `src/store.js` | Le `Magasin` : le modèle en mémoire, les modifications (qui passent par les écritures Grist) et la mise à jour des écrans. |
+| `src/grist/` | Tout ce qui parle à Grist : schéma des tables, lecture, écritures, création des tables, décodage des valeurs. |
+| `src/domain/types.d.ts` | Le modèle de données (déclarations de types seulement). |
+| `src/logic/` | Les calculs qui se déduisent du modèle sans le modifier : couverture, anomalies, scénarios, brouillon d'affectation, journée, impressions, import des disponibilités. |
+| `src/moteur/` | Le moteur d'affectation : éligibilité, score, solveur, anomalies. Sans DOM ni Grist. |
+| `src/views/` | Les écrans du menu. |
+| `src/ui/` | Les éléments communs : construction du DOM (`dom.js`), frise, fenêtres, Réglages, impression. |
+| `src/i18n.js`, `src/temps.js` | La langue, et les dates (jours, heures, fuseau de Paris). |
+| `outils/`, `scripts/` | Serveur local, assemblage du site, vérification de bout en bout contre une instance Grist. |
+| `dev-bench.html`, `src/dev-bench.js`, `src/dev/`, `src/donnees/` | Banc de développement sur un jeu de données de fichier : jamais publié. |
+
 ## Comment le code est organisé
 
 - **Modules ES natifs.** Chaque fichier `.js` de `src/` est un module ; les
   imports sont relatifs et portent leur extension (`import {h} from './dom.js'`),
   parce qu'un navigateur ne la devine pas.
+- **Quelques noms courts, partout les mêmes.** `h` construit un élément du DOM
+  (`src/ui/dom.js`), `t` et `tn` traduisent, `m` est le `Magasin` que chaque
+  écran reçoit, `ix` l'ensemble des index par identifiant (`indexer(m)`,
+  `src/logic/derive.js` : `ix.mission.get(id)`). Dans un rappel court
+  (`filter`, `map`, `sort`), le paramètre est l'initiale de ce que l'on parcourt :
+  `b` un bénévole, `d` une disponibilité, `p` une place.
 - **Aucune dépendance à l'exécution.** `package.json` ne liste que des outils
   de test (`vitest`, `jsdom`). Rien de ce qui est servi ne passe par npm.
 - **Feuilles de style par `<link>`.** Un navigateur ne sait pas importer du
-  CSS depuis un module : `index.html` charge `src/style.css` puis
-  `src/ui/impression.css`, dans cet ordre (la seconde complète la première).
+  CSS depuis un module : `index.html` charge `src/style.css`, puis
+  `src/ui/impression.css`, puis `src/views/affectation.css`, dans cet ordre
+  (chacune complète la précédente).
   Une nouvelle feuille se déclare dans `index.html` **et** `dev-bench.html`,
   jamais par un `import` dans un module (`npm run site` échoue dessus).
 - **Un seul script classique**, `vendor/grist-plugin-api.js` : il expose
@@ -82,6 +129,9 @@ GitHub Pages que `widget/` :
 
 ## Limites connues
 
+- **Pas de mise à jour en direct.** Le widget lit le document une fois, au
+  démarrage, et ne s'abonne pas à ses changements : une ligne modifiée dans
+  Grist pendant qu'il est ouvert n'apparaît qu'au rechargement de la page.
 - **Plus de vérification de types.** `tsc` disparaît avec la compilation. Les
   tests, dont un test de démarrage qui monte chaque vue des sept entrées du
   menu sur deux jeux de données, sont le filet. Des types en commentaires JSDoc, que `tsc --checkJs`

@@ -145,6 +145,8 @@ typées et des références explicites. Conséquences :
 - Aucun appel réseau sortant depuis le widget en dehors de l'API Grist :
   toutes les ressources (polices, scripts) sont embarquées, aucun CDN. Cohérent
   avec l'hébergement sur GitHub Pages, qui ne sert que des fichiers statiques.
+  Cela vaut aussi pour les valeurs du document : aucune ne sert d'adresse (la
+  couleur d'une équipe, seule valeur posée dans un style, est filtrée : §6.1).
 - Pas d'exécution de code dynamique (`eval`, `new Function`), échappement
   systématique de tout contenu issu des données lors du rendu.
 - Dépendances tierces minimales, épinglées, et justifiées une par une.
@@ -226,6 +228,15 @@ des contraintes A et B mais n'avait pas été rassemblée en un seul endroit.
 | `Benevoles` | `Nom`, `Contact`, `Equipe` (→ `Equipes`), `Quota_heures_min`, `Quota_heures_max`, `Statut` (actif / absent), `Notes` |
 | `Lieux` | `Nom`, `Description` |
 | `Artistes` | `Nom`, `Lieu` (→ `Lieux`, optionnel), `Debut`, `Fin` |
+
+**Couleur d'équipe (précisé le 2026-10-19, à la suite d'un audit).**
+`Equipes.Couleur` est un texte libre que tout éditeur du document peut remplir,
+et le widget le pose dans un style. Il n'en garde que les couleurs au sens
+strict : code hexadécimal, nom de couleur, `rgb(…)`, `hsl(…)` et apparentées.
+Toute autre valeur, un `url(…)` par exemple, s'affiche comme « aucune couleur »,
+sans rien modifier dans le document. Sans ce filtre, une valeur piégée ferait
+charger une adresse extérieure par le navigateur de chaque personne qui ouvre
+le planning (mesuré : 17 requêtes sur les 12 écrans).
 
 **Lieu facultatif (précisé le 2026-09-23).** `Missions.Lieu` et
 `Artistes.Lieu` sont tous deux optionnels : Antoine ne se sert pas encore des
