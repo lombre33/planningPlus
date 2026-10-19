@@ -764,7 +764,8 @@ export function montrerDisponibilites(container, m) {
       );
     });
 
-    const nouveauDefilement = h('div', {class: 'dispos-scroll'},
+    // `tabindex` : une zone qui défile doit pouvoir l'être au clavier.
+    const nouveauDefilement = h('div', {class: 'dispos-scroll', tabindex: '0'},
       h('table', {class: 'dispos-table'},
         h('thead', null, h('tr', null, ...theadCellules)),
         h('tbody', null, ...lignes),

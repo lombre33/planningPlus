@@ -216,7 +216,7 @@ function construireSectionEquipe(
   const table = construireTableEquipe(ix, missions, blocs, affectationsParMission, pxParQuart, pourEcran);
   return h('section', {class: 'impression-equipes__equipe'},
     h('h2', {class: 'impression-equipes__titre'}, equipe.Nom),
-    h('div', {class: 'impression-scroll papier'}, table),
+    h('div', {class: 'impression-scroll papier', tabindex: '0'}, table),
   );
 }
 

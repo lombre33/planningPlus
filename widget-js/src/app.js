@@ -271,7 +271,7 @@ export function demarrerApp(racine, magasin, sourceLibelle) {
   const vue = h('div', {class: 'view'});
   // Étape suivante : en bas des étapes 1 à 4, un bouton mène à la suivante.
   const suite = h('div', {class: 'app-suite'});
-  const main = h('div', {class: 'main'}, topbar, sousVues, bandeauJours, vue, suite);
+  const main = h('main', {class: 'main'}, topbar, sousVues, bandeauJours, vue, suite);
   const shell = h('div', {class: 'app-shell'}, rail, main);
 
   const vueActive = () => {

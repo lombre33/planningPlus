@@ -20,6 +20,7 @@ traductions({
   '+ Nouvelle mission': '+ New task',
   "Copier les créneaux d'un autre jour…": 'Copy slots from another day…',
   'Toutes les équipes': 'All teams',
+  'Filtrer par équipe': 'Filter by team',
   'Aucun sous-créneau ce jour.': 'No slots on this day.',
   'Donner à cette mission un créneau à elle, décalé ou en pause par rapport à la trame commune':
     'Give this task a slot of its own, shifted or paused relative to the shared grid',
@@ -118,7 +119,7 @@ export function montrerGrille(container, m) {
       // Une seule barre d'outils : le filtre à gauche, l'action principale à droite.
       h('div', {class: 'agenda__toolbar vue-outils'},
         h('select', {
-          class: 'select',
+          class: 'select', 'aria-label': t('Filtrer par équipe'),
           onchange: (e) => {
             const v = e.target.value;
             equipeFiltre = v === 'toutes' ? 'toutes' : Number(v);
@@ -546,7 +547,7 @@ export function montrerGrille(container, m) {
     const panneau = h('div', {style: {display: 'flex', flexDirection: 'column', gap: '14px'}},
       h('div', {class: 'side-panel__head'},
         h('div', null,
-          h('h3', null, mission.Nom),
+          h('h2', null, mission.Nom),
           h('p', {class: 'topbar__subtitle'}, sousCreneau.Libelle),
         ),
         h('button', {class: 'btn btn--ghost btn--sm', type: 'button', onclick: () => fermerPanneau()}, t('Fermer')),
@@ -560,7 +561,7 @@ export function montrerGrille(container, m) {
         : h('div', null, ...c.groupesPositionnes.map((g) => carteGroupe(g.groupe))),
       h('p', {class: 'view__intro', style: {margin: '0'}}, t('Pour pourvoir, échanger ou verrouiller une place : étape 5, Affectation.')),
     );
-    ouvrirPanneau(panneau);
+    ouvrirPanneau(panneau, mission.Nom);
   }
 
   function carteGroupe(groupe) {

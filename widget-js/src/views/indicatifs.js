@@ -46,6 +46,7 @@ traductions({
     'No tasks defined. Create your tasks before placing call signs.',
   'Aucune mission pour cette équipe. Changez de filtre ou créez-en une.': 'No tasks for this team. Change the filter or create one.',
   'Toutes les équipes': 'All teams',
+  'Filtrer par équipe': 'Filter by team',
   'Choisissez la case où repositionner {code}.': 'Choose the cell to move {code} to.',
   'Choisissez la case où ajouter une nouvelle position pour {code}.': 'Choose the cell for a new placement of {code}.',
   Annuler: 'Cancel',
@@ -192,7 +193,7 @@ export function montrerIndicatifs(container, m) {
   function barreOutils() {
     return h('div', {class: 'agenda__toolbar'},
       h('select', {
-        class: 'select',
+        class: 'select', 'aria-label': t('Filtrer par équipe'),
         onchange: (e) => {
           const v = e.target.value;
           equipeFiltre = v === 'toutes' ? 'toutes' : Number(v);
@@ -504,7 +505,7 @@ export function montrerIndicatifs(container, m) {
     const panneau = h('div', {style: {display: 'flex', flexDirection: 'column', gap: '16px'}},
       h('div', {class: 'side-panel__head'},
         h('div', null,
-          h('h3', {class: 'mono'}, groupe.Code),
+          h('h2', {class: 'mono'}, groupe.Code),
           h('p', {class: 'topbar__subtitle'}, `${equipe?.Nom ?? '?'} · ${tailleLibelle}`),
         ),
         h('button', {
@@ -610,7 +611,7 @@ export function montrerIndicatifs(container, m) {
         })()
         : null,
     );
-    ouvrirPanneau(panneau);
+    ouvrirPanneau(panneau, groupe.Code);
   }
 
   function executerCible(besoinId) {

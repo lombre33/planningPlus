@@ -775,7 +775,7 @@ button {
   gap: 12px;
 }
 
-.modal h3 {
+.modal h2 {
   font-size: 17px;
 }
 
@@ -945,6 +945,11 @@ button {
   justify-content: space-between;
   align-items: flex-start;
   gap: 10px;
+}
+
+/* Le titre est un h2 (sous le h1 de la vue, sans niveau sauté) à la taille qu'avait le h3. */
+.side-panel__head h2 {
+  font-size: 1.17em;
 }
 
 .candidat {
@@ -1993,7 +1998,7 @@ table.grille .mission-cell .lieu {
   font-size: 13px;
 }
 
-.desistement h4 {
+.desistement h3 {
   font-size: 13px;
   margin: 4px 0 0;
 }

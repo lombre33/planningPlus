@@ -367,26 +367,36 @@ function construireEcritureGrist(
   };
 }
 
+/** Écran de repli (document non reconnu, connexion échouée) : tout son
+ *  contenu dans un repère `main`, comme le fait l'application (`app.js`), pour
+ *  qu'un lecteur d'écran sache où commence la page. Rend le `main` à remplir. */
+function ouvrirEcranDeRepli(racine) {
+  racine.textContent = '';
+  const principal = document.createElement('main');
+  racine.append(principal);
+  return principal;
+}
+
 /** Un document connecté dont la création automatique des tables manquantes
  *  a échoué (droits insuffisants, écriture refusée) — jamais des vues
  *  silencieusement vides. */
 function afficherDocumentNonReconnu(racine, tablesManquantes) {
-  racine.textContent = '';
+  const principal = ouvrirEcranDeRepli(racine);
 
   const titre = document.createElement('h1');
   titre.textContent = t('Document Grist non reconnu');
-  racine.append(titre);
+  principal.append(titre);
 
   const libelles = tablesManquantes.map((id) => LIBELLE_PAR_TABLE[id] ?? id);
   const message = document.createElement('p');
   message.textContent = tablesManquantes.length === 1
     ? t("La table « {table} », attendue par PlanningPlus, n'a pas pu être créée automatiquement.", {table: libelles[0]})
     : t("Les tables suivantes, attendues par PlanningPlus, n'ont pas pu être créées automatiquement : {tables}.", {tables: libelles.join(', ')});
-  racine.append(message);
+  principal.append(message);
 
   const note = document.createElement('p');
   note.textContent = t("Vérifiez que ce widget dispose de l'accès complet au document, puis rechargez la page.");
-  racine.append(note);
+  principal.append(note);
 }
 
 /** Une erreur survenue après la confirmation qu'un document Grist réel
@@ -396,19 +406,19 @@ function afficherDocumentNonReconnu(racine, tablesManquantes) {
  *  plus que ce qui s'est passé (même règle que `remplacerSousCreneaux`) :
  *  le texte de l'erreur elle-même, pas une explication devinée. */
 function afficherErreurConnexion(racine, erreur) {
-  racine.textContent = '';
+  const principal = ouvrirEcranDeRepli(racine);
 
   const titre = document.createElement('h1');
   titre.textContent = t('Échec de connexion au document Grist');
-  racine.append(titre);
+  principal.append(titre);
 
   const message = document.createElement('p');
   message.textContent = erreur instanceof Error ? erreur.message : String(erreur);
-  racine.append(message);
+  principal.append(message);
 
   const note = document.createElement('p');
   note.textContent = t("Vérifiez que ce widget dispose de l'accès complet au document, puis rechargez la page.");
-  racine.append(note);
+  principal.append(note);
 }
 
 /**
