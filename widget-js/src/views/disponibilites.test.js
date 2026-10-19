@@ -9,7 +9,7 @@
  * monté par `app.js` au-dessus de la vue) — voir le test dédié.
  */
 import {beforeEach, describe, expect, it} from 'vitest';
-import {CLE_TABLE_BENEVOLES} from '../logic/parametres-benevoles.js';
+import {CLE_TABLE_BENEVOLES, cleColonneReponseMacroCreneau} from '../logic/parametres-benevoles.js';
 import {Magasin} from '../store.js';
 import {epochDepuisHeureLocale} from '../temps.js';
 import {montrerDisponibilites} from './disponibilites.js';
@@ -536,6 +536,35 @@ describe('panneau de réglages d’import (nouveau, 2026-09-23)', () => {
 
     expect(appele).toBe(false);
     expect(container.textContent).toContain('Associe au moins une colonne ci-dessus avant d\'importer.');
+  });
+
+  it("l'import ne redessine pas la grille à chaque remplacement : une fois, à la fin", async () => {
+    const modele = modeleDeTest();
+    modele.benevoles[0].Id_source = 101;
+    modele.benevoles[1].Id_source = 102;
+    const m = new Magasin(modele, [
+      {cle: CLE_TABLE_BENEVOLES, valeur: 'Reponses'},
+      {cle: cleColonneReponseMacroCreneau(1), valeur: 'Dispo_vendredi'},
+    ]);
+    const grillesPendantLImport = [];
+    m.brancherEcriture({
+      ...ecritureMuette,
+      valeursColonneBrute: async () => new Map([[101, 'Tout le créneau'], [102, 'Tout le créneau']]),
+      remplacerDisponibilites: async () => { grillesPendantLImport.push(container.querySelector('.dispos-scroll')); },
+    });
+    montrerDisponibilites(container, m);
+
+    Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent === "Réglages d'import").click();
+    await attendreMicrotaches();
+    Array.from(container.querySelectorAll('button'))
+      .find((b) => b.textContent === 'Importer les disponibilités').click();
+    await attendreMicrotaches();
+
+    expect(grillesPendantLImport).toHaveLength(2);
+    expect(grillesPendantLImport[1]).toBe(grillesPendantLImport[0]);
+    expect(container.textContent).toContain('Import terminé.');
+    expect(container.querySelector('.dispos-scroll')).not.toBe(grillesPendantLImport[0]);
   });
 });
 
