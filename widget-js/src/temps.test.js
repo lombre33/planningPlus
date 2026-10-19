@@ -1,5 +1,8 @@
 import {describe, expect, it} from 'vitest';
-import {cleJourFestival, epochJourFestivalEtHeure} from './temps.js';
+import {
+  cleJour, cleJourFestival, epochDepuisHeureLocale, epochJourFestivalEtHeure, libelleHeure, libelleJourCourt,
+  libelleJourLong,
+} from './temps.js';
 
 /**
  * `epochJourFestivalEtHeure` répare le décalage d'un jour constaté par
@@ -68,5 +71,48 @@ describe('epochJourFestivalEtHeure', () => {
 
   it('renvoie null pour une heure invalide, sans lever', () => {
     expect(epochJourFestivalEtHeure('2026-07-16', 'pas une heure')).toBeNull();
+  });
+});
+
+/**
+ * Un `Intl.DateTimeFormat` est cher à construire et ces libellés sont demandés
+ * des dizaines de milliers de fois par affichage : le module n'en construit
+ * qu'un par format, quel que soit le nombre d'appels.
+ */
+describe('formateurs de date réutilisés', () => {
+  const appeler = (i) => {
+    const instant = 1_784_000_000 + i * 900;
+    return [
+      libelleHeure(instant), cleJour(instant), libelleJourCourt(instant), libelleJourLong(instant),
+      epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 16, heures: i % 24, minutes: 0}),
+    ];
+  };
+
+  it("ne construit pas de nouveau formateur à chaque appel, et rend les mêmes libellés", () => {
+    const original = Intl.DateTimeFormat;
+    const attendu = appeler(3);
+    let construits = 0;
+    Intl.DateTimeFormat = function formateurCompte(...args) {
+      construits += 1;
+      return new original(...args);
+    };
+    try {
+      appeler(0); // un premier passage remplit le cache (déjà plein si un test précédent a servi)
+      const apresPremierPassage = construits;
+      for (let i = 0; i < 500; i++) { appeler(i); }
+      expect(construits).toBe(apresPremierPassage);
+      expect(appeler(3)).toEqual(attendu);
+    } finally {
+      Intl.DateTimeFormat = original;
+    }
+  });
+
+  it('donne les libellés attendus en heure de Paris', () => {
+    // 2026-07-16 22:30 UTC = vendredi 17 juillet 2026, 00:30 à Paris (UTC+2 en été).
+    const instant = Date.UTC(2026, 6, 16, 22, 30) / 1000;
+    expect(libelleHeure(instant)).toBe('00:30');
+    expect(cleJour(instant)).toBe('2026-07-17');
+    expect(libelleJourLong(instant)).toBe('Vendredi 17 juillet');
+    expect(epochDepuisHeureLocale({annee: 2026, mois: 7, jour: 17, heures: 0, minutes: 30})).toBe(instant);
   });
 });

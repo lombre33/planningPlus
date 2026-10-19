@@ -56,7 +56,7 @@ describe('Réglages', () => {
 
   it('s’ouvre sur l’onglet Langue, puis Thème et Crédits, comme Publipostage+', () => {
     ouvrirReglages();
-    expect(document.querySelector('.modal h3').textContent).toBe('Réglages');
+    expect(document.querySelector('.modal h2').textContent).toBe('Réglages');
     expect([...document.querySelectorAll('[role="tab"]')].map((b) => b.textContent)).toEqual(['Langue', 'Thème', 'Crédits']);
     expect(onglet('Langue').getAttribute('aria-selected')).toBe('true');
     expect(panneauVisible()).toHaveLength(1);
@@ -117,7 +117,7 @@ describe('Réglages', () => {
     expect(langueMemorisee()).toBe('en');
     expect(racineHtml().lang).toBe('en');
     expect(document.querySelectorAll('.modal')).toHaveLength(1);
-    expect(document.querySelector('.modal h3').textContent).toBe('Settings');
+    expect(document.querySelector('.modal h2').textContent).toBe('Settings');
     expect([...document.querySelectorAll('[role="tab"]')].map((b) => [b.textContent, b.getAttribute('aria-selected')]))
       .toEqual([['Language', 'true'], ['Theme', 'false'], ['Credits', 'false']]);
     expect(document.querySelector('input[name="reglages-langue"][value="en"]').checked).toBe(true);
@@ -127,7 +127,7 @@ describe('Réglages', () => {
     const francais = document.querySelector('input[name="reglages-langue"][value="fr"]');
     francais.checked = true;
     francais.dispatchEvent(new Event('change', {bubbles: true}));
-    expect(document.querySelector('.modal h3').textContent).toBe('Réglages');
+    expect(document.querySelector('.modal h2').textContent).toBe('Réglages');
     expect(racineHtml().lang).toBe('fr');
   });
 
@@ -139,6 +139,6 @@ describe('Réglages', () => {
     expect(logo.getAttribute('alt')).toBe('Grist Factory');
     expect(logo.getAttribute('src')).toBe('./img/grist-factory-logo.jpg');
     roue.click();
-    expect(document.querySelector('.modal h3')?.textContent).toBe('Réglages');
+    expect(document.querySelector('.modal h2')?.textContent).toBe('Réglages');
   });
 });

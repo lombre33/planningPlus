@@ -51,6 +51,27 @@ export function decoderTexte(valeur) {
   return typeof valeur === 'string' ? valeur : '';
 }
 
+/**
+ * Une couleur que le navigateur peut poser sans rien aller chercher : hexadécimale,
+ * nommée, ou une des fonctions de couleur (`rgb(…)`, `hsl(…)`, `oklch(…)`…). Le contenu
+ * d'une fonction n'admet aucune parenthèse : ni `url(…)`, ni `var(--x, url(…))` n'y passent.
+ */
+const COULEUR_AFFICHABLE = /^(?:#[0-9a-f]{3,8}|[a-z]{3,30}|(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\([0-9a-z.,%\s/+-]{1,60}\))$/i;
+
+/**
+ * Décode une couleur d'affichage (`Equipes.Couleur`), chaîne vide (« aucune couleur »)
+ * si ce n'est pas une couleur au sens de `COULEUR_AFFICHABLE`.
+ *
+ * La colonne est du texte libre, que tout éditeur du document peut remplir, et les vues
+ * la posent telle quelle dans `style.background`, qui accepte `url(…)` : le navigateur de
+ * chaque personne qui ouvre le planning irait chercher l'adresse (mesuré le 2026-10-19 :
+ * 17 requêtes vers un hôte extérieur sur les 12 écrans, avant ce filtre).
+ */
+export function decoderCouleur(valeur) {
+  const texte = decoderTexte(valeur).trim();
+  return COULEUR_AFFICHABLE.test(texte) ? texte : '';
+}
+
 /** Décode une colonne `Numeric` optionnelle (`Quota_heures_max`, `Score`, ...). */
 export function decoderNumeriqueOptionnel(valeur) {
   return typeof valeur === 'number' ? valeur : null;

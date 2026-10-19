@@ -99,8 +99,29 @@ export const ICONES = {
   reglages: 'M15.2 12a3.2 3.2 0 1 1-6.4 0 3.2 3.2 0 0 1 6.4 0ZM19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z',
 };
 
+let dernierNumeroDeChamp = 0;
+
+/** Relie chaque `<label>` d'un `.field` au champ qui le suit (`for` et `id`).
+ *  Les fenêtres posent l'étiquette à côté du champ sans les lier
+ *  (`h('div', {class: 'field'}, h('label', null, 'Nom'), champ)`) : un lecteur
+ *  d'écran annonçait alors un champ sans nom. Un champ déjà nommé (étiquette
+ *  liée, `aria-label`) n'est pas touché ; rien ne change à l'écran. */
+function lierEtiquettes(racine) {
+  for (const champ of racine.querySelectorAll('.field')) {
+    const etiquette = Array.from(champ.children).find((e) => e.tagName === 'LABEL');
+    const controle = Array.from(champ.children).find((e) => ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.tagName));
+    if (!etiquette || !controle || etiquette.htmlFor || controle.getAttribute('aria-label')) { continue; }
+    if (!controle.id) {
+      dernierNumeroDeChamp += 1;
+      controle.id = `champ-${dernierNumeroDeChamp}`;
+    }
+    etiquette.htmlFor = controle.id;
+  }
+}
+
 /** Ouvre une boîte de dialogue modale simple ; `contenu` reçoit une fonction
- *  `fermer()` à appeler pour la refermer. */
+ *  `fermer()` à appeler pour la refermer. Le titre est un `h2` : la fenêtre
+ *  vient sous le `h1` de la vue, sans niveau sauté. */
 export function ouvrirModal(titre, contenu) {
   const fermer = () => backdrop.remove();
   const backdrop = h('div', {
@@ -109,17 +130,20 @@ export function ouvrirModal(titre, contenu) {
     onkeydown: (e) => { if (e.key === 'Escape') { fermer(); } },
   },
     h('div', {class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': titre},
-      h('h3', null, titre),
+      h('h2', null, titre),
       contenu(fermer),
     ),
   );
+  lierEtiquettes(backdrop);
   document.body.append(backdrop);
 }
 
-/** Ouvre (ou remplace) le panneau latéral fixe. */
-export function ouvrirPanneau(contenu) {
+/** Ouvre (ou remplace) le panneau latéral fixe. C'est une région
+ *  complémentaire de la page, que `titre` nomme pour les lecteurs d'écran :
+ *  posé hors du `<main>`, son contenu n'appartiendrait à aucune région. */
+export function ouvrirPanneau(contenu, titre) {
   document.getElementById('panneau-lateral')?.remove();
-  const panneau = h('div', {id: 'panneau-lateral', class: 'side-panel'}, contenu);
+  const panneau = h('aside', {id: 'panneau-lateral', class: 'side-panel', 'aria-label': titre}, contenu);
   document.body.append(panneau);
   return () => panneau.remove();
 }

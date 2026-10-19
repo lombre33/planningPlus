@@ -13,15 +13,40 @@ export const TIMEZONE = 'Europe/Paris';
 export const PAS_MINUTES = 15;
 export const PAS_SECONDES = PAS_MINUTES * 60;
 
-function decalageMinutes(instantMs, fuseau) {
-  const format = new Intl.DateTimeFormat('en-US', {
-    timeZone: fuseau,
+/** Les options de chaque format de date de ce module. */
+const OPTIONS_FORMAT = {
+  decalage: {
     hour12: false,
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit', second: '2-digit',
-  });
+  },
+  jourCourt: {weekday: 'short', day: '2-digit', month: 'short'},
+  jourLong: {weekday: 'long', day: '2-digit', month: 'long'},
+  heure: {hour: '2-digit', minute: '2-digit', hour12: false},
+  jourCivil: {year: 'numeric', month: '2-digit', day: '2-digit'},
+};
+
+const formateurs = new Map();
+
+/** Un `Intl.DateTimeFormat` coûte cher à construire (de l'ordre de 0,1 ms avec
+ *  un fuseau) et ne garde aucun état : on en construit un par (format, langue,
+ *  fuseau) et on le réutilise. Ces libellés sont demandés des dizaines de
+ *  milliers de fois par affichage (une case par bénévole et par quart
+ *  d'heure) : mesuré avec 70 bénévoles, en construire un à chaque appel
+ *  prenait plus de la moitié du temps de dessin des vues Disponibilités et
+ *  Désistements. */
+function formateur(format, langueFormat, fuseau) {
+  const cle = `${format}|${langueFormat}|${fuseau}`;
+  const deja = formateurs.get(cle);
+  if (deja !== undefined) { return deja; }
+  const nouveau = new Intl.DateTimeFormat(langueFormat, {timeZone: fuseau, ...OPTIONS_FORMAT[format]});
+  formateurs.set(cle, nouveau);
+  return nouveau;
+}
+
+function decalageMinutes(instantMs, fuseau) {
   const parties = Object.fromEntries(
-    format.formatToParts(new Date(instantMs)).map((p) => [p.type, p.value]),
+    formateur('decalage', 'en-US', fuseau).formatToParts(new Date(instantMs)).map((p) => [p.type, p.value]),
   );
   const commeUtc = Date.UTC(
     Number(parties.year), Number(parties.month) - 1, Number(parties.day),
@@ -42,22 +67,16 @@ export function epochDepuisHeureLocale(
 
 /** Jour et mois dans la langue de l'interface (`i18n.js`). */
 export function libelleJourCourt(epochSecondes, fuseau = TIMEZONE) {
-  return new Intl.DateTimeFormat(locale(), {
-    timeZone: fuseau, weekday: 'short', day: '2-digit', month: 'short',
-  }).format(new Date(epochSecondes * 1000));
+  return formateur('jourCourt', locale(), fuseau).format(new Date(epochSecondes * 1000));
 }
 
 export function libelleJourLong(epochSecondes, fuseau = TIMEZONE) {
-  const s = new Intl.DateTimeFormat(locale(), {
-    timeZone: fuseau, weekday: 'long', day: '2-digit', month: 'long',
-  }).format(new Date(epochSecondes * 1000));
+  const s = formateur('jourLong', locale(), fuseau).format(new Date(epochSecondes * 1000));
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 export function libelleHeure(epochSecondes, fuseau = TIMEZONE) {
-  return new Intl.DateTimeFormat('fr-FR', {
-    timeZone: fuseau, hour: '2-digit', minute: '2-digit', hour12: false,
-  }).format(new Date(epochSecondes * 1000));
+  return formateur('heure', 'fr-FR', fuseau).format(new Date(epochSecondes * 1000));
 }
 
 export function libelleHeurePlage(debut, fin, fuseau = TIMEZONE) {
@@ -66,9 +85,7 @@ export function libelleHeurePlage(debut, fin, fuseau = TIMEZONE) {
 
 /** Clé de jour civil (YYYY-MM-DD en heure locale), pour grouper par jour. */
 export function cleJour(epochSecondes, fuseau = TIMEZONE) {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: fuseau, year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(new Date(epochSecondes * 1000));
+  return formateur('jourCivil', 'en-CA', fuseau).format(new Date(epochSecondes * 1000));
 }
 
 /** Minuit local du jour civil d'un horodatage. */

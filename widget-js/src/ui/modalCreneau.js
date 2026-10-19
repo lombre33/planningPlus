@@ -18,6 +18,7 @@ traductions({
   'Aucun sous-créneau pour le moment.': 'No slots yet.',
   '{n} sous-créneau.': '{n} slot.',
   '{n} sous-créneaux.': '{n} slots.',
+  'Durée des sous-créneaux': 'Slot length',
   '1 h par sous-créneau': '1 h per slot',
   '1 h 30 par sous-créneau': '1 h 30 min per slot',
   '2 h par sous-créneau': '2 h per slot',
@@ -69,7 +70,7 @@ function dureeDominanteMinutes(sousCreneaux) {
 }
 
 function champDureeSousCreneau(dureeInitiale) {
-  return h('select', {class: 'select'},
+  return h('select', {class: 'select', 'aria-label': t('Durée des sous-créneaux')},
     h('option', {value: '60', selected: dureeInitiale === 60}, t('1 h par sous-créneau')),
     h('option', {value: '90', selected: dureeInitiale === 90}, t('1 h 30 par sous-créneau')),
     h('option', {value: '120', selected: dureeInitiale === 120}, t('2 h par sous-créneau')),

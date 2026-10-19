@@ -31,7 +31,7 @@ describe('Bénévoles › Désistements', () => {
 
     bouton(ligneDe('Léa Martin'), 'Se désiste…').click();
     const modal = document.querySelector('.modal');
-    expect(texte(modal.querySelector('h3'))).toBe('Désistement de Léa Martin');
+    expect(texte(modal.querySelector('h2'))).toBe('Désistement de Léa Martin');
     const [liberees, gardees] = [...modal.querySelectorAll('.desistement__places')].map((ul) => [...ul.children].map(texte));
     expect(liberees).toEqual([expect.stringMatching(/^A1 #1 · .+ : Bar 14:00–18:00$/)]);
     expect(gardees).toEqual([expect.stringMatching(/^A2 #1 · .+ : Bar 18:00–22:00$/)]);

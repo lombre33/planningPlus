@@ -123,7 +123,7 @@ export function montrerDesistements(container, m) {
       h('p', null, t('{nom} ne viendra pas du tout : ne sera plus proposé·e par les scénarios ni par l’algorithme, sur aucun jour.', {nom: nom(benevole)})),
       liberees.length > 0
         ? [
-          h('h4', null, tn(liberees.length, '{n} place libérée, tous jours confondus', '{n} places libérées, tous jours confondus')),
+          h('h3', null, tn(liberees.length, '{n} place libérée, tous jours confondus', '{n} places libérées, tous jours confondus')),
           h('ul', {class: 'desistement__places'}, ...liberees.map((p) => lignePlace(m, ix, p))),
           h('p', {class: 'desistement__note'}, liberees.length > 1
             ? t('Elles passent « à pourvoir » dans la table du jour (étape 5).')
@@ -132,7 +132,7 @@ export function montrerDesistements(container, m) {
         : h('p', {class: 'desistement__note'}, gardees.length > 0 ? t('Aucune place à libérer.') : t('Ne tient aucune place : rien à libérer.')),
       gardees.length > 0
         ? [
-          h('h4', null, tn(gardees.length, '{n} place verrouillée reste à son nom', '{n} places verrouillées restent à son nom')),
+          h('h3', null, tn(gardees.length, '{n} place verrouillée reste à son nom', '{n} places verrouillées restent à son nom')),
           h('ul', {class: 'desistement__places'}, ...gardees.map((p) => lignePlace(m, ix, p))),
           h('p', {class: 'desistement__note'}, gardees.length > 1
             ? t('Corrigées à la main, elles ne sont jamais touchées : elles passent « à couvrir » dans la table du jour, où les déverrouiller pour les pourvoir.')

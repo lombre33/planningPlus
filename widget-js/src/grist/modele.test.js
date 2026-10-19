@@ -128,6 +128,14 @@ describe('construireModele', () => {
     expect(sansReferent.equipes).toEqual([{id: 11, Nom: 'Logistique', Couleur: '', Referent: null, Notes: ''}]);
   });
 
+  it('ne reprend pas comme couleur d\'équipe une valeur qui ferait charger une adresse extérieure', () => {
+    const piegee = construireModele({
+      Equipes: {id: [12], Nom: ['Bar'], Couleur: ['url(https://exfil.example/c.png)'], Referent: [0], Notes: ['']},
+    });
+    expect(piegee.equipes[0].Couleur).toBe('');
+    expect(piegee.equipes[0].Nom).toBe('Bar');
+  });
+
   it('décode un lieu', () => {
     expect(modele.lieux).toEqual([{id: 40, Nom: 'Grande scène', Description: 'Scène principale'}]);
   });

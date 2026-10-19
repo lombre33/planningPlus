@@ -1,5 +1,6 @@
 import {describe, expect, it} from 'vitest';
-import {construireDonneesPlanning, construireLignesParametres, zipperTable} from './lecture.js';
+import {construireDonneesPlanning, construireLignesParametres, lireDocument, zipperTable} from './lecture.js';
+import {LIBELLE_PAR_TABLE} from './tables.js';
 
 describe('zipperTable', () => {
   it('dézippe une table colonnaire en tableau de lignes', () => {
@@ -177,5 +178,58 @@ describe('construireLignesParametres', () => {
 
   it('rend un tableau vide si la table Parametres n\'existe pas encore', () => {
     expect(construireLignesParametres({})).toEqual([]);
+  });
+});
+
+describe('lireDocument', () => {
+  const tablesDuDocument = Object.values(LIBELLE_PAR_TABLE);
+
+  it('lance les lectures de tables ensemble plutôt que l’une après l’autre', async () => {
+    let enCours = 0;
+    let maxEnCours = 0;
+    const lues = [];
+    const docApi = {
+      listTables: async () => tablesDuDocument,
+      fetchTable: async (id) => {
+        lues.push(id);
+        enCours += 1;
+        maxEnCours = Math.max(maxEnCours, enCours);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        enCours -= 1;
+        return {id: []};
+      },
+    };
+    const {resolution} = await lireDocument(docApi);
+    const nbTables = Object.keys(resolution).length;
+    expect(nbTables).toBeGreaterThan(1);
+    expect(lues).toHaveLength(nbTables);
+    expect(maxEnCours).toBe(nbTables);
+  });
+
+  it('range chaque table à sa place, même si les réponses arrivent dans le désordre', async () => {
+    const docApi = {
+      listTables: async () => tablesDuDocument,
+      // L'équipe répond la dernière : une lecture mal rangée la perdrait ou la mettrait ailleurs.
+      fetchTable: async (id) => {
+        await new Promise((resolve) => setTimeout(resolve, id === LIBELLE_PAR_TABLE.Equipes ? 20 : 1));
+        return id === LIBELLE_PAR_TABLE.Equipes
+          ? {id: [1], Nom: ['Accueil'], Couleur: ['#ff0000'], Referent: [0], Notes: ['']}
+          : {id: []};
+      },
+    };
+    const {modele} = await lireDocument(docApi);
+    expect(modele.equipes.map((e) => e.Nom)).toEqual(['Accueil']);
+    expect(modele.missions).toEqual([]);
+  });
+
+  it('échoue, avec le message de Grist, si une lecture échoue', async () => {
+    const docApi = {
+      listTables: async () => tablesDuDocument,
+      fetchTable: async (id) => {
+        if (id === LIBELLE_PAR_TABLE.Missions) { throw new Error('Table inaccessible'); }
+        return {id: []};
+      },
+    };
+    await expect(lireDocument(docApi)).rejects.toThrow('Table inaccessible');
   });
 });
