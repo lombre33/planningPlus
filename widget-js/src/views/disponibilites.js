@@ -787,7 +787,11 @@ export function montrerDisponibilites(container, m) {
     }
   }
 
-  const desabonner = m.subscribe(rafraichir);
+  // Chaque remplacement de l'import notifie le magasin ; redessiner la grille à chacun
+  // (un par bénévole et par macro-créneau associé) prenait l'essentiel du temps : 72 s
+  // pour 70 bénévoles, 11 s sans (mesuré le 2026-10-19). Le `finally` de
+  // `importerDisponibilites` redessine une fois, à la fin.
+  const desabonner = m.subscribe(() => { if (!importEnCours) { rafraichir(); } });
   rafraichir();
   return desabonner;
 }
