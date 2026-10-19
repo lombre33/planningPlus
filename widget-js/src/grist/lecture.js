@@ -159,7 +159,9 @@ export function construireLignesParametres(document) {
 
 /**
  * Lit tout le document via l'API du plugin (une requête `fetchTable` par
- * table canonique résolue, voir `./tables`) et le convertit en
+ * table canonique résolue, voir `./tables`, lancées ensemble : les lectures
+ * sont indépendantes, et chacune est un aller-retour avec Grist) et le
+ * convertit en
  * `DonneesPlanning` (moteur), `Modele` (UI, `./modele`) + lignes
  * `Parametres`. Seule fonction de ce module qui parle réellement à Grist.
  *
@@ -176,10 +178,10 @@ export async function lireDocument(
 ) {
   const idsReels = await docApi.listTables();
   const resolution = resoudreIdsTables(idsReels);
-  const document = {};
-  for (const [canonique, reel] of Object.entries(resolution)) {
-    document[canonique] = await docApi.fetchTable(reel);
-  }
+  const lectures = await Promise.all(
+    Object.entries(resolution).map(async ([canonique, reel]) => [canonique, await docApi.fetchTable(reel)]),
+  );
+  const document = Object.fromEntries(lectures);
   return {
     donnees: construireDonneesPlanning(document),
     modele: construireModele(document),
