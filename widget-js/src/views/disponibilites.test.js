@@ -78,6 +78,7 @@ const ecritureMuette = {
   tablesDocument: async () => [],
   definirParametre: async () => {},
   remplacerDisponibilites: async () => {},
+  remplacerDisponibilitesLot: async () => {},
   peuplerBenevoles: async () => ({benevoles: [], crees: 0, actualises: 0}),
   creerAffinites: async () => [],
   definirPresence: async () => 1,
@@ -538,33 +539,108 @@ describe('panneau de réglages d’import (nouveau, 2026-09-23)', () => {
     expect(container.textContent).toContain('Associe au moins une colonne ci-dessus avant d\'importer.');
   });
 
-  it("l'import ne redessine pas la grille à chaque remplacement : une fois, à la fin", async () => {
+  /** Un document de `nombre` bénévoles, tous importés depuis la colonne `Dispo_vendredi` de la table `Reponses`. */
+  function documentAImporter(nombre) {
     const modele = modeleDeTest();
-    modele.benevoles[0].Id_source = 101;
-    modele.benevoles[1].Id_source = 102;
+    modele.benevoles = Array.from({length: nombre}, (_, i) => ({
+      id: i + 1, Nom: `Bénévole ${i + 1}`, Contact: '', Equipe: 1, Competences: [], Quota_heures_min: 0,
+      Quota_heures_max: 40, Statut: 'Actif', Notes: '', Id_source: 100 + i,
+    }));
     const m = new Magasin(modele, [
       {cle: CLE_TABLE_BENEVOLES, valeur: 'Reponses'},
       {cle: cleColonneReponseMacroCreneau(1), valeur: 'Dispo_vendredi'},
     ]);
-    const grillesPendantLImport = [];
-    m.brancherEcriture({
-      ...ecritureMuette,
-      valeursColonneBrute: async () => new Map([[101, 'Tout le créneau'], [102, 'Tout le créneau']]),
-      remplacerDisponibilites: async () => { grillesPendantLImport.push(container.querySelector('.dispos-scroll')); },
-    });
-    montrerDisponibilites(container, m);
+    return {modele, m};
+  }
 
+  async function importer(m) {
+    montrerDisponibilites(container, m);
     Array.from(container.querySelectorAll('button'))
       .find((b) => b.textContent === "Réglages d'import").click();
     await attendreMicrotaches();
     Array.from(container.querySelectorAll('button'))
       .find((b) => b.textContent === 'Importer les disponibilités').click();
     await attendreMicrotaches();
+  }
 
-    expect(grillesPendantLImport).toHaveLength(2);
+  const toutLeCreneau = async () => new Map(Array.from({length: 400}, (_, i) => [100 + i, 'Tout le créneau']));
+
+  it("l'import envoie d'un seul lot les remplacements de quelques bénévoles : un par bénévole et par macro-créneau", async () => {
+    const {modele, m} = documentAImporter(2);
+    const macro = modele.macroCreneaux[0];
+    const lots = [];
+    m.brancherEcriture({
+      ...ecritureMuette,
+      valeursColonneBrute: toutLeCreneau,
+      remplacerDisponibilitesLot: async (lot) => { lots.push(lot); },
+    });
+
+    await importer(m);
+
+    expect(lots).toHaveLength(1);
+    expect(lots[0].map((r) => [r.benevoleId, r.debut, r.fin, r.nouvelles.length]))
+      .toEqual([[1, macro.Debut, macro.Fin, 2], [2, macro.Debut, macro.Fin, 2]]);
+    expect(lots[0][0].nouvelles.map((d) => [d.Benevole, d.Quart_heure, d.Statut]))
+      .toEqual([[1, macro.Debut, 'Disponible'], [1, macro.Debut + 900, 'Disponible']]);
+    expect(container.textContent).toContain('Import terminé.');
+  });
+
+  it("l'import coupe ses envois à 100 remplacements et ne redessine pas la grille entre deux : une fois, à la fin", async () => {
+    const {m} = documentAImporter(250);
+    const lots = [];
+    const grillesPendantLImport = [];
+    m.brancherEcriture({
+      ...ecritureMuette,
+      valeursColonneBrute: toutLeCreneau,
+      remplacerDisponibilitesLot: async (lot) => {
+        lots.push(lot.length);
+        grillesPendantLImport.push(container.querySelector('.dispos-scroll'));
+      },
+    });
+
+    await importer(m);
+
+    expect(lots).toEqual([100, 100, 50]);
     expect(grillesPendantLImport[1]).toBe(grillesPendantLImport[0]);
+    expect(grillesPendantLImport[2]).toBe(grillesPendantLImport[0]);
     expect(container.textContent).toContain('Import terminé.');
     expect(container.querySelector('.dispos-scroll')).not.toBe(grillesPendantLImport[0]);
+  });
+
+  it("l'import coupe aussi ses envois à 5 000 lignes à écrire, même avec peu de remplacements", async () => {
+    const {modele, m} = documentAImporter(10);
+    // Deux semaines : 1 344 quarts d'heure à écrire par bénévole.
+    modele.macroCreneaux[0].Fin = modele.macroCreneaux[0].Debut + 14 * 86400;
+    const lots = [];
+    m.brancherEcriture({
+      ...ecritureMuette,
+      valeursColonneBrute: toutLeCreneau,
+      remplacerDisponibilitesLot: async (lot) => { lots.push(lot.length); },
+    });
+
+    await importer(m);
+
+    expect(lots).toEqual([4, 4, 2]);
+  });
+
+  it("si un envoi échoue, l'import le dit et garde en mémoire ce qui est déjà parti", async () => {
+    const {modele, m} = documentAImporter(150);
+    const debut = modele.macroCreneaux[0].Debut;
+    let envois = 0;
+    m.brancherEcriture({
+      ...ecritureMuette,
+      valeursColonneBrute: async () => new Map(Array.from({length: 150}, (_, i) => [100 + i, 'Pas disponible du tout'])),
+      remplacerDisponibilitesLot: async () => { envois++; if (envois === 2) { throw new Error('document indisponible'); } },
+    });
+
+    await importer(m);
+
+    expect(envois).toBe(2);
+    expect(container.textContent).toContain("Échec de l'import");
+    // Le premier envoi (bénévoles 1 à 100) est parti : leur case est maintenant « indisponible » ;
+    // le second (101 à 150) a échoué : rien n'a changé pour eux.
+    expect(m.disponibilites.filter((d) => d.Benevole === 1 && d.Quart_heure === debut).map((d) => d.Statut)).toEqual(['Indisponible']);
+    expect(m.disponibilites.filter((d) => d.Benevole === 101)).toEqual([]);
   });
 });
 

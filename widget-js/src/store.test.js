@@ -34,6 +34,7 @@ function ecritureDeTest(partielle = {}) {
     tablesDocument: nonBranchee('tablesDocument'),
     definirParametre: nonBranchee('definirParametre'),
     remplacerDisponibilites: nonBranchee('remplacerDisponibilites'),
+    remplacerDisponibilitesLot: nonBranchee('remplacerDisponibilitesLot'),
     peuplerBenevoles: nonBranchee('peuplerBenevoles'),
     creerAffinites: nonBranchee('creerAffinites'),
     definirPresence: nonBranchee('definirPresence'),
@@ -1700,6 +1701,73 @@ describe('Magasin.remplacerDisponibilites', () => {
     await expect(m.remplacerDisponibilites(1, 100, 200, [dispo(1, 100, 'Indisponible')]))
       .rejects.toThrow('document indisponible');
     expect(m.disponibilites).toEqual([dispo(1, 100)]);
+  });
+});
+
+describe('Magasin.remplacerDisponibilitesLot', () => {
+  function dispo(benevoleId, quartHeure, statut = 'Disponible') {
+    return {Benevole: benevoleId, Quart_heure: quartHeure, Statut: statut, Artiste: null};
+  }
+
+  const lot = [
+    {benevoleId: 1, debut: 100, fin: 200, nouvelles: [dispo(1, 100, 'Indisponible')]},
+    {benevoleId: 2, debut: 100, fin: 200, nouvelles: [dispo(2, 100, 'Artiste'), dispo(2, 115)]},
+    {benevoleId: 1, debut: 300, fin: 400, nouvelles: [dispo(1, 300)]},
+  ];
+  const depart = () => [dispo(1, 100), dispo(1, 200), dispo(2, 100), dispo(1, 350), dispo(3, 100)];
+
+  it('laisse les disponibilités dans l\'état où les laisserait une suite d\'appels à remplacerDisponibilites', async () => {
+    const suite = new Magasin({...normaliser(), disponibilites: depart()});
+    for (const {benevoleId, debut, fin, nouvelles} of lot) { await suite.remplacerDisponibilites(benevoleId, debut, fin, nouvelles); }
+
+    const enLot = new Magasin({...normaliser(), disponibilites: depart()});
+    await enLot.remplacerDisponibilitesLot(lot);
+
+    expect(enLot.disponibilites).toEqual(suite.disponibilites);
+  });
+
+  it('avec une écriture branchée, la sollicite une seule fois, avec le lot tel quel', async () => {
+    const appels = [];
+    const m = new Magasin({...normaliser(), disponibilites: depart()});
+    m.brancherEcriture(ecritureDeTest({
+      remplacerDisponibilitesLot: async (remplacements) => { appels.push(remplacements); },
+    }));
+
+    await m.remplacerDisponibilitesLot(lot);
+
+    expect(appels).toEqual([lot]);
+  });
+
+  it('n\'avertit les vues qu\'une fois, quel que soit le nombre de remplacements', async () => {
+    const m = new Magasin({...normaliser(), disponibilites: depart()});
+    let avis = 0;
+    m.subscribe(() => { avis++; });
+
+    await m.remplacerDisponibilitesLot(lot);
+
+    expect(avis).toBe(1);
+  });
+
+  it('un lot vide n\'écrit rien et n\'avertit personne', async () => {
+    const m = new Magasin({...normaliser(), disponibilites: depart()});
+    m.brancherEcriture(ecritureDeTest());
+    let avis = 0;
+    m.subscribe(() => { avis++; });
+
+    await m.remplacerDisponibilitesLot([]);
+
+    expect(avis).toBe(0);
+    expect(m.disponibilites).toEqual(depart());
+  });
+
+  it('sur échec de l\'écriture, ne modifie pas les disponibilités locales', async () => {
+    const m = new Magasin({...normaliser(), disponibilites: depart()});
+    m.brancherEcriture(ecritureDeTest({
+      remplacerDisponibilitesLot: async () => { throw new Error('document indisponible'); },
+    }));
+
+    await expect(m.remplacerDisponibilitesLot(lot)).rejects.toThrow('document indisponible');
+    expect(m.disponibilites).toEqual(depart());
   });
 });
 

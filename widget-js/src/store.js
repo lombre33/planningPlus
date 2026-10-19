@@ -8,6 +8,7 @@
 
 import {t, traductions} from './i18n.js';
 import {sousCreneauxApplicables} from './logic/derive.js';
+import {appliquerRemplacements} from './logic/import-disponibilites.js';
 import {cleJourFestival, libelleHeurePlage, PAS_SECONDES} from './temps.js';
 
 // Les `raison` rendues aux vues, qui les affichent telles quelles. Le message
@@ -197,6 +198,20 @@ export class Magasin {
       (d) => !(d.Benevole === benevoleId && d.Quart_heure >= debut && d.Quart_heure < fin),
     );
     this.data.disponibilites.push(...nouvelles);
+    this.notifier();
+  }
+
+  /** Applique d'un coup une suite de remplacements (`{benevoleId, debut, fin, nouvelles}`,
+   *  l'import des disponibilités) : le même jeu final qu'une suite d'appels à
+   *  `remplacerDisponibilites`, mais une écriture (`EcritureGrist.remplacerDisponibilitesLot`)
+   *  et un seul avis aux vues. Sur échec de l'écriture, rien ne change en mémoire. */
+  async remplacerDisponibilitesLot(remplacements) {
+    if (remplacements.length === 0) { return; }
+    if (this.ecriture) {
+      await this.ecriture.remplacerDisponibilitesLot(remplacements);
+    }
+    const {conservees, ajoutees} = appliquerRemplacements(this.data.disponibilites, remplacements);
+    this.data.disponibilites = [...conservees, ...ajoutees];
     this.notifier();
   }
 

@@ -41,6 +41,13 @@ import {
 import {libelleHeure} from '../temps.js';
 import {h, vider} from '../ui/dom.js';
 
+/** Un envoi à Grist, pendant un import, porte au plus ce nombre de remplacements (un par bénévole
+ *  et par macro-créneau) ou ce nombre de lignes à écrire : 300 bénévoles ne s'importent ni en
+ *  3 600 envois (la lecture de toute la table à chacun prenait des minutes) ni en un seul (un
+ *  échec ferait tout perdre), et ce qui est déjà parti reste acquis si un envoi échoue. */
+const REMPLACEMENTS_PAR_ENVOI = 100;
+const LIGNES_PAR_ENVOI = 5000;
+
 traductions({
   disponible: 'available',
   indisponible: 'unavailable',
@@ -415,7 +422,8 @@ export function montrerDisponibilites(container, m) {
    *  chaque macro-créneau associé et ses souhaits d'artiste, puis remplace
    *  ses disponibilités macro-créneau par macro-créneau (jamais en un seul
    *  remplacement global : ça préserverait de la place aux quarts d'heure
-   *  hors de tout macro-créneau mappé, jamais touchés ici). Une réponse non
+   *  hors de tout macro-créneau mappé, jamais touchés ici), envoyés par
+   *  groupes (`m.remplacerDisponibilitesLot`). Une réponse non
    *  reconnue ("disponible mais…") n'écrit rien : elle reste à saisir à la
    *  main, en mode édition. */
   async function importerDisponibilites() {
@@ -468,6 +476,15 @@ export function montrerDisponibilites(container, m) {
 
       let nbManuels = 0;
       const nomsNonReconnus = new Set();
+      let aEnvoyer = [];
+      let lignesAEnvoyer = 0;
+      const envoyer = async () => {
+        if (aEnvoyer.length === 0) { return; }
+        const lot = aEnvoyer;
+        aEnvoyer = [];
+        lignesAEnvoyer = 0;
+        await m.remplacerDisponibilitesLot(lot);
+      };
       for (const benevole of m.benevoles) {
         // La réponse brute se lit dans SA table à lui, indexée par l'id de la
         // ligne d'origine (`Id_source`, posé par le peuplement ci-dessus) —
@@ -499,11 +516,13 @@ export function montrerDisponibilites(container, m) {
           const resultat = disponibilitesDepuisReponseMacroCreneau(benevole.id, macro, reponse, libelles);
           if (resultat.statut === 'Manuelle') { nbManuels++; continue; }
           const surchargesDeCeMacro = surcharges.filter((d) => d.Quart_heure >= macro.Debut && d.Quart_heure < macro.Fin);
-          await m.remplacerDisponibilites(
-            benevole.id, macro.Debut, macro.Fin, fusionnerDisponibilites(resultat.disponibilites, surchargesDeCeMacro),
-          );
+          const nouvelles = fusionnerDisponibilites(resultat.disponibilites, surchargesDeCeMacro);
+          aEnvoyer.push({benevoleId: benevole.id, debut: macro.Debut, fin: macro.Fin, nouvelles});
+          lignesAEnvoyer += nouvelles.length;
+          if (aEnvoyer.length >= REMPLACEMENTS_PAR_ENVOI || lignesAEnvoyer >= LIGNES_PAR_ENVOI) { await envoyer(); }
         }
       }
+      await envoyer();
       if (aCreerAffinites.length > 0) { await m.creerAffinites(aCreerAffinites); }
 
       const morceaux = [t('Import terminé.')];
