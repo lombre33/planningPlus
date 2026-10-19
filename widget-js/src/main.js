@@ -37,6 +37,7 @@ import {
   decoderNombre, decoderRef, decoderTexte,
   LIBELLE_PAR_TABLE, lireDocument, tablesDuDocument, zipperTable,
 } from './grist/index.js';
+import {appliquerRemplacements} from './logic/import-disponibilites.js';
 import {Magasin, SuppressionApresCreationEchouee} from './store.js';
 import {appliquerTheme, themeMemorise} from './ui/reglages.js';
 
@@ -264,6 +265,27 @@ function construireEcritureGrist(
       await appliquerActions(
         docApi,
         [...actionsSupprimerDisponibilites(idsARetirer), ...actionsEcrireDisponibilites(nouvellesGrist)],
+        resolution,
+      );
+    },
+    async remplacerDisponibilitesLot(remplacements) {
+      // Pour un import : une lecture de la table et un envoi pour tout le lot, au lieu d'une
+      // lecture et d'un envoi par bénévole et par macro-créneau (à 300 bénévoles et 12
+      // macro-créneaux, 3 600 lectures de 115 200 lignes). `appliquerRemplacements` donne le
+      // jeu que la suite d'appels donnerait ; un seul envoi, donc tout le lot passe ou rien.
+      const table = await docApi.fetchTable(resolution.Disponibilites ?? 'Disponibilites');
+      const existantes = zipperTable(table).map((l) => ({
+        id: l.id, Benevole: decoderNombre(l.Benevole), Quart_heure: decoderNombre(l.Quart_heure),
+      }));
+      const {retirees, ajoutees} = appliquerRemplacements(existantes, remplacements);
+      await appliquerActions(
+        docApi,
+        [
+          ...actionsSupprimerDisponibilites(retirees.map((l) => l.id)),
+          ...actionsEcrireDisponibilites(ajoutees.map((d) => ({
+            benevoleId: d.Benevole, quartHeure: d.Quart_heure, statut: d.Statut, artisteId: d.Artiste,
+          }))),
+        ],
         resolution,
       );
     },

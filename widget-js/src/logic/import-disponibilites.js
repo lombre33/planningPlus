@@ -162,3 +162,43 @@ export function disponibilitesBenevolePourFestival(
   const surcharges = disponibilitesDepuisSouhaitsArtistes(benevoleId, nomsArtistesSouhaites, artistes);
   return {disponibilites: fusionnerDisponibilites(base, surcharges), macroCreneauxAManuel};
 }
+
+/**
+ * Applique à `lignes`, dans l'ordre, des remplacements « les lignes du bénévole
+ * `benevoleId` sur `[debut, fin)` deviennent `nouvelles` » : ce que donnerait une suite
+ * d'appels à `Magasin.remplacerDisponibilites`, calculé en un seul passage. Un import à
+ * 300 bénévoles et 12 macro-créneaux enchaîne 3 600 remplacements sur 115 200 lignes, et
+ * relire (côté Grist) ou refiltrer (côté mémoire) tout le jeu à chacun prenait presque
+ * tout le temps de l'import (mesuré le 2026-10-19).
+ *
+ * Rend les lignes de départ conservées (dans leur ordre), celles qu'un remplacement a
+ * retirées, et les lignes ajoutées qui restent : un macro-créneau qui en recouvre un autre
+ * pour le même bénévole efface ce que le premier vient d'écrire, comme la suite d'appels
+ * le ferait. Le jeu final d'une suite d'appels est `[...conservees, ...ajoutees]`.
+ * `lignes` et `nouvelles` portent `Benevole` et `Quart_heure`.
+ */
+export function appliquerRemplacements(lignes, remplacements) {
+  const etapesParBenevole = new Map();
+  remplacements.forEach((r, rang) => {
+    const etape = {rang, debut: r.debut, fin: r.fin};
+    const etapes = etapesParBenevole.get(r.benevoleId);
+    if (etapes) { etapes.push(etape); } else { etapesParBenevole.set(r.benevoleId, [etape]); }
+  });
+  const couvre = (etape, ligne) => ligne.Quart_heure >= etape.debut && ligne.Quart_heure < etape.fin;
+
+  const conservees = [];
+  const retirees = [];
+  for (const ligne of lignes) {
+    const etapes = etapesParBenevole.get(ligne.Benevole);
+    if (etapes?.some((etape) => couvre(etape, ligne))) { retirees.push(ligne); } else { conservees.push(ligne); }
+  }
+
+  const ajoutees = [];
+  remplacements.forEach((r, rang) => {
+    for (const ligne of r.nouvelles) {
+      const etapes = etapesParBenevole.get(ligne.Benevole);
+      if (!etapes?.some((etape) => etape.rang > rang && couvre(etape, ligne))) { ajoutees.push(ligne); }
+    }
+  });
+  return {conservees, retirees, ajoutees};
+}

@@ -1,7 +1,8 @@
 import {describe, expect, it} from 'vitest';
 import {
-  classerReponseMacroCreneau, disponibilitesBenevolePourFestival, disponibilitesDepuisReponseMacroCreneau,
-  disponibilitesDepuisSouhaitsArtistes, fusionnerDisponibilites, LIBELLES_REPONSE_PAR_DEFAUT,
+  appliquerRemplacements, classerReponseMacroCreneau, disponibilitesBenevolePourFestival,
+  disponibilitesDepuisReponseMacroCreneau, disponibilitesDepuisSouhaitsArtistes, fusionnerDisponibilites,
+  LIBELLES_REPONSE_PAR_DEFAUT,
 } from './import-disponibilites.js';
 
 describe('classerReponseMacroCreneau', () => {
@@ -119,5 +120,103 @@ describe('disponibilitesBenevolePourFestival', () => {
   it('sans aucune réponse ni souhait, ne produit rien', () => {
     const resultat = disponibilitesBenevolePourFestival(1, new Map(), [], []);
     expect(resultat).toEqual({disponibilites: [], macroCreneauxAManuel: []});
+  });
+});
+
+describe('appliquerRemplacements', () => {
+  const ligne = (benevole, quart, statut = 'Disponible') => ({Benevole: benevole, Quart_heure: quart, Statut: statut, Artiste: null});
+
+  /** La référence : ce que fait `Magasin.remplacerDisponibilites`, un appel après l'autre. */
+  function suiteDAppels(lignes, remplacements) {
+    let courant = [...lignes];
+    for (const {benevoleId, debut, fin, nouvelles} of remplacements) {
+      courant = courant.filter((d) => !(d.Benevole === benevoleId && d.Quart_heure >= debut && d.Quart_heure < fin));
+      courant.push(...nouvelles);
+    }
+    return courant;
+  }
+
+  function jeuFinal(lignes, remplacements) {
+    const {conservees, ajoutees} = appliquerRemplacements(lignes, remplacements);
+    return [...conservees, ...ajoutees];
+  }
+
+  it('ne retire que les lignes du bénévole visé, sur la plage visée, et ajoute les nouvelles à la suite', () => {
+    const lignes = [ligne(1, 100), ligne(1, 200), ligne(2, 100), ligne(1, 300)];
+    const nouvelles = [ligne(1, 100, 'Indisponible'), ligne(1, 115, 'Indisponible')];
+
+    const resultat = appliquerRemplacements(lignes, [{benevoleId: 1, debut: 100, fin: 200, nouvelles}]);
+
+    expect(resultat.retirees).toEqual([ligne(1, 100)]);
+    expect(resultat.conservees).toEqual([ligne(1, 200), ligne(2, 100), ligne(1, 300)]);
+    expect(resultat.ajoutees).toEqual(nouvelles);
+  });
+
+  it('rend les lignes de départ elles-mêmes, pour que l\'écriture retrouve leur identifiant', () => {
+    const lignes = [{id: 7, ...ligne(1, 100)}, {id: 8, ...ligne(1, 500)}];
+
+    const {retirees, conservees} = appliquerRemplacements(lignes, [{benevoleId: 1, debut: 100, fin: 200, nouvelles: []}]);
+
+    expect(retirees).toEqual([{id: 7, ...ligne(1, 100)}]);
+    expect(retirees[0]).toBe(lignes[0]);
+    expect(conservees[0]).toBe(lignes[1]);
+  });
+
+  it('donne le même jeu qu\'une suite d\'appels quand les plages ne se recouvrent pas', () => {
+    const lignes = [ligne(1, 100), ligne(2, 100), ligne(1, 400), ligne(2, 450)];
+    const remplacements = [
+      {benevoleId: 1, debut: 100, fin: 200, nouvelles: [ligne(1, 100, 'Indisponible')]},
+      {benevoleId: 2, debut: 100, fin: 200, nouvelles: [ligne(2, 100, 'Artiste'), ligne(2, 115)]},
+      {benevoleId: 1, debut: 400, fin: 500, nouvelles: [ligne(1, 400), ligne(1, 415)]},
+    ];
+
+    expect(jeuFinal(lignes, remplacements)).toEqual(suiteDAppels(lignes, remplacements));
+  });
+
+  it('un macro-créneau qui en recouvre un autre efface ce que le premier vient d\'écrire, comme la suite d\'appels', () => {
+    const lignes = [ligne(1, 100)];
+    const remplacements = [
+      {benevoleId: 1, debut: 100, fin: 300, nouvelles: [ligne(1, 100), ligne(1, 250, 'Artiste')]},
+      {benevoleId: 1, debut: 200, fin: 400, nouvelles: [ligne(1, 300)]},
+    ];
+
+    expect(jeuFinal(lignes, remplacements)).toEqual([ligne(1, 100), ligne(1, 300)]);
+    expect(jeuFinal(lignes, remplacements)).toEqual(suiteDAppels(lignes, remplacements));
+  });
+
+  it('sans remplacement, ne touche à rien', () => {
+    const lignes = [ligne(1, 100), ligne(2, 200)];
+    expect(appliquerRemplacements(lignes, [])).toEqual({conservees: lignes, retirees: [], ajoutees: []});
+  });
+
+  it('donne le même jeu, dans le même ordre, qu\'une suite d\'appels sur 300 tirages au hasard (recouvrements compris)', () => {
+    // Générateur congruentiel : mêmes tirages à chaque exécution.
+    let graine = 20261019;
+    const tirer = (borne) => {
+      graine = (graine * 1103515245 + 12345) % 2147483648;
+      return graine % borne;
+    };
+    for (let essai = 0; essai < 300; essai++) {
+      const lignes = [];
+      for (let i = 0, n = tirer(25); i < n; i++) { lignes.push(ligne(1 + tirer(4), 15 * tirer(40), tirer(2) ? 'Disponible' : 'Artiste')); }
+      const remplacements = [];
+      for (let i = 0, n = tirer(9); i < n; i++) {
+        const benevoleId = 1 + tirer(4);
+        const debut = 15 * tirer(30);
+        const fin = debut + 15 * (1 + tirer(20));
+        const nouvelles = [];
+        for (let j = 0, k = tirer(8); j < k; j++) {
+          // Une ligne sur dix porte un autre bénévole que celui du remplacement : le contrat ne l'interdit pas.
+          nouvelles.push(ligne(tirer(10) === 0 ? 1 + tirer(4) : benevoleId, debut + 15 * tirer(25), 'Indisponible'));
+        }
+        remplacements.push({benevoleId, debut, fin, nouvelles});
+      }
+
+      const attendu = suiteDAppels(lignes, remplacements);
+      const {conservees, retirees, ajoutees} = appliquerRemplacements(lignes, remplacements);
+
+      expect([...conservees, ...ajoutees]).toEqual(attendu);
+      expect(conservees.length + retirees.length).toBe(lignes.length);
+    }
   });
 });
