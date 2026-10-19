@@ -1,6 +1,7 @@
 import {describe, expect, it} from 'vitest';
 import {
   decoderBool,
+  decoderCouleur,
   decoderListe,
   decoderNombre,
   decoderNumeriqueOptionnel,
@@ -101,5 +102,41 @@ describe('scalaires', () => {
     expect(decoderBool(false)).toBe(false);
     expect(decoderBool(null)).toBe(false);
     expect(decoderBool(1)).toBe(false);
+  });
+});
+
+describe('Couleur', () => {
+  it('garde une couleur hexadécimale, nommée ou fonctionnelle', () => {
+    for (const couleur of ['#6366f1', '#fff', '#6366f180', 'red', 'rebeccapurple', 'transparent', 'rgb(10, 20, 30)',
+      'rgba(10 20 30 / 50%)', 'hsl(200deg 50% 50%)', 'oklch(60% 0.2 250)']) {
+      expect(decoderCouleur(couleur)).toBe(couleur);
+    }
+  });
+
+  it('retire les blancs autour de la couleur', () => {
+    expect(decoderCouleur('  #6366f1 ')).toBe('#6366f1');
+  });
+
+  it('décode une valeur absente ou qui n\'est pas du texte en chaîne vide', () => {
+    for (const valeur of [null, undefined, 42, '', '   ']) { expect(decoderCouleur(valeur)).toBe(''); }
+  });
+
+  // La colonne est du texte libre, remplissable par tout éditeur du document, et les vues
+  // la posent dans `style.background`, qui accepte `url(…)` : le navigateur de chaque personne
+  // qui ouvre le planning irait chercher l'adresse.
+  it('écarte toute valeur qui ferait charger une adresse ou lire une autre propriété', () => {
+    for (const piege of [
+      'url(https://exfil.example/c.png)',
+      'url("https://exfil.example/c.png") no-repeat',
+      'image-set("https://exfil.example/c.png" 1x)',
+      'var(--x, url(https://exfil.example/c.png))',
+      'rgb(var(--x, url(https://exfil.example/c.png)))',
+      'red; background-image: url(https://exfil.example/c.png)',
+      '#fff url(https://exfil.example/c.png)',
+      'linear-gradient(red, blue)',
+      '<img src=x onerror=alert(1)>',
+    ]) {
+      expect(decoderCouleur(piege), piege).toBe('');
+    }
   });
 });

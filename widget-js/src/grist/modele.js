@@ -19,13 +19,13 @@
  */
 
 import {zipperTable} from './brut.js';
-import {decoderBool, decoderListe, decoderNombre, decoderRef, decoderTexte} from './valeurs.js';
+import {decoderBool, decoderCouleur, decoderListe, decoderNombre, decoderRef, decoderTexte} from './valeurs.js';
 
 function equipeDepuisLigne(l) {
   return {
     id: l.id,
     Nom: decoderTexte(l.Nom),
-    Couleur: decoderTexte(l.Couleur),
+    Couleur: decoderCouleur(l.Couleur),
     Referent: decoderRef(l.Referent),
     Notes: decoderTexte(l.Notes),
   };
